@@ -1,0 +1,605 @@
+/*
+Copyright (c) 2024 SAYU
+This software is released under the MIT License, see LICENSE.
+*/
+
+body {
+    align-items: center;
+    background-color: black;
+    box-sizing: border-box;
+    color: white;
+    cursor: none;
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    overflow-y: auto;
+    padding: 20px 0;
+    position: relative;
+}
+
+#particle-canvas {
+    background-color: black;
+    height: 100vh;
+    left: 0;
+    overflow: hidden;
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    width: 100vw;
+    z-index: 0;
+}
+
+.container {
+    animation: rainbow-border 4s linear infinite;
+    background-clip: content-box;
+    background-color: black;
+    border: 8px solid transparent;
+    border-radius: 15px;
+    font-size: 20px;
+    margin-top: 20px;
+    max-width: 600px;
+    padding: 40px;
+    position: relative; 
+    text-align: center;
+    z-index: 1; 
+}
+
+label {
+    display: block;
+    font-size: 24px;
+    margin-top: 15px;
+}
+
+input[type="text"],
+input[type="password"] {
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 20px;
+    margin-bottom: 25px;
+    max-width: 400px;
+    padding: 10px;
+    width: 80%;
+}
+
+.switch-container {
+    align-items: center;
+    display: flex;
+    font-size: 20px;
+    justify-content: space-between;
+    margin: 20px auto;
+    width: 300px;
+}
+
+.switch {
+    display: inline-block;
+    height: 40px;
+    position: relative;
+    width: 80px;
+}
+
+.switch input {
+    height: 0;
+    opacity: 0;
+    width: 0;
+}
+
+.slider {
+    background-color: gray;
+    bottom: 0;
+    border-radius: 25px;
+    cursor: pointer;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    transition: 0.4s;
+}
+
+.slider:before {
+    background-color: white;
+    border-radius: 50%;
+    bottom: 5px;
+    content: "";
+    height: 30px;
+    left: 5px;
+    position: absolute;
+    transition: 0.4s;
+    width: 30px;
+}
+
+input:checked + .slider {
+    background-color: #66ff66;
+    box-shadow: 0 0 20px 5px #66ff66;
+}
+
+input:checked + .slider:before {
+    box-shadow: 0 0 15px 3px white;
+    transform: translateX(40px);
+}
+
+input:checked ~ .switch-label {
+    color: #66ff66; 
+    text-shadow: 0 0 10px #66ff66, 0 0 20px #66ff66;
+}
+
+.attendsetting {
+    background-color: #1c1c1e; 
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    display: none; 
+    margin: 20px auto; 
+    padding: 20px;
+    position: relative; 
+    width: 300px; 
+    z-index: 1; 
+}
+
+.attendsetting label { 
+    color: #ccc;
+    font-size: 18px;
+    margin-top: 10px; 
+}
+
+.attendsetting input { 
+    background-color: #222;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    color: white;
+    font-size: 18px;
+    margin: 10px 0;
+    padding: 8px;
+    transition: background-color 0.3s ease;
+    width: 90%; 
+}
+
+.attendsetting input:focus {
+    background-color: #333;
+    border-color: #66ff66;
+    outline: none;
+}
+
+.attendsetting .inline-container {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.attendsetting .inline-container div {
+    flex: 1;
+}
+
+.attendsetting select {
+    background-color: #222;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    color: white;
+    font-size: 18px;
+    margin: 10px 0;
+    padding: 8px; 
+    transition: background-color 0.3s ease;
+    width: 90%; 
+}
+
+.attendsetting select:hover {
+    background-color: #444;
+}
+
+.attendsetting select:focus {
+    background-color: #333;
+    border: 1px solid #66ff66;
+    outline: none;
+}
+
+.checkbox-wrapper {
+    --checkbox-border: rgba(0, 255, 136, 0.7);
+    --checkbox-color: #00ff88;
+    --checkbox-shadow: rgba(0, 255, 136, 0.3);
+    --checkbox-size: 25px;
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    padding: 10px;
+    position: relative;
+}
+
+.checkbox-wrapper input {
+    cursor: pointer;
+    height: 0;
+    opacity: 0;
+    position: absolute;
+    width: 0;
+}
+
+.checkbox-wrapper .checkmark {
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    border: 2px solid var(--checkbox-border);
+    border-radius: 8px;
+    box-shadow: 0 0 15px var(--checkbox-shadow);
+    display: flex;
+    height: var(--checkbox-size);
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    transition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+    width: var(--checkbox-size);
+}
+
+.checkbox-wrapper .checkmark::before {
+    background: linear-gradient(45deg, var(--checkbox-color), #00ffcc);
+    content: "";
+    height: 100%;
+    opacity: 0;
+    position: absolute;
+    transform: scale(0) rotate(-45deg);
+    transition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+    width: 100%;
+}
+
+.checkbox-wrapper input:checked ~ .checkmark::before {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+}
+
+.checkbox-wrapper .checkmark svg {
+    color: #1a1a1a;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+    height: 0;
+    transition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+    width: 0;
+    z-index: 1;
+}
+
+.checkbox-wrapper input:checked ~ .checkmark svg {
+    height: 18px;
+    width: 18px;
+}
+
+.checkbox-wrapper:hover .checkmark {
+    border-color: var(--checkbox-color);
+    box-shadow:
+        0 0 20px var(--checkbox-shadow),
+        0 0 40px var(--checkbox-shadow),
+        inset 0 0 10px var(--checkbox-shadow);
+    transform: scale(1.1);
+    transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.checkbox-wrapper input:checked ~ .checkmark {
+    animation: pulse 1s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.checkbox-wrapper .label {
+    color: var(--checkbox-color);
+    font-family: "Segoe UI", sans-serif;
+    font-size: 18px;
+    margin-left: 15px;
+    opacity: 0.9;
+    text-shadow: 0 0 10px var(--checkbox-shadow);
+    transition: all 0.3s ease;
+}
+
+.checkbox-wrapper:hover .label {
+    opacity: 1;
+    transform: translateX(5px);
+}
+
+.checkbox-wrapper::after,
+.checkbox-wrapper::before {
+    background: var(--checkbox-color);
+    border-radius: 50%;
+    content: "";
+    height: 4px;
+    opacity: 0;
+    position: absolute;
+    transition: all 0.5s ease;
+    width: 4px;
+}
+
+.checkbox-wrapper::before {
+    left: -10px;
+    top: 50%;
+}
+
+.checkbox-wrapper::after {
+    right: -10px;
+    top: 50%;
+}
+
+.checkbox-wrapper:hover::before {
+    box-shadow: 0 0 10px var(--checkbox-color);
+    opacity: 1;
+    transform: translateX(-10px);
+}
+
+.checkbox-wrapper:hover::after {
+    box-shadow: 0 0 10px var(--checkbox-color);
+    opacity: 1;
+    transform: translateX(10px);
+}
+
+.gradient-label {
+    animation: label-color-move 0.65s linear infinite;
+    background: linear-gradient(to right, rgb(36, 255, 226), rgb(255, 42, 198), rgb(36, 255, 226)) 0% center/200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-weight: bold;
+    -webkit-text-fill-color: transparent;
+}
+
+.box_color {
+    animation: box_color 2s linear infinite;
+    background: linear-gradient(to right, rgb(223, 1, 215), rgb(46, 46, 254), rgb(223, 1, 215)) 0% center/200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-size: 50px;
+    font-weight: bold;
+    text-align: center;
+    -webkit-text-fill-color: transparent;
+}
+
+#status {
+    border-radius: 5px;
+    color: lightgreen;
+    font-size: 18px;
+    opacity: 0;
+    padding: 10px 20px;
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    transition: opacity 1s ease-in-out;
+    z-index: 10000;
+}
+
+.loading {
+    background: black;
+    height: 100vh;
+    left: 0px;
+    position: fixed;
+    top: 0px;
+    width: 100vw;
+    z-index: 9999;
+}
+
+.leo {
+    align-items: center;
+    border-radius: 50%;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    left: 0;
+    margin: auto;
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.orbit1 {
+    animation:spin3D 10s linear 0s infinite;
+    -webkit-animation: spin3D 10s linear 0s infinite;
+    border: 1px solid #f2ff00;
+    height: 60px;
+    width: 60px;
+}
+
+.orbit2 {
+    animation:spin3D 1s linear 0s infinite;
+    -webkit-animation: spin3D 1s linear 0s infinite;
+    border: 1px solid #d2b0ff;
+    height: 90px;
+    width: 90px;
+}
+
+.orbit3 {
+    animation: spin3D 2s linear 0s infinite;
+    -webkit-animation: spin3D 2s linear 0s infinite;
+    border: 2px solid #7eecff;
+    height: 120px;
+    width: 120px;
+}
+
+.orbit4 {
+    animation: spin3D 3s linear .2s infinite;
+    -webkit-animation: spin3D 3s linear .2s infinite;
+    border: 3px solid #ff6e6e;
+    height: 165px;
+    width: 165px;
+}
+
+.w1 {
+    transform: rotate3D(1, 1, 1, 90deg);
+}
+
+.w2 {
+    transform: rotate3D(1, 2, .5, 90deg);
+}
+
+.powder-particle {
+    animation-name: rise;
+    animation-timing-function: linear;
+    border-radius: 50%;
+    bottom: -10px;
+    height: 5px;
+    opacity: 0; 
+    pointer-events: none;
+    position: absolute;
+    width: 5px;
+}
+
+.custom-cursor {
+    animation: rainbow-glow-animation 4s linear infinite;
+    border-radius: 50%;
+    height: 24px; 
+    left: 0; 
+    pointer-events: none;
+    position: fixed;
+    top: 0;  
+    transform: translate(-50%, -50%);
+    transition: transform 0.07s ease-out, width 0.15s ease-out, height 0.15s ease-out;
+    width: 24px; 
+    z-index: 9000;
+}
+
+.custom-cursor.cursor-active {
+    transform: translate(-50%, -50%) scale(0.7);
+}
+
+.custom-cursor.cursor-interactive {
+    height: 32px;
+    width: 32px;
+}
+
+a:hover,
+button:hover,
+input:hover,
+label:hover, 
+.checkbox-wrapper:hover,
+.slider:hover,
+.switch:hover,
+select:hover {
+    cursor: none;
+}
+
+.hacktest {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+@keyframes box_color {
+    0% {
+        background-position-x: 200%;
+    }
+    100% {
+        background-position-x: 0%;
+    }
+}
+
+@keyframes configure-xclockwise { 
+    0% {
+        transform: rotate(45deg);
+    }
+    25% {
+        transform: rotate(-45deg);
+    }
+    50% {
+        transform: rotate(-135deg);
+    }
+    75% {
+        transform: rotate(-225deg);
+    }
+    100% {
+        transform: rotate(-315deg);
+    }
+}
+
+@keyframes label-color-move {
+    0% {
+        background-position-x: 200%;
+    }
+    100% {
+        background-position-x: 0%;
+    }
+}
+
+@keyframes pulse { 
+    0% {
+        box-shadow: 0 0 15px var(--checkbox-shadow);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow:
+            0 0 25px var(--checkbox-shadow),
+            0 0 40px var(--checkbox-shadow);
+        transform: scale(0.95);
+    }
+    100% {
+        box-shadow: 0 0 15px var(--checkbox-shadow);
+        transform: scale(1);
+    }
+}
+
+@keyframes rainbow-border { 
+    0% {
+        border-image: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet) 1;
+    }
+    50% {
+        border-image: linear-gradient(135deg, red, orange, yellow, green, blue, indigo, violet) 1;
+    }
+    100% {
+        border-image: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet) 1;
+    }
+}
+
+@keyframes rainbow-glow-animation { 
+    0% {
+        background-color: hsla(0, 100%, 70%, 0.1);
+        box-shadow: 0 0 8px 2px hsla(0, 100%, 50%, 0.6),
+                      0 0 15px 4px hsla(0, 100%, 50%, 0.4);
+    }
+    16.66% { 
+        background-color: hsla(30, 100%, 70%, 0.1);
+        box-shadow: 0 0 8px 2px hsla(30, 100%, 50%, 0.6),
+                      0 0 15px 4px hsla(30, 100%, 50%, 0.4);
+    }
+    33.33% { 
+        background-color: hsla(60, 100%, 70%, 0.1);
+        box-shadow: 0 0 8px 2px hsla(60, 100%, 50%, 0.6),
+                      0 0 15px 4px hsla(60, 100%, 50%, 0.4);
+    }
+    50% { 
+        background-color: hsla(120, 100%, 70%, 0.1);
+        box-shadow: 0 0 8px 2px hsla(120, 100%, 50%, 0.6),
+                      0 0 15px 4px hsla(120, 100%, 50%, 0.4);
+    }
+    66.66% { 
+        background-color: hsla(240, 100%, 70%, 0.1);
+        box-shadow: 0 0 8px 2px hsla(240, 100%, 50%, 0.6),
+                      0 0 15px 4px hsla(240, 100%, 50%, 0.4);
+    }
+    83.33% { 
+        background-color: hsla(270, 100%, 70%, 0.1);
+        box-shadow: 0 0 8px 2px hsla(270, 100%, 50%, 0.6),
+                      0 0 15px 4px hsla(270, 100%, 50%, 0.4);
+    }
+    100% { 
+        background-color: hsla(360, 100%, 70%, 0.1);
+        box-shadow: 0 0 8px 2px hsla(360, 100%, 50%, 0.6),
+                      0 0 15px 4px hsla(360, 100%, 50%, 0.4);
+    }
+}
+
+@keyframes rise { 
+    0% {
+        opacity: 1;
+        transform: translateY(0) translateX(0) scale(0.5);
+    }
+    50% {
+        opacity: 0.8;
+        transform: translateY(-50vh) translateX(var(--drift-amount, 0px)) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-100vh) translateX(calc(var(--drift-amount, 0px) * 1.5)) scale(0.5);
+    }
+}
+
+@keyframes spin { 
+    from {
+        transform: rotate(0);
+    }
+    to{
+        transform: rotate(359deg);
+    }
+}
+
+@keyframes spin3D { 
+    from {
+        transform: rotate3d(.5,.5,.5, 360deg);
+    }
+    to{
+        transform: rotate3d(0deg);
+    }
+}

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "KLPF",
+  "description": "KOGAKUIN UNIVERSITY - Learning Management System Plugin Framework",
+  "version": "3.0.0",
+  "permissions": [
+    "tabs",
+    "activeTab", 
+    "storage", 
+    "scripting",
+    "contextMenus"
+  ],
+  "background": {
+    "service_worker": "inject.js"
+  },
+  "host_permissions": [
+    "https://study.ns.kogakuin.ac.jp/*",
+    "https://ku-port.sc.kogakuin.ac.jp/*", 
+    "https://auth.kogakuin.ac.jp/*", 
+    "https://meet.google.com/*"
+  ],
+  "options_page": "setting/options.html",
+  "icons": {
+    "16": "icon/icon16.png",
+    "48": "icon/icon48.png",
+    "128": "icon/icon128.png"
+  }
+}

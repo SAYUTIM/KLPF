@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>KLPF</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+    <div class="custom-cursor"></div>
+    <div id="particle-canvas"></div>
+    <div class="loading">
+        <div class="orbit4 leo"></div>
+        <div class="orbit3 leo"></div>
+        <div class="orbit2 leo"></div>
+        <div class="orbit1 w1 leo"></div>
+        <div class="orbit1 w2 leo"></div>
+        <div class="orbit1 w3 leo"></div>
+    </div>
+
+    <div class="container">
+        <h1 class="box_color">KLPF</h1>
+
+        <label for="username">ユーザー名</label>
+        <input type="text" id="username" placeholder="ユーザー名を入力">
+
+        <label for="password">パスワード</label>
+        <input type="password" id="password" placeholder="パスワードを入力">
+
+        <div class="switch-container" title="Ku-LMS もしくは ku-port を開くと自動でログインされます。使用する場合は統合認証ユーザー名とパスワードを入力してください。">
+            <span class="switch-label">自動ログイン</span>
+            <label class="switch">
+                <input type="checkbox" id="auto-login">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="switch-container" title="KuLMSで自動ログアウトされるのを無効化します。">
+            <span class="switch-label">[β] 自動ログアウト無効</span>
+            <label class="switch">
+                <input type="checkbox" id="logout-block">
+                <span class="slider"></span>
+            </label>
+        </div>
+        
+        <div class="switch-container" title="未提出課題、未実施テストをまとめてKu-LMSホーム画面に表示します。">
+            <span class="switch-label">課題リストアップ</span>
+            <label class="switch">
+                <input type="checkbox" id="home-work">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="switch-container" title="Meet を開くと自動でカメラとマイクをオフにして参加します。">
+            <span class="switch-label">Meetミュート参加</span>
+            <label class="switch">
+                <input type="checkbox" id="auto-meet">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="switch-container hacktest" title="記述式、選択式、プルダウン式に対応、AIによる自動解答や正誤判定も可能">
+            <span class="switch-label">[β] テスト自動解答</span>
+            <label class="switch">
+                <input type="checkbox" id="hack-test">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="switch-container" title="クォーター、曜日、時間を選択し、Ku-LMSを開いておくと3分前に自動で出席ボタンを押しmeetに参加します。">
+            <span class="switch-label">[β] 自動出席</span>
+            <label class="switch">
+                <input type="checkbox" id="auto-attend">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="switch-container" title="Ku-LMSで現在履修中の科目のみを表示します。集中講座などには現在対応していません。">
+            <span class="switch-label">履修中科目のみ表示</span>
+            <label class="switch">
+                <input type="checkbox" id="search-subject">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="switch-container" title="Ku-LMSで右上に現在時刻と、授業開始もしくは終了までの時間が表示されます。">
+            <span class="switch-label">授業時間表示</span>
+            <label class="switch">
+                <input type="checkbox" id="show-time">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="switch-container" title="Ku-LMSにダークモードのテーマを適用します。">
+            <span class="switch-label">[β] ダークモード</span>
+            <label class="switch">
+                <input type="checkbox" id="dark-mode">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <p id="status">設定が保存されました</p>
+    </div>
+
+    <div class="container attendsetting" style="display: none;">
+        <h2 class="gradient-label">自動出席</h2>
+        
+    
+        <div class="inline-container">
+            <div>
+                <select id="class-term">
+                    <option value="Q1">1Q</option>
+                    <option value="Q2">2Q</option>
+                    <option value="Q3">3Q</option>
+                    <option value="Q4">4Q</option>
+                    <option value="前期">前期</option>
+                    <option value="後期">後期</option>
+                </select>
+            </div>
+            <div>
+                <select id="day-select">
+                    <option value="1">月</option>
+                    <option value="2">火</option>
+                    <option value="3">水</option>
+                    <option value="4">木</option>
+                    <option value="5">金</option>
+                    <option value="6">土</option>
+                </select>
+            </div>
+    
+            <div>
+                <select id="class-period">
+                    <option value="2限">2限</option>
+                    <option value="3限">3限</option>
+                    <option value="4限">4限</option>
+                    <option value="5限">5限</option>
+                </select>
+            </div>
+        </div>
+
+        <label class="checkbox-wrapper">
+        <input type="checkbox" id="attend-button">
+        <div class="checkmark">
+            <svg stroke="currentColor" fill="none" viewBox="0 0 24 24">
+            <path
+                stroke-linejoin="round"
+                stroke-linecap="round"
+                stroke-width="3"
+                d="M20 6L9 17L4 12"
+            ></path>
+            </svg>
+        </div>
+        <span class="label">出席ボタン</span>
+        </label>
+
+        <label for="meet-id">Meet URL</label>
+        <input type="text" id="meet-id" placeholder="https://meet.google.com/xxx-xxxx-xxx">
+
+    </div>
+
+    <script src="options.js"></script>
+    <script src="css.js"></script>
+</body>
+</html>
