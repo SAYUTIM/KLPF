@@ -169,7 +169,7 @@ function enableSearchSubject() {
         id: "SearchSubject",
         matches: ["https://study.ns.kogakuin.ac.jp/*"],
         js: [`${root}subject.js`],
-        runAt: "document_idle"
+        runAt: "document_start"
     }]);
 }
 
