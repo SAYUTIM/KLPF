@@ -1,5 +1,5 @@
-// Copyright (c) 2024-2025 SAYU
-// This software is released under the MIT License, see LICENSE.
+//Copyright (c) 2024-2025 SAYU
+//This software is released under the MIT License, see LICENSE.
 
 (function () {
   const form = document.querySelector('form#homehomlInfo[name="homeHomlActionForm"]');
