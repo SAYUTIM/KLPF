@@ -1,4 +1,4 @@
-//Copyright (c) 2024 SAYU
+//Copyright (c) 2024-2025 SAYU
 //This software is released under the MIT License, see LICENSE.
 
 const interval = setInterval(() => {

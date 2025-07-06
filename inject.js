@@ -1,4 +1,4 @@
-//Copyright (c) 2024 SAYU
+//Copyright (c) 2024-2025 SAYU
 //This software is released under the MIT License, see LICENSE.
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -57,7 +57,12 @@ chrome.runtime.onInstalled.addListener(() => {
         if (result.logoutblock) enableLogoutBlock();
         else disableScript("logoutblock");
     });
-
+/**
+    chrome.storage.sync.get(["customtheme"], (result) => {
+        if (result.customtheme) enableCustomTheme();
+        else disableScript("customtheme");
+    });
+*/
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -114,6 +119,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
             if (changes.logoutblock.newValue) enableLogoutBlock();
             else disableScript("logoutblock");
         }
+/**
+        if (changes.customtheme) {
+            if (changes.customtheme.newValue) enableCustomTheme();
+            else disableScript("customtheme");
+        }
+*/
+        
     }
 });
 
@@ -167,7 +179,7 @@ function enableMeetjoin() {
 function enableSearchSubject() {
     chrome.scripting.registerContentScripts([{
         id: "SearchSubject",
-        matches: ["https://study.ns.kogakuin.ac.jp/*"],
+        matches: ["https://study.ns.kogakuin.ac.jp/lms/homeHoml/*"],
         js: [`${root}subject.js`],
         runAt: "document_start"
     }]);
@@ -208,3 +220,14 @@ function enableLogoutBlock(){
         runAt: "document_end"
     }]);
 }
+/**
+function enableCustomTheme(){
+    chrome.scripting.registerContentScripts([{
+        id: "customtheme",
+        matches: ["https://study.ns.kogakuin.ac.jp/lms/*"],
+        js: [`${root}customtheme.js`],
+        runAt: "document_end"
+    }]);
+}
+*/
+

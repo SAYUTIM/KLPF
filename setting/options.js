@@ -1,4 +1,4 @@
-//Copyright (c) 2024 SAYU
+//Copyright (c) 2024-2025 SAYU
 //This software is released under the MIT License, see LICENSE.
 
 const saveSettings = () => {
@@ -18,6 +18,7 @@ const saveSettings = () => {
     const homework = document.getElementById("home-work").checked;
     const hacktest = document.getElementById("hack-test").checked;
     const logoutblock = document.getElementById("logout-block").checked;
+    //const customtheme = document.getElementById("custom-theme").checked;
 
     chrome.storage.sync.set({ 
         username, 
@@ -36,6 +37,7 @@ const saveSettings = () => {
         homework,
         hacktest,
         logoutblock,
+        //customtheme,
     }, () => {
         document.dispatchEvent(new Event("settings-changed"));
     });
@@ -59,6 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
         "homework",
         "hacktest",
         "logoutblock",
+        //"customtheme",
     ], (result) => {
         document.getElementById("username").value = result.username || "";
         document.getElementById("password").value = result.password || "";
@@ -76,6 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("home-work").checked = result.homework || false;
         document.getElementById("hack-test").checked = result.hacktest || false;
         document.getElementById("logout-block").checked = result.logoutblock || false;
+        //document.getElementById("custom-theme").checked = result.customtheme || false;
 
         document.dispatchEvent(new Event("settings-loaded"));
     });
@@ -96,4 +100,5 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("home-work").addEventListener("change", saveSettings);
     document.getElementById("hack-test").addEventListener("change", saveSettings);
     document.getElementById("logout-block").addEventListener("change", saveSettings);
+    //document.getElementById("custom-theme").addEventListener("change", saveSettings);
 });

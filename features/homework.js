@@ -1,13 +1,16 @@
-//Copyright (c) 2024 SAYU
-//This software is released under the MIT License, see LICENSE.
+// Copyright (c) 2024-2025 SAYU
+// This software is released under the MIT License, see LICENSE.
 
 (function () {
   const form = document.querySelector('form#homehomlInfo[name="homeHomlActionForm"]');
   if (!form || document.getElementById("rawdata")) return;
 
   let sid = window.location.href.match(/SID=([a-zA-Z0-9]+)/);
-  if (sid && sid[1]) sid = sid[1];
-  else return;
+  if (sid && sid[1]) {
+    sid = sid[1];
+  } else {
+    return;
+  }
 
   function setupHomeworkClickListener(containerElementId) {
     const homeworkContainer = document.getElementById(containerElementId);
@@ -21,7 +24,6 @@
       const kyozaiSyCd = clickedItem.dataset.kyozaiSyCd;
 
       if (kyozaiId && kyozaiSyCd) {
-
         const dynamicForm = document.createElement('form');
         dynamicForm.method = 'post';
         dynamicForm.action = `/lms/klmsKlil/kyozaiTitleLink;SID=${sid}`;
@@ -86,7 +88,7 @@
     preHomework.style.backgroundColor = "#f9f9f9";
     preHomework.style.fontFamily = "sans-serif";
 
-    chrome.storage.sync.get("homework", (data) => {
+    chrome.storage.local.get("homework", (data) => {
       if (data.homework && typeof data.homework === 'string') {
         preHomework.innerHTML = data.homework;
         form.insertAdjacentElement("afterend", updatingNotice);
@@ -102,7 +104,6 @@
       if (!contentDoc) return false;
 
       const tbody = contentDoc.querySelector("tbody");
-
       if (tbody) {
         const rows = Array.from(tbody.querySelectorAll("tr")).filter(
           (tr) => !tr.classList.contains("thead")
@@ -166,7 +167,7 @@
           newHomework.appendChild(homeworkItemDiv);
         });
 
-        chrome.storage.sync.set({ homework: newHomework.innerHTML }, () => {
+        chrome.storage.local.set({ homework: newHomework.innerHTML }, () => {
           clearInterval(animationIntervalId);
           const oldHomeworkEl = document.getElementById("homework");
           if (oldHomeworkEl) {
@@ -191,6 +192,6 @@
       if (findTbody()) {
         clearInterval(intervalId);
       }
-    }, 500);
+    }, 100);
   });
 })();
