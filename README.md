@@ -3,6 +3,8 @@
 > CoursePowerからKu-LMSへの移行に伴い、従来の[KALI](https://github.com/SAYUTIM/KALI)はその多くの機能が利用できなくなりました。<br>
 > KLPFは、新しいKu-LMSに対応するために開発された後継の拡張機能です。
 
+# [ホームページ](https://sayutim.github.io/KLPF/)
+
 ## 導入方法
 ### 導入解説動画（画像クリックでYouTubeに飛びます）
 [![導入解説動画](https://github.com/user-attachments/assets/2e8c6500-c3da-4e09-aded-d822223914c7)](https://www.youtube.com/watch?v=7dgIjZRtspg)
