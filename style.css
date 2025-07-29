@@ -1,0 +1,444 @@
+/* --- 基本設定とフォント --- */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+
+:root {
+    --bg-color: #121212;
+    --surface-color: #1e1e1e;
+    --primary-color: #3a7cfd;
+    --text-color: #e0e0e0;
+    --text-muted-color: #a0a0a0;
+    --border-color: #333;
+    --bg-number-color: rgba(58, 124, 253, 0.15);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.8;
+    overflow-x: hidden;
+}
+
+/* bodyに .modal-open クラスが付いた時のスクロールを無効化 */
+body.modal-open {
+    overflow: hidden;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* --- ヘッダー --- */
+header {
+    background-color: rgba(18, 18, 18, 0.8);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-color);
+    padding: 15px 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+header .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-color);
+    text-decoration: none;
+}
+
+nav ul {
+    display: flex;
+    list-style: none;
+    gap: 25px;
+}
+
+nav a {
+    color: var(--text-muted-color);
+    text-decoration: none;
+    font-weight: 700;
+    transition: color 0.3s;
+}
+
+nav a:hover {
+    color: var(--primary-color);
+}
+
+.menu-toggle {
+    display: none;
+    font-size: 2rem;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: var(--text-color);
+}
+
+/* --- ヒーローセクション (トップ) --- */
+.hero {
+    position: relative;
+    text-align: center;
+    padding: 120px 20px;
+    overflow: hidden;
+}
+
+.hero-background-downloads {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 28vw;
+    font-weight: 900;
+    color: var(--bg-number-color);
+    z-index: 1;
+    user-select: none;
+    line-height: 1;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 2;
+}
+
+.hero-content h1 {
+    font-size: 3.5rem;
+    margin-bottom: 10px;
+    font-weight: 900;
+}
+
+.hero-content .subtitle {
+    font-size: 1.2rem;
+    color: var(--text-muted-color);
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.hero .downloads-label {
+    color: var(--text-muted-color);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-top: 30px;
+
+    /* アニメーション用の設定を追加 */
+    opacity: 0; /* 最初は透明にする */
+    transition: opacity 0.8s ease; /* 0.8秒かけてフワッと表示 */
+}
+
+.hero .downloads-label.visible {
+    opacity: 1; /* このクラスが付いたら表示 */
+}
+
+/* --- コンテンツセクション --- */
+section {
+    padding: 80px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+section:last-of-type, .hero {
+    border-bottom: none;
+}
+
+h2 {
+    font-size: 2.5rem;
+    text-align: center;
+    margin-bottom: 60px;
+    position: relative;
+}
+
+h2::after {
+    content: '';
+    position: absolute;
+    bottom: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 4px;
+    background-color: var(--primary-color);
+    border-radius: 2px;
+}
+
+/* --- 機能セクション --- */
+#features .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+}
+
+.feature-card {
+    background-color: var(--surface-color);
+    padding: 30px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    transition: transform 0.3s, box-shadow 0.3s;
+    cursor: pointer; /* クリックできることを示す */
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
+
+.feature-card h3 {
+    font-size: 1.4rem;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+/* --- 導入方法セクション --- */
+.install-step {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 40px;
+}
+
+.install-step:nth-child(even) {
+    flex-direction: row-reverse;
+}
+
+.step-number {
+    font-size: 4rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+.step-content p {
+    margin-bottom: 15px;
+}
+
+.step-content img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin-top: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.youtube-embed {
+    position: relative;
+    width: 100%;
+    max-width: 700px;
+    margin: 0 auto 50px;
+    padding-bottom: 56.25%;
+    height: 0;
+    overflow: hidden;
+    border-radius: 12px;
+}
+
+.youtube-embed iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* --- ダウンロードセクションのスタイル --- */
+.download-list {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+}
+
+.release-card {
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 30px;
+}
+
+.release-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.release-version {
+    font-size: 1.8rem;
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+.release-date {
+    font-size: 0.9rem;
+    color: var(--text-muted-color);
+}
+
+.release-body {
+    word-wrap: break-word;
+    margin-bottom: 25px;
+    color: var(--text-muted-color);
+}
+.release-body > *:first-child { margin-top: 0; }
+.release-body > *:last-child { margin-bottom: 0; }
+.release-body h3 { font-size: 1.2rem; color: var(--text-color); margin: 20px 0 10px 0; }
+.release-body p { margin: 0 0 10px 0; }
+.release-body .release-list-item { padding-left: 1.5em; position: relative; }
+.release-body .release-list-item::before { content: '・'; position: absolute; left: 0; color: var(--primary-color); }
+
+.release-assets {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.asset-download-button {
+    display: inline-block;
+    background-color: var(--primary-color);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    padding: 10px 20px;
+    border-radius: 8px;
+    transition: background-color 0.3s, transform 0.3s;
+}
+
+.asset-download-button:hover {
+    background-color: #2d68d3;
+    transform: translateY(-2px);
+}
+
+.more-releases-container {
+    text-align: center;
+    margin-top: 20px;
+    padding-top: 40px;
+    border-top: 1px solid var(--border-color);
+}
+
+.more-releases-container p {
+    margin-bottom: 20px;
+    color: var(--text-muted-color);
+    font-weight: 700;
+}
+
+.more-releases-link {
+    display: inline-block;
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 700;
+    padding: 10px 25px;
+    border-radius: 50px;
+    transition: background-color 0.3s, color 0.3s;
+    margin: 5px 10px;
+}
+
+.more-releases-link:hover {
+    background-color: var(--primary-color);
+    color: #fff;
+}
+
+
+/* --- フッター --- */
+footer {
+    text-align: center;
+    padding: 40px 20px;
+    margin-top: 40px;
+    color: var(--text-muted-color);
+    border-top: 1px solid var(--border-color);
+}
+
+/* --- ▼▼▼ モーダル（ポップアップ）のスタイルを追加 ▼▼▼ --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    padding: 20px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0s 0.3s;
+}
+
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s ease;
+}
+
+.modal-content {
+    background-color: var(--surface-color);
+    padding: 40px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    width: 100%;
+    max-width: 600px;
+    position: relative;
+    transform: translateY(20px);
+    transition: transform 0.3s ease;
+}
+
+.modal-overlay.visible .modal-content {
+    transform: translateY(0);
+}
+
+.modal-close-button {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    background: none;
+    border: none;
+    font-size: 2.5rem;
+    line-height: 1;
+    color: var(--text-muted-color);
+    cursor: pointer;
+    transition: color 0.3s, transform 0.3s;
+}
+
+.modal-close-button:hover {
+    color: var(--text-color);
+    transform: scale(1.1);
+}
+
+#modal-title {
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    font-size: 1.8rem;
+    padding-right: 40px; /* 閉じるボタンと被らないように */
+}
+
+#modal-description {
+    line-height: 1.8;
+    color: var(--text-muted-color);
+}
+/* --- ▲▲▲ スタイル追加ここまで ▲▲▲ --- */
+
+
+/* --- レスポンシブ対応 (モバイル) --- */
+@media (max-width: 768px) {
+    nav ul { display: none; flex-direction: column; position: absolute; top: 65px; left: 0; width: 100%; background-color: var(--surface-color); border-top: 1px solid var(--border-color); }
+    nav ul.active { display: flex; }
+    nav li { text-align: center; width: 100%; }
+    nav a { display: block; padding: 15px 0; border-bottom: 1px solid var(--border-color); }
+    .menu-toggle { display: block; }
+    .hero-content h1 { font-size: 2.5rem; }
+    h2 { font-size: 2rem; }
+    .install-step, .install-step:nth-child(even) { flex-direction: column; text-align: center; }
+}
