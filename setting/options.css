@@ -34,7 +34,7 @@ body {
 .container {
     animation: rainbow-border 4s linear infinite;
     background-clip: content-box;
-    background-color: black;
+    background-color: transparent;
     border: 8px solid transparent;
     border-radius: 15px;
     font-size: 20px;
@@ -70,6 +70,11 @@ input[type="password"] {
     justify-content: space-between;
     margin: 20px auto;
     width: 300px;
+    transition: transform 0.3s ease;
+}
+
+.switch-container:hover {
+    transform: translateY(-4px);
 }
 
 .switch {
@@ -122,75 +127,6 @@ input:checked + .slider:before {
 input:checked ~ .switch-label {
     color: #66ff66; 
     text-shadow: 0 0 10px #66ff66, 0 0 20px #66ff66;
-}
-
-.attendsetting {
-    background-color: #1c1c1e; 
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    display: none; 
-    margin: 20px auto; 
-    padding: 20px;
-    position: relative; 
-    width: 300px; 
-    z-index: 1; 
-}
-
-.attendsetting label { 
-    color: #ccc;
-    font-size: 18px;
-    margin-top: 10px; 
-}
-
-.attendsetting input { 
-    background-color: #222;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    color: white;
-    font-size: 18px;
-    margin: 10px 0;
-    padding: 8px;
-    transition: background-color 0.3s ease;
-    width: 90%; 
-}
-
-.attendsetting input:focus {
-    background-color: #333;
-    border-color: #66ff66;
-    outline: none;
-}
-
-.attendsetting .inline-container {
-    display: flex;
-    gap: 10px;
-    justify-content: space-between;
-    width: 100%;
-}
-
-.attendsetting .inline-container div {
-    flex: 1;
-}
-
-.attendsetting select {
-    background-color: #222;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    color: white;
-    font-size: 18px;
-    margin: 10px 0;
-    padding: 8px; 
-    transition: background-color 0.3s ease;
-    width: 90%; 
-}
-
-.attendsetting select:hover {
-    background-color: #444;
-}
-
-.attendsetting select:focus {
-    background-color: #333;
-    border: 1px solid #66ff66;
-    outline: none;
 }
 
 .checkbox-wrapper {
@@ -440,7 +376,7 @@ input:checked ~ .switch-label {
     transform: translate(-50%, -50%);
     transition: transform 0.07s ease-out, width 0.15s ease-out, height 0.15s ease-out;
     width: 24px; 
-    z-index: 9000;
+    z-index: 10002;
 }
 
 .custom-cursor.cursor-active {
@@ -463,145 +399,187 @@ select:hover {
     cursor: none;
 }
 
+/* Keyframes and other styles... */
 
-.hacktest {
-    pointer-events: none;
-    opacity: 0.5;
+@keyframes box_color { 0% { background-position-x: 200%; } 100% { background-position-x: 0%; } }
+@keyframes configure-xclockwise { 0% { transform: rotate(45deg); } 25% { transform: rotate(-45deg); } 50% { transform: rotate(-135deg); } 75% { transform: rotate(-225deg); } 100% { transform: rotate(-315deg); } }
+@keyframes label-color-move { 0% { background-position-x: 200%; } 100% { background-position-x: 0%; } }
+@keyframes pulse { 0% { box-shadow: 0 0 15px var(--checkbox-shadow); transform: scale(1); } 50% { box-shadow: 0 0 25px var(--checkbox-shadow), 0 0 40px var(--checkbox-shadow); transform: scale(0.95); } 100% { box-shadow: 0 0 15px var(--checkbox-shadow); transform: scale(1); } }
+@keyframes rainbow-border { 0% { border-image: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet) 1; } 50% { border-image: linear-gradient(135deg, red, orange, yellow, green, blue, indigo, violet) 1; } 100% { border-image: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet) 1; } }
+@keyframes rainbow-glow-animation { 0% { background-color: hsla(0, 100%, 70%, 0.1); box-shadow: 0 0 8px 2px hsla(0, 100%, 50%, 0.6), 0 0 15px 4px hsla(0, 100%, 50%, 0.4); } 16.66% { background-color: hsla(30, 100%, 70%, 0.1); box-shadow: 0 0 8px 2px hsla(30, 100%, 50%, 0.6), 0 0 15px 4px hsla(30, 100%, 50%, 0.4); } 33.33% { background-color: hsla(60, 100%, 70%, 0.1); box-shadow: 0 0 8px 2px hsla(60, 100%, 50%, 0.6), 0 0 15px 4px hsla(60, 100%, 50%, 0.4); } 50% { background-color: hsla(120, 100%, 70%, 0.1); box-shadow: 0 0 8px 2px hsla(120, 100%, 50%, 0.6), 0 0 15px 4px hsla(120, 100%, 50%, 0.4); } 66.66% { background-color: hsla(240, 100%, 70%, 0.1); box-shadow: 0 0 8px 2px hsla(240, 100%, 50%, 0.6), 0 0 15px 4px hsla(240, 100%, 50%, 0.4); } 83.33% { background-color: hsla(270, 100%, 70%, 0.1); box-shadow: 0 0 8px 2px hsla(270, 100%, 50%, 0.6), 0 0 15px 4px hsla(270, 100%, 50%, 0.4); } 100% { background-color: hsla(360, 100%, 70%, 0.1); box-shadow: 0 0 8px 2px hsla(360, 100%, 50%, 0.6), 0 0 15px 4px hsla(360, 100%, 50%, 0.4); } }
+@keyframes rise { 0% { opacity: 1; transform: translateY(0) translateX(0) scale(0.5); } 50% { opacity: 0.8; transform: translateY(-50vh) translateX(var(--drift-amount, 0px)) scale(1); } 100% { opacity: 0; transform: translateY(-100vh) translateX(calc(var(--drift-amount, 0px) * 1.5)) scale(0.5); } }
+@keyframes spin { from { transform: rotate(0); } to{ transform: rotate(359deg); } }
+@keyframes spin3D { from { transform: rotate3d(.5,.5,.5, 360deg); } to{ transform: rotate3d(0deg); } }
+
+/* --- Layout Styles --- */
+.settings-wrapper {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    width: 100%;
+    max-width: 1024px; /* 全体の最大幅 */
+    justify-content: center;
+    padding: 0 20px;
+    box-sizing: border-box;
 }
 
-
-@keyframes box_color {
-    0% {
-        background-position-x: 200%;
-    }
-    100% {
-        background-position-x: 0%;
-    }
+.main-settings {
+    flex-shrink: 0;
+    width: 500px;
 }
 
-@keyframes configure-xclockwise { 
-    0% {
-        transform: rotate(45deg);
-    }
-    25% {
-        transform: rotate(-45deg);
-    }
-    50% {
-        transform: rotate(-135deg);
-    }
-    75% {
-        transform: rotate(-225deg);
-    }
-    100% {
-        transform: rotate(-315deg);
-    }
+.options-panel {
+    flex-shrink: 0;
+    width: 380px; /* 右側パネルの幅 */
+    padding-top: 95px; /* タイトルとの高さを合わせる */
+    position: relative;
 }
 
-@keyframes label-color-move {
-    0% {
-        background-position-x: 200%;
-    }
-    100% {
-        background-position-x: 0%;
-    }
+.options-group {
+    margin-bottom: 20px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(20px);
+    transition: opacity 0.5s ease, transform 0.5s ease, visibility 0s 0.5s;
+    will-change: opacity, transform;
 }
 
-@keyframes pulse { 
-    0% {
-        box-shadow: 0 0 15px var(--checkbox-shadow);
-        transform: scale(1);
-    }
-    50% {
-        box-shadow:
-            0 0 25px var(--checkbox-shadow),
-            0 0 40px var(--checkbox-shadow);
-        transform: scale(0.95);
-    }
-    100% {
-        box-shadow: 0 0 15px var(--checkbox-shadow);
-        transform: scale(1);
-    }
+.options-group.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
-@keyframes rainbow-border { 
-    0% {
-        border-image: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet) 1;
-    }
-    50% {
-        border-image: linear-gradient(135deg, red, orange, yellow, green, blue, indigo, violet) 1;
-    }
-    100% {
-        border-image: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet) 1;
-    }
+.options-group.is-moving {
+    transition: transform 0.5s ease;
 }
 
-@keyframes rainbow-glow-animation { 
-    0% {
-        background-color: hsla(0, 100%, 70%, 0.1);
-        box-shadow: 0 0 8px 2px hsla(0, 100%, 50%, 0.6),
-                      0 0 15px 4px hsla(0, 100%, 50%, 0.4);
-    }
-    16.66% { 
-        background-color: hsla(30, 100%, 70%, 0.1);
-        box-shadow: 0 0 8px 2px hsla(30, 100%, 50%, 0.6),
-                      0 0 15px 4px hsla(30, 100%, 50%, 0.4);
-    }
-    33.33% { 
-        background-color: hsla(60, 100%, 70%, 0.1);
-        box-shadow: 0 0 8px 2px hsla(60, 100%, 50%, 0.6),
-                      0 0 15px 4px hsla(60, 100%, 50%, 0.4);
-    }
-    50% { 
-        background-color: hsla(120, 100%, 70%, 0.1);
-        box-shadow: 0 0 8px 2px hsla(120, 100%, 50%, 0.6),
-                      0 0 15px 4px hsla(120, 100%, 50%, 0.4);
-    }
-    66.66% { 
-        background-color: hsla(240, 100%, 70%, 0.1);
-        box-shadow: 0 0 8px 2px hsla(240, 100%, 50%, 0.6),
-                      0 0 15px 4px hsla(240, 100%, 50%, 0.4);
-    }
-    83.33% { 
-        background-color: hsla(270, 100%, 70%, 0.1);
-        box-shadow: 0 0 8px 2px hsla(270, 100%, 50%, 0.6),
-                      0 0 15px 4px hsla(270, 100%, 50%, 0.4);
-    }
-    100% { 
-        background-color: hsla(360, 100%, 70%, 0.1);
-        box-shadow: 0 0 8px 2px hsla(360, 100%, 50%, 0.6),
-                      0 0 15px 4px hsla(360, 100%, 50%, 0.4);
-    }
+.options-container {
+    animation: rainbow-border 4s linear infinite;
+    background-clip: content-box;
+    background-color: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(4px);
+    border: 8px solid transparent;
+    border-radius: 15px;
+    font-size: 20px;
+    padding: 25px;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-@keyframes rise { 
-    0% {
-        opacity: 1;
-        transform: translateY(0) translateX(0) scale(0.5);
-    }
-    50% {
-        opacity: 0.8;
-        transform: translateY(-50vh) translateX(var(--drift-amount, 0px)) scale(1);
-    }
-    100% {
-        opacity: 0;
-        transform: translateY(-100vh) translateX(calc(var(--drift-amount, 0px) * 1.5)) scale(0.5);
-    }
+.options-container:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(36, 255, 226, 0.2);
 }
 
-@keyframes spin { 
-    from {
-        transform: rotate(0);
-    }
-    to{
-        transform: rotate(359deg);
-    }
+.options-container h2 {
+    font-size: 24px;
+    margin-top: 0;
+    margin-bottom: 20px;
 }
 
-@keyframes spin3D { 
-    from {
-        transform: rotate3d(.5,.5,.5, 360deg);
-    }
-    to{
-        transform: rotate3d(0deg);
-    }
+/* options-container内の要素のスタイル調整 */
+.options-container label {
+    font-size: 22px;
+}
+.options-container input,
+.options-container select {
+    background-color: #222;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    color: white;
+    font-size: 18px;
+    margin: 10px 0;
+    padding: 8px;
+    transition: background-color 0.3s ease;
+    width: 90%;
+}
+
+.options-container input:focus,
+.options-container select:focus {
+    background-color: #333;
+    border-color: #66ff66;
+    outline: none;
+}
+
+.options-container .inline-container {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.options-container .inline-container div {
+    flex: 1;
+}
+
+/* --- Modal Styles --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10001;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0s 0.3s;
+}
+
+.modal-content {
+    background-color: #1a1a1a;
+    padding: 30px;
+    border-radius: 15px;
+    border: 2px solid #66ff66;
+    box-shadow: 0 0 30px 10px #66ff66;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.visible .modal-content {
+    transform: scale(1);
+}
+
+.modal-content p {
+    font-size: 18px;
+    margin: 0 0 20px 0;
+    color: #eee;
+}
+
+.modal-content a {
+    color: #66ff66;
+    text-decoration: none;
+    margin-right: 20px;
+}
+
+.modal-content button {
+    background-color: transparent;
+    border: 2px solid #66ff66;
+    color: #66ff66;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 16px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.modal-content button:hover {
+    background-color: #66ff66;
+    color: #1a1a1a;
+    box-shadow: 0 0 15px 5px #66ff66;
 }
