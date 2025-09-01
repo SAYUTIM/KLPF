@@ -1,196 +1,138 @@
-//Copyright (c) 2024-2025 SAYU
-//This software is released under the MIT License, see LICENSE.
+// Copyright (c) 2024-2025 SAYU
+// This software is released under the MIT License, see LICENSE.
+
+/**
+ * @file 講義一覧ページのフィルタリング保存と現在の講義のハイライト機能
+ */
 
 (function() {
     'use strict';
 
-    if (!window.location.href.startsWith("https://study.ns.kogakuin.ac.jp/lms/homeHoml/doIndex;")) return;
-
-    const scheduleNormal = [
-        { start: "08:30", end: "10:00", label: "1限" },
-        { start: "10:10", end: "11:40", label: "2限" },
-        { start: "11:41", end: "12:29", label: "昼休み" },
-        { start: "12:30", end: "14:00", label: "3限" },
-        { start: "14:10", end: "15:40", label: "4限" },
-        { start: "15:50", end: "17:20", label: "5限" },
-        { start: "17:30", end: "19:00", label: "6限" }
-    ];
-
-    const style = document.createElement('style');
-    style.textContent = `
-        .lms-weekly-area { visibility: hidden; }
-        .red-highlight {
-            border: 1px solid red;
-        }
-    `;
-
-    if (document.head) {
-        document.head.appendChild(style);
-    } else {
-        document.addEventListener('DOMContentLoaded', () => document.head.appendChild(style));
+    if (!window.location.href.startsWith(`${LMS_HOME_URL}doIndex;`)) {
+        return;
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-        const form = document.querySelector('#homeHomlForm');
-        const weeklyArea = document.querySelector('.lms-weekly-area');
-        const termCell = Array.from(form?.querySelectorAll('th') || []).find(th => th.textContent.trim() === '期')?.nextElementSibling;
-
-        if (!form || !weeklyArea || !termCell) {
-            if (weeklyArea) weeklyArea.style.visibility = 'visible';
-            return;
-        }
-
-        addAutoFilterCheckbox(termCell);
-        loadSettingsAndApplyFilter(form, () => {
-            setupEventListeners(form);
-            highlightCurrentClass();
-            setInterval(highlightCurrentClass, 60000);
-            weeklyArea.style.visibility = 'visible';
-        });
-    });
-
-    const STORAGE_KEY = 'couse_filter_settings';
-
-    function loadSettingsAndApplyFilter(form, callback) {
-        chrome.storage.local.get(STORAGE_KEY, (result) => {
-            const savedSettings = result[STORAGE_KEY];
-            if (savedSettings) {
-                const settings = JSON.parse(savedSettings);
-                const autoCheckbox = form.querySelector('#autoFilterCheckbox');
-                if (autoCheckbox) autoCheckbox.checked = settings.isAutoActive || false;
-
-                form.querySelector('select[name="yobi"]').value = settings.yobi || 'all';
-                form.querySelector('select[name="jigen"]').value = settings.jigen || 'all';
-                form.querySelector('input[name="kougiName"]').value = settings.kougiName || '';
-                form.querySelector('input[name="kyoinName"]').value = settings.kyoinName || '';
-
-                const kiCheckboxes = form.querySelectorAll('input[name="checkKiList"]');
-                kiCheckboxes.forEach(cb => {
-                    cb.checked = settings.checkKiList ? settings.checkKiList.includes(cb.value) : false;
-                    if (autoCheckbox) cb.disabled = autoCheckbox.checked;
-                });
+    function injectStyles() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .lms-weekly-area { visibility: hidden; }
+            .${SUBJECT_HIGHLIGHT_CLASS} {
+                border: 2px solid #d9534f !important;
+                box-shadow: 0 0 10px rgba(217, 83, 79, 0.5);
             }
-            applyClientSideFilter(form);
-            if (callback) callback();
-        });
+        `;
+        document.head.appendChild(style);
     }
 
-    function setupEventListeners(form) {
-        form.addEventListener('input', () => {
-            const autoCheckbox = form.querySelector('#autoFilterCheckbox');
-            form.querySelectorAll('input[name="checkKiList"]').forEach(cb => cb.disabled = autoCheckbox.checked);
-            applyClientSideFilter(form);
-            saveCurrentFilterState(form);
-        });
-
-        const clearButton = form.querySelector('button[onclick^="clearDate"]');
-        if (clearButton) {
-            clearButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                chrome.storage.local.remove(STORAGE_KEY, () => {
-                    form.reset();
-                    form.querySelectorAll('input[name="checkKiList"]').forEach(cb => cb.disabled = false);
-                    applyClientSideFilter(form);
-                });
-            });
+    async function loadSettings() {
+        try {
+            const result = await chrome.storage.local.get(SUBJECT_FILTER_STORAGE_KEY);
+            return result[SUBJECT_FILTER_STORAGE_KEY] ? JSON.parse(result[SUBJECT_FILTER_STORAGE_KEY]) : {};
+        } catch (error) {
+            console.error("[KLPF] フィルター設定の読み込みに失敗しました。", error);
+            return {};
         }
     }
 
-    function saveCurrentFilterState(form) {
+    function saveSettings(form) {
         const settings = {
-            isAutoActive: form.querySelector('#autoFilterCheckbox').checked,
-            yobi: form.querySelector('select[name="yobi"]').value,
-            jigen: form.querySelector('select[name="jigen"]').value,
-            kougiName: form.querySelector('input[name="kougiName"]').value.trim(),
-            kyoinName: form.querySelector('input[name="kyoinName"]').value.trim(),
-            checkKiList: Array.from(form.querySelectorAll('input[name="checkKiList"]:checked')).map(cb => cb.value)
+            isAutoActive: form.querySelector('#autoFilterCheckbox')?.checked || false,
+            yobi: form.querySelector('select[name="yobi"]')?.value || 'all',
+            jigen: form.querySelector('select[name="jigen"]')?.value || 'all',
+            kougiName: form.querySelector('input[name="kougiName"]')?.value.trim() || '',
+            kyoinName: form.querySelector('input[name="kyoinName"]')?.value.trim() || '',
+            checkKiList: safeQuerySelectorAll('input[name="checkKiList"]:checked', form).map(cb => cb.value)
         };
-        chrome.storage.local.set({ [STORAGE_KEY]: JSON.stringify(settings) });
+        chrome.storage.local.set({ [SUBJECT_FILTER_STORAGE_KEY]: JSON.stringify(settings) });
+    }
+
+    function extractCardInfo(card) {
+        const infoText = (safeQuerySelector('.courseCardInfo', card)?.textContent || '').replace(/\s+/g, ' ');
+        const match = infoText.match(/(\d+)限(.*)/);
+        const periodCode = match ? ('0' + match[1]).slice(-2) : '';
+        const semesterText = match ? match[2].trim() : infoText.trim();
+        const dayText = card.closest('.lms-daybox')?.querySelector('.lms-category-title h3')?.textContent.trim();
+
+        return {
+            courseName: safeQuerySelector('.lms-cardname', card)?.textContent.trim() || '',
+            instructor: safeQuerySelector('.lms-carduser', card)?.textContent.trim() || '',
+            dayCode: {"月曜日":"1", "火曜日":"2", "水曜日":"3", "木曜日":"4", "金曜日":"5", "土曜日":"6", "日曜日":"7", "その他":"Z"}[dayText] || '',
+            periodCode: periodCode,
+            semesterCode: {"通年":"01", "前期":"02", "後期":"03", "1Q":"04", "2Q":"05", "3Q":"06", "4Q":"07", "集中・特週":"08", "自己学習":"09", "その他":"10", "講義":"11"}[semesterText.split(' ')[0]] || '',
+            semesterText: semesterText
+        };
+    }
+
+    function toggleSearchButtonVisibility(isAutoActive) {
+        const searchButton = safeQuerySelector('button[onclick="submitSearch();"]');
+        if (searchButton) {
+            searchButton.style.display = isAutoActive ? 'none' : '';
+        }
     }
 
     function applyClientSideFilter(form) {
-        const isAutoActive = form.querySelector('#autoFilterCheckbox')?.checked || false;
-        const nowQ = determineNowQ();
-        const manualSettings = {
+        const settings = {
+            isAutoActive: form.querySelector('#autoFilterCheckbox')?.checked || false,
             yobi: form.querySelector('select[name="yobi"]').value,
             jigen: form.querySelector('select[name="jigen"]').value,
             kougiName: form.querySelector('input[name="kougiName"]').value.trim().toLowerCase(),
             kyoinName: form.querySelector('input[name="kyoinName"]').value.trim().toLowerCase(),
-            checkKiList: Array.from(form.querySelectorAll('input[name="checkKiList"]:checked')).map(cb => cb.value)
+            checkKiList: safeQuerySelectorAll('input[name="checkKiList"]:checked', form).map(cb => cb.value)
         };
 
-        document.querySelectorAll('.lms-card').forEach(card => {
-            if(card.classList.contains('red-highlight')) {
-                card.classList.remove('red-highlight');
+        toggleSearchButtonVisibility(settings.isAutoActive);
+
+        const nowQ = (month => (month >= 4 && month <= 5) ? 1 : (month >= 6 && month <= 7) ? 2 : (month >= 8 && month <= 10) ? 3 : 4)(new Date().getMonth() + 1);
+
+        safeQuerySelectorAll('.lms-card').forEach(card => {
+            const info = extractCardInfo(card);
+            let isVisible = true;
+
+            if (settings.isAutoActive) {
+                const termMatch = [["1Q", "前期", "通年"], ["2Q", "前期", "通年"], ["3Q", "後期", "通年"], ["4Q", "後期", "通年"]];
+                const otherTerms = ["その他", "集中・特週", "自己学習", "講義"];
+                if (!otherTerms.some(term => info.semesterText.includes(term)) && !termMatch[nowQ - 1].some(term => info.semesterText.includes(term))) {
+                    isVisible = false;
+                }
+            } else if (settings.checkKiList.length > 0) {
+                if (!settings.checkKiList.includes(info.semesterCode)) isVisible = false;
             }
 
-            const cardInfo = extractCardInfo(card);
-            let shouldBeVisible = true;
-            if (isAutoActive) {
-                if (!isTermMatch(cardInfo.semesterText, nowQ)) shouldBeVisible = false;
-            } else if (manualSettings.checkKiList.length > 0) {
-                if (!manualSettings.checkKiList.includes(cardInfo.semesterCode)) shouldBeVisible = false;
+            if (isVisible) {
+                if (settings.yobi !== 'all' && settings.yobi !== info.dayCode) isVisible = false;
+                if (settings.jigen !== 'all' && settings.jigen !== info.periodCode) isVisible = false;
+                if (settings.kougiName && !info.courseName.toLowerCase().includes(settings.kougiName)) isVisible = false;
+                if (settings.kyoinName && !info.instructor.toLowerCase().includes(settings.kyoinName)) isVisible = false;
             }
-
-            if (shouldBeVisible) {
-                if (manualSettings.yobi !== 'all' && manualSettings.yobi !== cardInfo.dayCode) shouldBeVisible = false;
-                if (manualSettings.jigen !== 'all' && manualSettings.jigen !== cardInfo.periodCode) shouldBeVisible = false;
-                if (manualSettings.kougiName && !cardInfo.courseName.toLowerCase().includes(manualSettings.kougiName)) shouldBeVisible = false;
-                if (manualSettings.kyoinName && !cardInfo.instructor.toLowerCase().includes(manualSettings.kyoinName)) shouldBeVisible = false;
-            }
-            card.style.display = shouldBeVisible ? '' : 'none';
+            card.style.display = isVisible ? '' : 'none';
         });
-        hideEmptyDayBoxes();
+
+        safeQuerySelectorAll('.lms-daybox').forEach(dayBox => {
+            const visibleCards = safeQuerySelectorAll('.lms-card', dayBox).filter(c => c.style.display !== 'none');
+            dayBox.style.display = visibleCards.length > 0 ? '' : 'none';
+        });
     }
-    
+
     function highlightCurrentClass() {
-        document.querySelectorAll('.red-highlight').forEach(card => {
-            card.classList.remove('red-highlight');
-        });
+        safeQuerySelectorAll(`.${SUBJECT_HIGHLIGHT_CLASS}`).forEach(card => card.classList.remove(SUBJECT_HIGHLIGHT_CLASS));
 
         const now = new Date();
         const dayOfWeek = now.getDay();
         const currentTime = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+        const currentDayCode = {0:"7", 1:"1", 2:"2", 3:"3", 4:"4", 5:"5", 6:"6"}[dayOfWeek];
 
-        
-        const dayCodeMap = { 0: "7", 1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6" };
-        const currentDayCode = dayCodeMap[dayOfWeek];
-        const dayBox = Array.from(document.querySelectorAll('.lms-daybox')).find(box => {
-            const title = box.querySelector('.lms-category-title h3')?.textContent.trim();
-            return dayTextToCode(title) === currentDayCode;
-        });
-
-        if (!dayBox) return;
-
-        if (currentTime >= "11:50" && currentTime <= "13:20") {
-            const allCardsInDay = Array.from(dayBox.querySelectorAll('.lms-card'));
-            const card2 = allCardsInDay.find(card => extractCardInfo(card).periodCode === '02');
-            const card3 = allCardsInDay.find(card => extractCardInfo(card).periodCode === '03');
-
-            if (card2 && card3) {
-                const info2 = extractCardInfo(card2);
-                const info3 = extractCardInfo(card3);
-                if (info2.courseName === info3.courseName || info2.instructor === info3.instructor) {
-                    card3.classList.add('red-highlight');
-                    return;
-                }
-            }
-        }
-        
-        const currentPeriod = scheduleNormal.find(p => currentTime >= p.start && currentTime <= p.end);
-
-        if (!currentPeriod || !currentPeriod.label.includes('限')) {
-            return;
-        }
+        const currentPeriod = TIME_SCHEDULE_NORMAL.find(p => currentTime >= p.start && currentTime <= p.end);
+        if (!currentPeriod || !currentPeriod.label.includes('限')) return;
 
         const periodCodeToHighlight = ('0' + currentPeriod.label.replace('限', '')).slice(-2);
-        const cardToHighlight = Array.from(dayBox.querySelectorAll('.lms-card')).find(card => {
-            return card.style.display !== 'none' && extractCardInfo(card).periodCode === periodCodeToHighlight;
-        });
 
-        if (cardToHighlight) {
-            cardToHighlight.classList.add('red-highlight');
-        }
+        safeQuerySelectorAll('.lms-card').forEach(card => {
+            if (card.style.display === 'none') return;
+            const info = extractCardInfo(card);
+            if (info.dayCode === currentDayCode && info.periodCode === periodCodeToHighlight) {
+                card.classList.add(SUBJECT_HIGHLIGHT_CLASS);
+            }
+        });
     }
 
     function addAutoFilterCheckbox(targetCell) {
@@ -202,75 +144,75 @@
         `);
     }
 
-    function hideEmptyDayBoxes() {
-        document.querySelectorAll('.lms-daybox').forEach(dayBox => {
-            const allCards = dayBox.querySelectorAll('.lms-card');
-            if (allCards.length === 0) return;
-            const visibleCards = Array.from(allCards).filter(c => c.style.display !== 'none');
-            dayBox.style.display = visibleCards.length > 0 ? '' : 'none';
+    function setupEventListeners(form) {
+        form.addEventListener('input', () => {
+            const autoCheckbox = form.querySelector('#autoFilterCheckbox');
+            if (autoCheckbox) {
+                safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => cb.disabled = autoCheckbox.checked);
+            }
+            applyClientSideFilter(form);
+            saveSettings(form);
         });
-    }
 
-    function determineNowQ() {
-        const month = new Date().getMonth() + 1;
-        if (month >= 4 && month <= 5) return 1;
-        if (month >= 6 && month <= 7) return 2;
-        if (month >= 8 && month <= 10) return 3;
-        if (month >= 11 || month <= 3) return 4;
-        return 0;
-    }
-
-    function isTermMatch(cardTermText, nowQ) {
-        const q1Terms = ["1Q", "前期", "通年"],
-              q2Terms = ["2Q", "前期", "通年"];
-        const q3Terms = ["3Q", "後期", "通年"],
-              q4Terms = ["4Q", "後期", "通年"];
-        const otherTerms = ["その他", "集中・特週", "自己学習", "講義"];
-
-        if (otherTerms.some(term => cardTermText.includes(term))) return true;
-
-        switch (nowQ) {
-            case 1: return q1Terms.some(term => cardTermText.includes(term));
-            case 2: return q2Terms.some(term => cardTermText.includes(term));
-            case 3: return q3Terms.some(term => cardTermText.includes(term));
-            case 4: return q4Terms.some(term => cardTermText.includes(term));
-            default: return false;
+        const clearButton = form.querySelector('button[onclick^="clearDate"]');
+        if (clearButton) {
+            clearButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                chrome.storage.local.remove(SUBJECT_FILTER_STORAGE_KEY, () => {
+                    form.reset();
+                    safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => cb.disabled = false);
+                    applyClientSideFilter(form);
+                });
+            });
         }
     }
 
-    function extractCardInfo(card) {
-        const info = {
-            courseName: card.querySelector('.lms-cardname')?.textContent.trim() || '',
-            instructor: card.querySelector('.lms-carduser')?.textContent.trim() || '',
-            dayCode: '',
-            periodCode: '',
-            semesterCode: '',
-            semesterText: ''
-        };
-        const infoText = (card.querySelector('.courseCardInfo')?.textContent || '').replace(/\s+/g, ' ');
-        const match = infoText.match(/(\d+)限(.*)/);
-        if (match) {
-            info.periodCode = ('0' + match[1]).slice(-2);
-            info.semesterText = match[2].trim();
-        } else {
-            info.semesterText = infoText.trim();
+    async function main() {
+        const form = safeQuerySelector('#homeHomlForm');
+        const weeklyArea = safeQuerySelector('.lms-weekly-area');
+        const termCell = safeQuerySelectorAll('th', form).find(th => th.textContent.trim() === '期')?.nextElementSibling;
+
+        if (!form || !weeklyArea || !termCell) {
+            if(weeklyArea) weeklyArea.style.visibility = 'visible';
+            return;
         }
-        info.semesterCode = semesterTextToCode(info.semesterText);
-        const dayText = card.closest('.lms-daybox')?.querySelector('.lms-category-title h3')?.textContent.trim();
-        info.dayCode = dayTextToCode(dayText);
-        return info;
+
+        injectStyles();
+        addAutoFilterCheckbox(termCell);
+
+        const savedSettings = await loadSettings();
+        if (Object.keys(savedSettings).length > 0) {
+            const autoCheckbox = form.querySelector('#autoFilterCheckbox');
+            if (autoCheckbox) autoCheckbox.checked = savedSettings.isAutoActive || false;
+            form.querySelector('select[name="yobi"]').value = savedSettings.yobi || 'all';
+            form.querySelector('select[name="jigen"]').value = savedSettings.jigen || 'all';
+            form.querySelector('input[name="kougiName"]').value = savedSettings.kougiName || '';
+            form.querySelector('input[name="kyoinName"]').value = savedSettings.kyoinName || '';
+            safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => {
+                cb.checked = savedSettings.checkKiList ? savedSettings.checkKiList.includes(cb.value) : false;
+                if (autoCheckbox) cb.disabled = autoCheckbox.checked;
+            });
+        }
+
+        applyClientSideFilter(form);
+        setupEventListeners(form);
+        highlightCurrentClass();
+        setInterval(highlightCurrentClass, 60000);
+
+        weeklyArea.style.visibility = 'visible';
+        console.log("[KLPF] 講義フィルター機能を初期化しました。");
     }
 
-    function semesterTextToCode(text) {
-        const map = { "通年": "01", "前期": "02", "後期": "03", "1Q": "04", "2Q": "05", "3Q": "06", "4Q": "07", "集中・特週": "08", "自己学習": "09", "その他": "10", "講義": "11" };
-        for (const key in map) {
-            if (text.includes(key)) return map[key];
-        }
-        return '';
-    }
-    
-    function dayTextToCode(text) {
-        return { "月曜日": "1", "火曜日": "2", "水曜日": "3", "木曜日": "4", "金曜日": "5", "土曜日": "6", "日曜日": "7", "その他": "Z" }[text] || '';
+    const safeRun = () => main().catch(error => {
+        console.error("[KLPF] 講義フィルター機能の実行中にエラーが発生しました。", error);
+        const weeklyArea = safeQuerySelector('.lms-weekly-area');
+        if(weeklyArea) weeklyArea.style.visibility = 'visible';
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', safeRun);
+    } else {
+        safeRun();
     }
 
 })();

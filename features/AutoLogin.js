@@ -1,45 +1,108 @@
-//Copyright (c) 2024 SAYU
-//This software is released under the MIT License, see LICENSE.
+// Copyright (c) 2024-2025 SAYU
+// This software is released under the MIT License, see LICENSE.
 
-async function getID() {
-    return new Promise((id) => {
-        chrome.storage.sync.get(["username", "password"], (ids) => {
-            id(ids);
-        });
-    });
+/**
+ * @file 自動ログイン機能を提供するモジュール
+ */
+
+
+/**
+ * 保存されたユーザーIDとパスワードを取得する。
+ * @returns {Promise<{username?: string, password?: string}>}
+ */
+async function getCredentials() {
+    try {
+        return await chrome.storage.local.get(["username", "password"]);
+    } catch (error) {
+        console.error("[KLPF] ログイン情報の取得に失敗しました。", error);
+        return {};
+    }
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-    const id = await getID();
+/**
+ * LMSの初期ログインページを処理する。
+ * 統合認証ページへ遷移するために「ログイン」ボタンをクリック
+ */
+function handleLmsStartPage() {
+    const loginButton = safeQuerySelector(`button[name='loginButton']`);
+    if (loginButton) {
+        loginButton.click();
+    } else {
+        // もしボタンがなければ、リンクを探すなどの代替処理
+        const loginLink = safeQuerySelector('a[href*="login"]'); // "login"を含むリンク
+        loginLink?.click();
+    }
+}
 
-    if (!id.username || !id.password) return;
+/**
+ * 統合認証のユーザー名入力ページ（prelogin.cgi）を処理する。
+ * @param {string} username
+ */
+function handlePreLogin(username) {
+    const usernameInput = safeQuerySelector("input[name='username']");
+    const form = safeQuerySelector("form#login");
 
-    if (location.href.startsWith("https://study.ns.kogakuin.ac.jp/lms/lginLgir/")) {
+    if (usernameInput && form) {
+        usernameInput.value = username;
+        form.submit();
+    } else {
+        console.warn("[KLPF] ユーザー名入力フォームが見つかりませんでした。");
+    }
+}
 
-        const Integrated_authentication = document.querySelector('a.lms-text-link[onclick="otherClick()"]');
-        if (Integrated_authentication) Integrated_authentication.click();
+/**
+ * 統合認証のパスワード入力ページ（login.cgi）を処理する。
+ * @param {string} password
+ */
+function handleLogin(password) {
+    const passwordInput = safeQuerySelector("input[name='password']");
+    const form = safeQuerySelector("form#login");
 
-        const login_btn = document.querySelector(`button[name='loginButton']`);
-        if (login_btn) login_btn.click();
+    if (passwordInput && form) {
+        passwordInput.value = password;
+        form.submit();
+    } else {
+        console.warn("[KLPF] パスワード入力フォームが見つかりませんでした。");
+    }
+}
 
+// タイムアウトページからログインページへ復帰 (timeout.cgi)
+function sso_timeoutpage() {
+    location.pathname = "/user/";
+}
+
+// エラーページからログインページへ復帰
+// 2025/9/1 エラーページの存在を確認できず。もしかしたら削除されてるかも
+function lms_errorpage() {
+    location.pathname = "/lms/lginLgir/";
+}
+
+
+/**
+ * メイン処理
+ */
+async function main() {
+    const { username, password } = await getCredentials();
+
+    if (!username || !password) {
+        console.log("[KLPF] ユーザー名またはパスワードが未設定のため、自動ログインをスキップします。");
+        return;
     }
 
-    else if (location.href.startsWith("https://study.ns.kogakuin.ac.jp/lms/error/")) location.pathname = "/lms/lginLgir/";
+    const { href } = window.location;
 
-    else if (location.href.startsWith("https://auth.kogakuin.ac.jp/idp/profile/SAML2/Redirect/")) {
-
-        const errorElement = document.querySelector("p.form-element.form-error");
-        if(!errorElement) {
-
-            const username = document.querySelector(`input[name='j_username']`);
-            if (username) username.value = id.username;
-
-            const password = document.querySelector(`input[name='j_password']`);
-            if (password) password.value = id.password;
-
-            const login_event = document.querySelector(`button[name='_eventId_proceed']`);
-            if (login_event) login_event.click();
-
-        }
+    if (href.startsWith(LMS_LOGIN_URL)) {
+        handleLmsStartPage();
+    } else if (href.startsWith(SSO_PRELOGIN_URL)) {
+        handlePreLogin(username);
+    } else if (href.startsWith(SSO_LOGIN_URL)) {
+        handleLogin(password);
+    } else if (href.startsWith(SSO_TIMEOUT_URL)) {
+        sso_timeoutpage();
+    } else if (href.startsWith(LMS_ERROR_URL)) {
+        lms_errorpage();
     }
-});
+}
+
+// DOMの準備ができたらメイン処理を実行
+document.addEventListener("DOMContentLoaded", main);

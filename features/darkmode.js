@@ -1,20 +1,26 @@
-(function () {
-if (document.readyState === 'loading') {
-document.addEventListener('DOMContentLoaded', applyDarkMode);
-} else {
-applyDarkMode();
-}
+// Copyright (c) 2024-2025 SAYU
+// This software is released under the MIT License, see LICENSE.
 
-function applyDarkMode() {
-const style = document.createElement('style');
-style.textContent = `
+/**
+ * @file LMSにダークモードのスタイルを適用
+ */
+(function() {
+    'use strict';
 
+    const STYLE_ID = 'klpf-dark-mode-style';
+
+    // スタイルが既に適用されている場合は何もしない
+    if (document.getElementById(STYLE_ID)) {
+        return;
+    }
+
+    const darkModeCss = `
+        
 body, html {
 	background-color: #121212 !important;
 	color: #e0e0e0 !important;
 }
 
-/* ヘッダー全体の背景とテキスト色 */
 .lms-header-inner {
 	background-color: #2a2a2a;
 	color: #f0f0f0;
@@ -22,8 +28,7 @@ body, html {
 
 .lms-header-title a img,
 .lms-footer-logo img {
-	filter: brightness(0) invert(1);
-	/* ロゴ画像を白に */
+	filter: brightness(0.7);
 }
 
 .lms-user-name {
@@ -34,7 +39,6 @@ body, html {
 	color: #f0f0f0;
 }
 
-/* ハンバーガーメニュー */
 .lms-header-menu,
 .lms-sp-gnav,
 .lms-menu-column {
@@ -42,7 +46,6 @@ body, html {
 	color: #f0f0f0;
 }
 
-/* 各アイコン・テキスト領域 */
 .lms-header-icon-text,
 .lms-user-action ul li,
 .lms-language,
@@ -57,7 +60,6 @@ body, html {
 	color: #f0f0f0 !important;
 }
 
-/* ドロップダウンメニューの背景と境界 */
 .selectList,
 .selectListSettei,
 .lms-select-list-settei,
@@ -72,37 +74,31 @@ body, html {
 	color: #f0f0f0;
 }
 
-/* ホバー時 */
 .selectList li:hover,
 .selectListSettei li:hover,
 .lms-sp-gnav-sub li:hover {
 	background-color: #444;
 }
 
-/* ハンバーガーオーバーレイ */
 #hamburger-menu-overlay {
 	background-color: rgba(0, 0, 0, 0.6);
 }
 
-/* フッター */
 .lms-sp-footer {
 	background-color: #1e1e1e;
 	color: #ccc;
 }
 
-/* 最終ログイン表示 */
 .last_login_date {
 	background-color: #2a2a2a;
 	color: #ccc;
 }
 
-/* カード全体の背景とテキスト色 */
 .lms-card {
 	background-color: #2b2b2b;
 	color: #f0f0f0;
 }
 
-/* コース情報エリア */
 .courseCardInfo,
 .lms-cardcontents,
 .lms-cardname,
@@ -111,12 +107,10 @@ body, html {
 	color: #f0f0f0;
 }
 
-/* 前期などの term 表示 */
 .term {
 	color: #cccccc;
 }
 
-/* カード内のリンク */
 .lms-cardname a {
 	color: #80c0ff;
 }
@@ -144,23 +138,17 @@ body, html {
 
 .courseSearchRules {
 	background-color: #1e1e1e;
-	/* 背景色 */
 	color: #f0f0f0;
-	/* テキスト色 */
 }
 
 .lms-form-table th {
 	background-color: #2c2c2c;
-	/* ヘッダー背景 */
 	color: #f0f0f0;
-	/* ヘッダーテキスト色 */
 }
 
 .lms-form-table td {
 	background-color: #2a2a2a;
-	/* セル背景 */
 	color: #f0f0f0;
-	/* セルテキスト色 */
 }
 
 .lms-select,
@@ -185,7 +173,6 @@ body, html {
 
 .lms-checkbox input[type="checkbox"]:checked+label span.fj-icon {
 	background-color: rgb(27, 27, 27);
-	/* チェック済み時の色 */
 }
 
 .lms-select-wrapper .lms-select {
@@ -193,7 +180,6 @@ body, html {
 	color: #f0f0f0;
 }
 
-/* カードにホバーしたときの背景変化（任意） */
 .lms-card:hover {
 	background-color: #3a3a3a;
 }
@@ -276,15 +262,12 @@ a:hover {
 
 input.lms-basic-button.changeProcessed {
 	background-color: #333333 !important;
-	/* 背景をダークに */
 	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-	/* 立体感を少し追加 */
 	transition: background-color 0.3s, color 0.3s;
 }
 
 input.lms-basic-button.changeProcessed:hover {
 	background-color: #444444;
-	/* ホバー時に少し明るく */
 	cursor: pointer;
 }
 
@@ -357,7 +340,23 @@ table.cs_table5 th {
 	color: #ffffff;
 }
 
-`;
-document.head.appendChild(style);
-}
+    `;
+
+    // スタイルをDOMの<head>に注入する。
+    function applyDarkMode() {
+        if (document.getElementById(STYLE_ID)) return;
+
+        const style = document.createElement('style');
+        style.id = STYLE_ID;
+        style.textContent = darkModeCss;
+        document.head.appendChild(style);
+        console.log('[KLPF] ダークモードを適用しました。');
+    }
+
+    // DOMの準備ができていれば即時実行、そうでなければロードを待つ
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyDarkMode);
+    } else {
+        applyDarkMode();
+    }
 })();

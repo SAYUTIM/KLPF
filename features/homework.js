@@ -1,197 +1,291 @@
-//Copyright (c) 2024-2025 SAYU
-//This software is released under the MIT License, see LICENSE.
+// Copyright (c) 2024-2025 SAYU
+// This software is released under the MIT License, see LICENSE.
 
-(function () {
-  const form = document.querySelector('form#homehomlInfo[name="homeHomlActionForm"]');
-  if (!form || document.getElementById("rawdata")) return;
+/**
+ * @file 課題一覧の取得、表示、GAS連携を行うモジュール
+ */
 
-  let sid = window.location.href.match(/SID=([a-zA-Z0-9]+)/);
-  if (sid && sid[1]) {
-    sid = sid[1];
-  } else {
-    return;
-  }
+/**
+ * 課題データを表現する型定義
+ * @typedef {object} HomeworkItem
+ * @property {string} deadline - 提出期限
+ * @property {string} homeworkName - 課題名
+ * @property {string} lessonName - 授業名
+ * @property {string | null} kyozaiId - 教材ID
+ * @property {string | null} kyozaiSyCd - 教材種別コード
+ */
 
-  function setupHomeworkClickListener(containerElementId) {
-    const homeworkContainer = document.getElementById(containerElementId);
-    if (!homeworkContainer) return;
 
-    homeworkContainer.addEventListener('click', (event) => {
-      const clickedItem = event.target.closest('.homeworkItem');
-      if (!clickedItem) return;
 
-      const kyozaiId = clickedItem.dataset.kyozaiId;
-      const kyozaiSyCd = clickedItem.dataset.kyozaiSyCd;
+/**
+ * 指定された課題に遷移するためのフォームを動的に作成し、サブミットする。
+ * @param {string} sid - セッションID。
+ * @param {string} kyozaiId - 教材ID。
+ * @param {string} kyozaiSyCd - 教材種別コード。
+ */
+function submitKyozaiForm(sid, kyozaiId, kyozaiSyCd) {
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = `/lms/klmsKlil/kyozaiTitleLink;SID=${sid}`;
+    form.style.display = 'none';
 
-      if (kyozaiId && kyozaiSyCd) {
-        const dynamicForm = document.createElement('form');
-        dynamicForm.method = 'post';
-        dynamicForm.action = `/lms/klmsKlil/kyozaiTitleLink;SID=${sid}`;
-        dynamicForm.style.display = 'none';
-
-        const kyozaiIdInput = document.createElement('input');
-        kyozaiIdInput.type = 'hidden';
-        kyozaiIdInput.name = 'kyozaiId';
-        kyozaiIdInput.value = kyozaiId;
-        dynamicForm.appendChild(kyozaiIdInput);
-
-        const kyozaiSyCdInput = document.createElement('input');
-        kyozaiSyCdInput.type = 'hidden';
-        kyozaiSyCdInput.name = 'kyozaiSyCdHidden';
-        kyozaiSyCdInput.value = kyozaiSyCd;
-        dynamicForm.appendChild(kyozaiSyCdInput);
-
-        document.body.appendChild(dynamicForm);
-        try {
-          dynamicForm.submit();
-          if (dynamicForm.parentNode === document.body) {
-            document.body.removeChild(dynamicForm);
-          }
-        } catch (e) {
-          console.error("Error:", e);
-          if (dynamicForm.parentNode === document.body) {
-            document.body.removeChild(dynamicForm);
-          }
-        }
-      }
-    });
-  }
-
-  const rawdata = document.createElement("iframe");
-  rawdata.src = `/lms/klmsKlil/;SID=${sid}`;
-  rawdata.id = "rawdata";
-  rawdata.style.display = "none";
-  document.body.appendChild(rawdata);
-
-  rawdata.addEventListener("load", () => {
-    const loadingPhases = ["更新中", "更新中.", "更新中..", "更新中..."];
-    let phaseIndex = 0;
-    let animationIntervalId;
-
-    let updatingNotice = document.createElement("div");
-    updatingNotice.id = "updatingNotice";
-    updatingNotice.style.fontWeight = "bold";
-    updatingNotice.style.margin = "10px 0";
-    updatingNotice.style.marginLeft = "12px";
-    updatingNotice.textContent = loadingPhases[0];
-
-    animationIntervalId = setInterval(() => {
-      phaseIndex = (phaseIndex + 1) % loadingPhases.length;
-      updatingNotice.textContent = loadingPhases[phaseIndex];
-    }, 500);
-
-    let preHomework = document.createElement("div");
-    preHomework.id = "homework";
-    preHomework.style.border = "1px solid #ccc";
-    preHomework.style.padding = "10px";
-    preHomework.style.marginTop = "10px";
-    preHomework.style.backgroundColor = "#f9f9f9";
-    preHomework.style.fontFamily = "sans-serif";
-
-    chrome.storage.local.get("homework", (data) => {
-      if (data.homework && typeof data.homework === 'string') {
-        preHomework.innerHTML = data.homework;
-        form.insertAdjacentElement("afterend", updatingNotice);
-        updatingNotice.insertAdjacentElement("afterend", preHomework);
-        setupHomeworkClickListener("homework");
-      } else {
-        form.insertAdjacentElement("afterend", updatingNotice);
-      }
-    });
-
-    const findTbody = () => {
-      const contentDoc = rawdata.contentDocument;
-      if (!contentDoc) return false;
-
-      const tbody = contentDoc.querySelector("tbody");
-      if (tbody) {
-        const rows = Array.from(tbody.querySelectorAll("tr")).filter(
-          (tr) => !tr.classList.contains("thead")
-        );
-
-        const newHomework = document.createElement("div");
-        newHomework.id = "homework";
-        newHomework.style.border = "1px solid #ccc";
-        newHomework.style.padding = "10px";
-        newHomework.style.marginTop = "10px";
-        newHomework.style.backgroundColor = "#f9f9f9";
-        newHomework.style.fontFamily = "sans-serif";
-
-        rows.forEach((tr) => {
-          const deadline = tr.children[0]?.textContent.trim() || "";
-          const homeworkNameCell = tr.children[2];
-          const homeworkLinkElement = homeworkNameCell?.querySelector("a");
-          const homeworkName =
-            homeworkLinkElement?.textContent.trim() ||
-            homeworkNameCell?.textContent.trim() ||
-            "";
-          const lessonName = tr.children[4]?.textContent.trim() || "";
-
-          if (lessonName.includes("学習支援センター")) return;
-
-          const homeworkItemDiv = document.createElement("div");
-          homeworkItemDiv.className = "homeworkItem";
-          homeworkItemDiv.style.borderBottom = "1px solid #ddd";
-          homeworkItemDiv.style.padding = "8px 0";
-
-          if (homeworkLinkElement) {
-            const onclickAttr = homeworkLinkElement.getAttribute("onclick");
-            if (onclickAttr) {
-              const match = onclickAttr.match(
-                /kyozaiTitleLink\s*\(\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/
-              );
-              if (match && match.length === 3) {
-                homeworkItemDiv.dataset.kyozaiId = match[1];
-                homeworkItemDiv.dataset.kyozaiSyCd = match[2];
-                homeworkItemDiv.style.cursor = "pointer";
-              }
-            }
-          }
-
-          let deadlineStyle = "color: #666; font-size: 0.8em;";
-          const deadlineDate = new Date(
-            deadline.replace(/年|月/g, "/").replace("日", "")
-          );
-          const today = new Date();
-          const diff = (deadlineDate - today) / (1000 * 60 * 60 * 24);
-
-          if (!isNaN(diff) && diff >= 0 && diff <= 7) {
-            deadlineStyle = "color: red; font-size: 0.8em;";
-          }
-
-          homeworkItemDiv.innerHTML = `
-            <div style="${deadlineStyle}">📅 ${deadline}</div>
-            <div style="font-weight: bold; margin: 4px 0;">${lessonName}</div>
-            <div>📝 ${homeworkName}</div>
-          `;
-          newHomework.appendChild(homeworkItemDiv);
-        });
-
-        chrome.storage.local.set({ homework: newHomework.innerHTML }, () => {
-          clearInterval(animationIntervalId);
-          const oldHomeworkEl = document.getElementById("homework");
-          if (oldHomeworkEl) {
-            oldHomeworkEl.remove();
-          }
-          if (document.getElementById("updatingNotice")) {
-            document.getElementById("updatingNotice").remove();
-          }
-          if (document.getElementById("rawdata")) {
-            document.getElementById("rawdata").remove();
-          }
-          form.insertAdjacentElement("afterend", newHomework);
-          setupHomeworkClickListener("homework");
-        });
-
-        return true;
-      }
-      return false;
+    const createInput = (name, value) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        return input;
     };
 
+    form.appendChild(createInput('kyozaiId', kyozaiId));
+    form.appendChild(createInput('kyozaiSyCdHidden', kyozaiSyCd));
+
+    document.body.appendChild(form);
+    try {
+        form.submit();
+    } catch (error) {
+        console.error("[KLPF] 課題フォームのサブミットに失敗しました。", error);
+    } finally {
+        document.body.removeChild(form);
+    }
+}
+
+/**
+ * 課題コンテナにクリックイベントリスナーを設定する。
+ * @param {string} containerId - イベントリスナーを設定するコンテナのID。
+ * @param {string} sid - セッションID。
+ */
+function setupHomeworkClickListener(containerId, sid) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.addEventListener('click', (event) => {
+        const item = event.target.closest(`.${HOMEWORK_ITEM_CLASS}`);
+        if (!item) return;
+
+        const { kyozaiId, kyozaiSyCd } = item.dataset;
+        if (kyozaiId && kyozaiSyCd) {
+            submitKyozaiForm(sid, kyozaiId, kyozaiSyCd);
+        }
+    });
+}
+
+/**
+ * 課題データをGoogle Apps Scriptに送信する。
+ * @param {HomeworkItem[]} homeworkData - 送信する課題データの配列。
+ */
+function sendHomeworkToGAS(homeworkData) {
+    if (homeworkData.length === 0) return;
+    
+    chrome.storage.sync.get(["gaswebhookurl"], function(result) {
+        const gas_webhook = result.gaswebhookurl;
+
+        if (!gas_webhook || !gas_webhook.match(/^https:\/\/script\.google\.com\/a\/macros\/g\.kogakuin\.jp\/s\//)) {
+            console.log("GASのWebhook URLが正しくないため、処理を中断しました。");
+            return;
+        }
+
+    });
+
+    // 日付でソートしてから送信
+    const sortedData = [...homeworkData].sort((a, b) => {
+        const dateA = new Date(a.deadline.replace(/年|月/g, "/").replace("日", ""));
+        const dateB = new Date(b.deadline.replace(/年|月/g, "/").replace("日", ""));
+        return dateA - dateB;
+    });
+
+    chrome.runtime.sendMessage({ type: 'send-homework', data: sortedData });
+}
+
+/**
+ * 課題データを解析し、構造化された配列として返す。
+ * @param {Document} doc - 解析対象のドキュメント (iframe.contentDocument)。
+ * @returns {HomeworkItem[]}
+ */
+function parseHomeworkData(doc) {
+    const rows = safeQuerySelectorAll("tbody > tr:not(.thead)", doc);
+    const homeworkData = [];
+
+    for (const tr of rows) {
+        const deadline = tr.children[0]?.textContent.trim() || "";
+        const homeworkNameCell = tr.children[2];
+        const homeworkLink = homeworkNameCell?.querySelector("a");
+        const homeworkName = homeworkLink?.textContent.trim() || homeworkNameCell?.textContent.trim() || "";
+        const lessonName = tr.children[4]?.textContent.trim() || "";
+
+        if (!lessonName.includes("学習支援センター") && deadline && homeworkName && lessonName) {
+            const onclickAttr = homeworkLink?.getAttribute("onclick");
+            let kyozaiId = null;
+            let kyozaiSyCd = null;
+
+            if (onclickAttr) {
+                const match = onclickAttr.match(/kyozaiTitleLink\s*\(\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/);
+                if (match) {
+                    [, kyozaiId, kyozaiSyCd] = match;
+                }
+            }
+
+            homeworkData.push({ deadline, homeworkName, lessonName, kyozaiId, kyozaiSyCd });
+        }
+    }
+    return homeworkData;
+}
+
+/**
+ * 課題データを元にHTML要素を生成する。
+ * @param {HomeworkItem[]} homeworkData - 描画する課題データの配列。
+ * @returns {HTMLDivElement}
+ */
+function renderHomework(homeworkData) {
+    const container = document.createElement('div');
+    container.id = HOMEWORK_CONTAINER_ID;
+
+    Object.assign(container.style, { border: "1px solid #ccc", padding: "10px", marginTop: "10px", backgroundColor: "#f9f9f9", fontFamily: "sans-serif" });
+
+    if (homeworkData.length === 0) {
+        container.textContent = "提出期限が設定されている課題はありませんでした。";
+        return container;
+    }
+
+    for (const item of homeworkData) {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = HOMEWORK_ITEM_CLASS;
+        itemDiv.style.borderBottom = "1px solid #ddd";
+        itemDiv.style.padding = "8px 0";
+
+        if (item.kyozaiId && item.kyozaiSyCd) {
+            itemDiv.dataset.kyozaiId = item.kyozaiId;
+            itemDiv.dataset.kyozaiSyCd = item.kyozaiSyCd;
+            itemDiv.style.cursor = "pointer";
+        }
+
+        const deadlineDiv = document.createElement('div');
+        const deadlineDate = new Date(item.deadline.replace(/年|月/g, "/").replace("日", ""));
+        const diff = (deadlineDate - new Date()) / (1000 * 60 * 60 * 24);
+        deadlineDiv.style.cssText = (diff >= 0 && diff <= 7) ? "color: red; font-size: 0.8em;" : "color: #666; font-size: 0.8em;";
+        deadlineDiv.textContent = `📅 ${item.deadline}`;
+
+        const lessonDiv = document.createElement('div');
+        lessonDiv.style.fontWeight = "bold";
+        lessonDiv.style.margin = "4px 0";
+        lessonDiv.textContent = item.lessonName;
+
+        const nameDiv = document.createElement('div');
+        nameDiv.textContent = `📝 ${item.homeworkName}`;
+
+        itemDiv.append(deadlineDiv, lessonDiv, nameDiv);
+        container.appendChild(itemDiv);
+    }
+    return container;
+}
+
+/**
+ * ローディング表示を管理する。
+ * @param {boolean} show - 表示するかどうか。
+ * @returns {() => void} ローディング表示を停止する関数。
+ */
+function manageLoadingIndicator(show) {
+    const existingNotice = document.getElementById(HOMEWORK_UPDATING_NOTICE_ID);
+    if (existingNotice) existingNotice.remove();
+
+    if (!show) return () => {};
+
+    const notice = document.createElement("div");
+    notice.id = HOMEWORK_UPDATING_NOTICE_ID;
+    notice.style.fontWeight = "bold";
+    notice.style.margin = "10px 0 10px 12px";
+    document.querySelector('form#homehomlInfo[name="homeHomlActionForm"]')?.insertAdjacentElement("afterend", notice);
+
+    const phases = ["更新中", "更新中.", "更新中..", "更新中..."];
+    let phaseIndex = 0;
+    notice.textContent = phases[0];
+
     const intervalId = setInterval(() => {
-      if (findTbody()) {
+        phaseIndex = (phaseIndex + 1) % phases.length;
+        notice.textContent = phases[phaseIndex];
+    }, 500);
+
+    return () => {
         clearInterval(intervalId);
-      }
-    }, 100);
-  });
-})();
+        notice.remove();
+    };
+}
+
+/**
+ * メイン処理
+ */
+async function main() {
+    const form = safeQuerySelector('form#homehomlInfo[name="homeHomlActionForm"]');
+    if (!form || document.getElementById(HOMEWORK_CONTAINER_ID)) return;
+
+    const sid = getSid();
+    if (!sid) {
+        console.error("[KLPF] 課題一覧の表示に必要なSIDが取得できませんでした。");
+        return;
+    }
+
+    // キャッシュされた課題をまず表示
+    try {
+        const { homework: cachedHtml } = await chrome.storage.local.get("homework");
+        if (cachedHtml && typeof cachedHtml === 'string') {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = cachedHtml;
+            const cachedContainer = tempDiv.firstElementChild;
+            if (cachedContainer) {
+                cachedContainer.id = HOMEWORK_CONTAINER_ID;
+                form.insertAdjacentElement("afterend", cachedContainer);
+                setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
+            }
+        }
+    } catch (error) {
+        console.error("[KLPF] キャッシュされた課題の読み込みに失敗しました。", error);
+    }
+
+    // 新しい課題データをバックグラウンドで取得
+    const stopLoading = manageLoadingIndicator(true);
+    try {
+
+        const iframe = document.createElement("iframe");
+        iframe.src = `/lms/klmsKlil/;SID=${sid}`;
+        iframe.id = HOMEWORK_RAW_DATA_IFRAME_ID;
+        iframe.style.display = "none";
+
+        document.body.appendChild(iframe);
+
+        await new Promise((resolve, reject) => {
+            iframe.onload = resolve;
+            iframe.onerror = reject;
+        });
+
+        const iframeDoc = iframe.contentDocument;
+        if (!iframeDoc) throw new Error("iframeのコンテンツが取得できませんでした。");
+
+        // iframe内で課題のtbodyが生成されるのを待機する
+        const waiting_tbody = await waitForElement("tbody tr", iframeDoc, 30000); //タイムアウト30秒
+        if (!waiting_tbody) throw new Error("課題データの待機がタイムアウトしました。");
+
+        const homeworkData = parseHomeworkData(iframeDoc);
+        const newHomeworkContainer = renderHomework(homeworkData);
+
+        // 表示を更新し、キャッシュを保存
+        const oldContainer = document.getElementById(HOMEWORK_CONTAINER_ID);
+        if (oldContainer) oldContainer.remove();
+        form.insertAdjacentElement("afterend", newHomeworkContainer);
+        setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
+
+        await chrome.storage.local.set({ homework: newHomeworkContainer.innerHTML });
+
+        // GASに送信
+        const gas_send = await chrome.storage.sync.get(["gasWebhook"]);
+        if (gas_send) sendHomeworkToGAS(homeworkData);
+
+    } catch (error) {
+        console.error("[KLPF] 課題一覧の更新に失敗しました。", error);
+    } finally {
+        stopLoading();
+        const iframe = document.getElementById(HOMEWORK_RAW_DATA_IFRAME_ID);
+        if (iframe) iframe.remove();
+    }
+}
+
+main();

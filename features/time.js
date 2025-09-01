@@ -1,122 +1,107 @@
-//Copyright (c) 2024-2025 SAYU
-//This software is released under the MIT License, see LICENSE.
+// Copyright (c) 2024-2025 SAYU
+// This software is released under the MIT License, see LICENSE.
 
-const interval = setInterval(() => {
-    const logoutButtonAnchor = document.querySelector('.lms-logout-button');
+/**
+ * @file ヘッダーに現在時刻と次の授業までの残り時間を表示する機能。
+ */
 
-    if (logoutButtonAnchor) {
-        const logoutListItem = logoutButtonAnchor.parentElement;
-        const ulList = logoutListItem.parentElement;
+(async function() {
+    'use strict';
 
-        const time = document.createElement('li');
-        const remainingTime = document.createElement('li');
-        time.className = 'time';
-        remainingTime.className = 'remaining-time';
-        remainingTime.style.cursor = 'pointer';
-        remainingTime.title = '通常授業/2-3限連続授業 切り替え';
+    // ログアウトボタンが表示されるまで待機
+    const logoutButtonAnchor = await waitForElement('.lms-logout-button');
+    if (!logoutButtonAnchor) return;
 
+    const logoutListItem = logoutButtonAnchor.parentElement;
+    const ulList = logoutListItem?.parentElement;
+    if (!logoutListItem || !ulList) return;
 
-        const scheduleNormal = [
-            { start: "08:30", end: "10:00", label: "1限" },
-            { start: "10:10", end: "11:40", label: "2限" },
-            { start: "11:41", end: "12:29", label: "昼休み" },
-            { start: "12:30", end: "14:00", label: "3限" },
-            { start: "14:10", end: "15:40", label: "4限" },
-            { start: "15:50", end: "17:20", label: "5限" },
-            { start: "17:30", end: "19:00", label: "6限" }
-        ];
+    let currentSchedule = TIME_SCHEDULE_NORMAL;
 
-        const schedule23 = [
-            { start: "08:30", end: "10:00", label: "1限" },
-            { start: "10:10", end: "11:40", label: "2限" },
-            { start: "11:50", end: "13:20", label: "3限" },
-            { start: "13:21", end: "14:09", label: "昼休み" },
-            { start: "14:10", end: "15:40", label: "4限" },
-            { start: "15:50", end: "17:20", label: "5限" },
-            { start: "17:30", end: "19:00", label: "6限" }
-        ];
+    // --- DOM要素の生成 ---
+    const timeLi = document.createElement('li');
+    timeLi.className = 'time';
 
-        let currentSchedule = scheduleNormal; // 初期スケジュールはnormal
+    const remainingTimeLi = document.createElement('li');
+    remainingTimeLi.className = 'remaining-time';
+    remainingTimeLi.style.cursor = 'pointer';
+    remainingTimeLi.title = '通常授業/2-3限連続授業 切り替え';
 
-        const updateTime = () => {
-            const now = new Date();
-            time.textContent = `${now.getFullYear()}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
-            const nowMinutes = now.getHours() * 60 + now.getMinutes();
-            let message = "授業時間外"; // デフォルトメッセージ
-            let periodFound = false; // 現在の期間または期間の間が見つかったか
-
-            for (let i = 0; i < currentSchedule.length; i++) {
-                const period = currentSchedule[i];
-                const start = period.start.split(":").map(Number);
-                const end = period.end.split(":").map(Number);
-                const startMinutes = start[0] * 60 + start[1];
-                const endMinutes = end[0] * 60 + end[1];
-
-                if (nowMinutes >= startMinutes && nowMinutes < endMinutes) {
-                    // 現在の期間内 (授業または定義された休憩)
-                    periodFound = true;
-                    const remaining = endMinutes - nowMinutes;
-                    if (period.label === "昼休み" && (i + 1 < currentSchedule.length)) {
-                        // 「昼休み」期間中で、次に授業がある場合
-                        const nextPeriod = currentSchedule[i+1];
-                        const nextStart = nextPeriod.start.split(":").map(Number);
-                        const nextStartMinutes = nextStart[0] * 60 + nextStart[1];
-                        const timeToNextClassStart = nextStartMinutes - nowMinutes;
-                        message = `${period.label}終了まで残り${remaining}分 (${nextPeriod.label}開始まで${timeToNextClassStart}分)`;
-                    } else {
-                        message = `${period.label}終了まで残り${remaining}分`;
-                    }
-                    break; // メッセージ確定
-                }
-
-                // 現在の期間は過ぎていて、次の期間が始まるまでの間か
-                if (i < currentSchedule.length - 1) {
-                    const nextPeriod = currentSchedule[i+1];
-                    const nextStart = nextPeriod.start.split(":").map(Number);
-                    const nextStartMinutes = nextStart[0] * 60 + nextStart[1];
-                    // endMinutes は currentSchedule[i] (現在のループのperiod) の終了時刻
-                    if (nowMinutes >= endMinutes && nowMinutes < nextStartMinutes) {
-                        periodFound = true;
-                        const remainingToNext = nextStartMinutes - nowMinutes;
-                        message = `${nextPeriod.label}開始まで残り${remainingToNext}分`;
-                        break; // メッセージ確定
-                    }
-                }
-            }
-
-            // ループで見つからなかった場合（＝全授業終了後、または最初の授業開始前）
-            if (!periodFound && currentSchedule.length > 0) {
-                const firstPeriodStart = currentSchedule[0].start.split(":").map(Number);
-                const firstPeriodStartMinutes = firstPeriodStart[0] * 60 + firstPeriodStart[1];
-                const lastPeriodEnd = currentSchedule[currentSchedule.length - 1].end.split(":").map(Number);
-                const lastPeriodEndMinutes = lastPeriodEnd[0] * 60 + lastPeriodEnd[1];
-
-                if (nowMinutes < firstPeriodStartMinutes) {
-                    const remainingToFirst = firstPeriodStartMinutes - nowMinutes;
-                    message = `${currentSchedule[0].label}開始まで残り${remainingToFirst}分`;
-                } else if (nowMinutes >= lastPeriodEndMinutes) {
-                    message = "授業時間外";
-                }
-            } else if (!periodFound && currentSchedule.length === 0) {
-                message = "スケジュールがありません";
-            }
-
-            remainingTime.textContent = message;
-        };
-
-        remainingTime.addEventListener('click', () => {
-            if (currentSchedule === scheduleNormal) currentSchedule = schedule23;
-            else currentSchedule = scheduleNormal;
-            updateTime();
-        });
-
-        ulList.insertBefore(time, logoutListItem.nextSibling);
-        ulList.insertBefore(remainingTime, time.nextSibling);
-
-        setInterval(updateTime, 1000);
-        updateTime();
-
-        clearInterval(interval);
+    /**
+     * 現在時刻を YYYY/MM/DD HH:mm:ss 形式で取得する。
+     * @param {Date} now
+     * @returns {string}
+     */
+    function getFormattedTime(now) {
+        const pad = (num) => num.toString().padStart(2, '0');
+        return `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     }
-}, 100);
+
+    /**
+     * 現在時刻とスケジュールから、授業のステータスメッセージを計算する。
+     * @param {Date} now
+     * @returns {string}
+     */
+    function calculateStatusMessage(now) {
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+        for (let i = 0; i < currentSchedule.length; i++) {
+            const period = currentSchedule[i];
+            const [startH, startM] = period.start.split(':').map(Number);
+            const [endH, endM] = period.end.split(':').map(Number);
+            const startMinutes = startH * 60 + startM;
+            const endMinutes = endH * 60 + endM;
+
+            // 現在の期間内 (授業または休憩)
+            if (nowMinutes >= startMinutes && nowMinutes < endMinutes) {
+                const remaining = endMinutes - nowMinutes;
+                return `${period.label}終了まで残り${remaining}分`;
+            }
+
+            // 次の期間までの間
+            if (i < currentSchedule.length - 1) {
+                const nextPeriod = currentSchedule[i + 1];
+                const [nextStartH, nextStartM] = nextPeriod.start.split(':').map(Number);
+                const nextStartMinutes = nextStartH * 60 + nextStartM;
+                if (nowMinutes >= endMinutes && nowMinutes < nextStartMinutes) {
+                    const remainingToNext = nextStartMinutes - nowMinutes;
+                    return `${nextPeriod.label}開始まで残り${remainingToNext}分`;
+                }
+            }
+        }
+
+        // 全ての授業スケジュール外
+        return "授業時間外";
+    }
+
+    /**
+     * 時刻表示を更新する。
+     */
+    function updateTime() {
+        const now = new Date();
+        timeLi.textContent = getFormattedTime(now);
+        remainingTimeLi.textContent = calculateStatusMessage(now);
+    }
+
+    // --- イベントリスナーの設定 ---
+    remainingTimeLi.addEventListener('click', () => {
+        currentSchedule = (currentSchedule === TIME_SCHEDULE_NORMAL) ?
+            TIME_SCHEDULE_23_CONTINUOUS :
+            TIME_SCHEDULE_NORMAL;
+        updateTime(); // 即時更新
+        console.log("[KLPF] 授業スケジュールを切り替えました。");
+    });
+
+    // --- 初期化と定期実行 ---
+    ulList.insertBefore(timeLi, logoutListItem.nextSibling);
+    ulList.insertBefore(remainingTimeLi, timeLi.nextSibling);
+
+    setInterval(updateTime, 1000);
+    updateTime(); // 初回実行
+
+    setTimeout(() => {
+        location.reload();
+    }, PAGE_RELOAD_INTERVAL_MS);
+
+    console.log("[KLPF] 時刻表示機能を初期化しました。");
+})();
