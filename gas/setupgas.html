@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>課題メール通知リマインダー</title>
+    <link rel="stylesheet" href="setupgas.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1>通知機能の有効化方法</h1>
+
+        <h2>通知機能について</h2>
+        
+        <div class="notification-info">
+            <p>この機能は、お使いのGoogleアカウントと連携し、課題の締切が近づくとメールで自動的にお知らせするリマインダーです。Googleの公式サービス「Google Apps Script」を利用して、安全に通知を自動化します。</p>
+            <ul>
+                <li><strong>チェック間隔:</strong> 10分ごとに自動で締切を確認します。</li>
+                <li><strong>通知タイミング:</strong> 締切の<strong>18時間前、6時間前、1時間前</strong>の計3回、通知メールが届きます。</li>
+                <li><strong>通知元と先:</strong> 設定に使用したGoogleアカウントのメールアドレスにより送受信されます。</li>
+            </ul>
+        </div>
+
+        <p>設定には、簡単で確実な「<strong>自動環境構築</strong>」と、ご自身で手順を進める「<strong>手動環境構築</strong>」の2通りがあります。特に理由がない限り、自動での導入を推奨します。</p>
+
+        <hr style="margin: 40px 0;">
+        
+        <h2><span class="recommended-badge">推奨</span> 自動で環境構築</h2>
+        
+        <ol class="steps">
+            <li>
+                <p>ブラウザでGoogleアカウントにログインしていない場合は以下からログインしてください。</p>
+                <a href="https://accounts.google.co.jp/" target="_blank" rel="noopener noreferrer">
+                    https://accounts.google.co.jp/
+                </a>
+            </li>
+            <li>
+                <p>ログインできたら、以下のボタンを押して自動環境構築を開始します。処理には1〜3分程度かかります。</p>
+                <button id="setup-button">自動環境構築を開始します</button>
+            </li>
+        </ol>
+
+        <hr style="margin: 40px 0;">
+
+        <h2>手動で環境構築</h2>
+        <p>自動環境構築がうまく行かない場合は、以下の手順で手動セットアップをお試しください。</p>
+        <ol class="steps">
+            <li>
+                <p><strong>Google Apps Scriptプロジェクトの作成</strong><br>
+                下のリンクをクリックして、新しいGoogle Apps Scriptプロジェクトを作成します。</p>
+                <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener noreferrer">Google Apps Scriptプロジェクトを新規作成</a>
+            </li>
+            <li>
+                <p><strong>プロジェクト名の変更</strong><br>
+                プロジェクトが開いたら、左上の「無題のプロジェクト」をクリックし、プロジェクト名を「<strong>KLPF課題リマインダー</strong>」に変更して「名前を変更」ボタンを押します。</p>
+            </li>
+            <li>
+                <p><strong>コードの貼り付け</strong><br>
+                エディタに表示されているデフォルトのコード（`function myFunction() { }`）を<strong>すべて削除</strong>し、下の枠内にあるコードをすべてコピーして貼り付けます。</p>
+                <div class="code-block-container">
+                    <button id="copy-code-btn" class="copy-button">コピー</button>
+                    <pre id="code-to-copy" style="background-color: #f0f0f0; border: 1px solid #ccc; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; font-size: 14px;"><code>
+// Copyright (c) 2025 SAYU
+// This software is released under the MIT License, see LICENSE.
+
+function main() {
+  try {
+    const userEmail = Session.getActiveUser().getEmail();
+    const subject = `【課題通知】セットアップ完了のお知らせ`;
+    const body = `
+      &lt;div style="font-family: sans-serif; text-align: left; max-width: 600px; margin: auto;"&gt;
+        &lt;p&gt;&lt;strong&gt;環境構築セットアップが完了しました&lt;/strong&gt;&lt;/p&gt;
+        &lt;p&gt;今後、登録された課題の締切が近づくと、このメールアドレスに通知が届きます。&lt;/p&gt;
+        &lt;p&gt;このスクリプトは10分ごとに自動で実行され、リマインダーをチェックします。&lt;/p&gt;
+        &lt;p&gt;締切期限の18時間前、6時間前、1時間前の計3回メールが送信されます。&lt;/p&gt;
+        &lt;p style="text-align: center; margin-top: 24px; margin-bottom: 24px;"&gt;
+        &lt;a href="https://study.ns.kogakuin.ac.jp" style="display: inline-block; background-color: #5B9DFF; color: #ffffff; padding: 12px 48px; text-decoration: none; border-radius: 8px; font-weight: bold;"&gt;Ku-LMSを開く&lt;/a&gt;
+        &lt;/p&gt;
+        &lt;hr&gt;
+        &lt;p style="color: #888; font-size: 0.8em;"&gt;このメールは拡張機能KLPFによって自動送信されました。&lt;/p&gt;
+      &lt;/div&gt;
+    `;
+    GmailApp.sendEmail(userEmail, subject, "", { htmlBody: body });
+    console.log(`セットアップ完了のメールを ${userEmail} に送信しました。`);
+  } catch (error) {
+    console.error("テストメールの送信に失敗しました:", error);
+    return;
+  }
+
+  clearAllTriggers();
+
+  ScriptApp.newTrigger('checkDeadlinesAndSendReminders')
+      .timeBased()
+      .everyMinutes(10)
+      .create();
+  
+  console.log('10分ごとに実行するトリガーをセットしました。');
+  console.log('セットアップは正常に終了しました。このタブを閉じてKu-LMSで課題リストアップの更新を行ってください。');
+}
+
+// Copyright (c) 2025 SAYU
+const PROPERTIES_KEY = 'HOMEWORKS_DATA'; 
+
+function doPost(e) {
+  try {
+    const incomingHomeworks = JSON.parse(e.postData.contents);
+    const userProperties = PropertiesService.getUserProperties();
+    
+    const currentDataJSON = userProperties.getProperty(PROPERTIES_KEY);
+    const homeworks = currentDataJSON ? JSON.parse(currentDataJSON) : [];
+
+    const updatedHomeworks = updateHomeworkList(homeworks, incomingHomeworks);
+
+    userProperties.setProperty(PROPERTIES_KEY, JSON.stringify(updatedHomeworks.homeworks));
+
+    const message = `${updatedHomeworks.addedCount}件の新しい課題を登録し、${updatedHomeworks.removedCount}件の提出済み課題を削除しました。 (締切日なしの課題は${updatedHomeworks.ignoredCount}件スキップしました)`;
+
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'success',
+      message: message
+    })).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    console.error(error);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'error',
+      message: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function updateHomeworkList(currentList, incomingList) {
+    const validIncomingList = incomingList.filter(h => h.deadline && h.deadline.trim() !== '‐');
+    const ignoredCount = incomingList.length - validIncomingList.length;
+
+    const incomingKeys = new Set(validIncomingList.map(h => `${h.lessonName}|${h.homeworkName}|${h.deadline}`));
+    let addedCount = 0;
+    let removedCount = 0;
+
+    const keptHomeworks = currentList.filter(h => {
+        const key = `${h.lessonName}|${h.homeworkName}|${h.deadline}`;
+        const shouldKeep = incomingKeys.has(key);
+        if (!shouldKeep) {
+            removedCount++;
+        }
+        return shouldKeep;
+    });
+
+    const keptKeys = new Set(keptHomeworks.map(h => `${h.lessonName}|${h.homeworkName}|${h.deadline}`));
+
+    validIncomingList.forEach(h => {
+        const key = `${h.lessonName}|${h.homeworkName}|${h.deadline}`;
+        if (!keptKeys.has(key)) {
+            keptHomeworks.push({
+                lessonName: h.lessonName,
+                homeworkName: h.homeworkName,
+                deadline: h.deadline,
+                reminders: { h18: false, h6: false, h1: false } 
+            });
+            addedCount++;
+        }
+    });
+
+    return { homeworks: keptHomeworks, addedCount, removedCount, ignoredCount };
+}
+
+function checkDeadlinesAndSendReminders() {
+  const userProperties = PropertiesService.getUserProperties();
+  const homeworksJSON = userProperties.getProperty(PROPERTIES_KEY);
+  if (!homeworksJSON) return;
+
+  let homeworks = JSON.parse(homeworksJSON);
+  const now = new Date();
+  
+  const remindersToSend = {
+    h18: [],
+    h6: [],
+    h1: []
+  };
+  let dataWasUpdated = false;
+
+  homeworks.forEach(hw => {
+    const deadlineStr = hw.deadline.replace(/\s\(.\)/, '');
+    const deadline = new Date(deadlineStr.replace(/年|月/g, "/").replace("日", ""));
+    
+    const reminderChecks = [
+      { hours: 18, flag: 'h18', text: "18時間" },
+      { hours: 6,  flag: 'h6',  text: "6時間" },
+      { hours: 1,  flag: 'h1',  text: "1時間" }
+    ];
+
+    for (const check of reminderChecks) {
+      const reminderTime = new Date(deadline.getTime() - (check.hours * 60 * 60 * 1000));
+      if (now >= reminderTime && !hw.reminders[check.flag]) {
+        remindersToSend[check.flag].push(hw);
+        hw.reminders[check.flag] = true;
+        dataWasUpdated = true;
+      }
+    }
+  });
+
+  const userEmail = Session.getActiveUser().getEmail();
+
+  if (remindersToSend.h18.length > 0) {
+    sendGroupedReminderEmail(userEmail, remindersToSend.h18, "18時間", homeworks);
+  }
+  if (remindersToSend.h6.length > 0) {
+    sendGroupedReminderEmail(userEmail, remindersToSend.h6, "6時間", homeworks);
+  }
+  if (remindersToSend.h1.length > 0) {
+    sendGroupedReminderEmail(userEmail, remindersToSend.h1, "1時間", homeworks);
+  }
+
+  if (dataWasUpdated) {
+    userProperties.setProperty(PROPERTIES_KEY, JSON.stringify(homeworks));
+  }
+}
+
+function sendGroupedReminderEmail(userEmail, groupedHomeworks, remainingTimeText, allHomeworks) {
+  const subject = `【課題通知】締切まで約${remainingTimeText}の課題が${groupedHomeworks.length}件あります`;
+  
+  let mainHomeworksHtml = "";
+  groupedHomeworks.forEach(hw => {
+    mainHomeworksHtml += `
+      &lt;div style="border: 1px solid #ddd; padding: 16px; margin-bottom: 16px; border-radius: 8px; background-color: #f9f9f9;"&gt;
+        &lt;p&gt;&lt;strong&gt;締切日:&lt;/strong&gt; ${hw.deadline}&lt;/p&gt;
+        &lt;p&gt;&lt;strong&gt;授業名:&lt;/strong&gt; ${hw.lessonName}&lt;/p&gt;
+        &lt;p&gt;&lt;strong&gt;課題名:&lt;/strong&gt; ${hw.homeworkName}&lt;/p&gt;
+      &lt;/div&gt;
+    `;
+  });
+
+  const otherHomeworksHtml = createOtherHomeworksHtml(groupedHomeworks, allHomeworks);
+
+  const body = `
+    &lt;div style="font-family: sans-serif; text-align: left; max-width: 600px; margin: auto;"&gt;
+      &lt;p style="font-size: 1.1em; color: #D32F2F;"&gt;&lt;strong&gt;以下の${groupedHomeworks.length}件の課題が、${remainingTimeText}以内に締め切りになります！&lt;/strong&gt;&lt;/p&gt;
+      &lt;p&gt;Ku-LMSを開いて確認してください。&lt;/p&gt;
+      ${mainHomeworksHtml}
+      &lt;p&gt;提出しているにもかかわらずこのメールが受信された場合は、課題リストが正しく更新されていない可能性があります。Ku-LMSホーム画面で課題リストアップの更新を完了させてください。&lt;/p&gt;
+      &lt;p style="text-align: center; margin-top: 24px; margin-bottom: 24px;"&gt;
+        &lt;a href="https://study.ns.kogakuin.ac.jp" style="display: inline-block; background-color: #5B9DFF; color: #ffffff; padding: 12px 48px; text-decoration: none; border-radius: 8px; font-weight: bold;"&gt;Ku-LMSを開く&lt;/a&gt;
+      &lt;/p&gt;
+      ${otherHomeworksHtml}
+      &lt;hr&gt;
+      &lt;p style="color: #888; font-size: 0.8em;"&gt;このメールは拡張機能KLPFによって自動送信されました。&lt;/p&gt;
+    &lt;/div&gt;
+  `;
+  
+  GmailApp.sendEmail(userEmail, subject, "", { htmlBody: body });
+}
+
+function createOtherHomeworksHtml(mainHomeworks, allHomeworks) {
+    const mainKeys = new Set(mainHomeworks.map(h => `${h.lessonName}|${h.homeworkName}|${h.deadline}`));
+
+    const otherHomeworksList = allHomeworks.filter(h => {
+        const key = `${h.lessonName}|${h.homeworkName}|${h.deadline}`;
+        if (mainKeys.has(key)) {
+            return false;
+        }
+        const deadlineStr = h.deadline.replace(/\s\(.\)/, '');
+        const deadline = new Date(deadlineStr.replace(/年|月/g, "/").replace("日", ""));
+        return deadline > new Date();
+    });
+
+    otherHomeworksList.sort((a, b) => {
+        const dateA_str = a.deadline.replace(/\s\(.\)/, '');
+        const dateB_str = b.deadline.replace(/\s\(.\)/, '');
+        const dateA = new Date(dateA_str.replace(/年|月/g, "/").replace("日", ""));
+        const dateB = new Date(dateB_str.replace(/年|月/g, "/").replace("日", ""));
+        return dateA - dateB;
+    });
+
+    if (otherHomeworksList.length === 0) return "";
+
+    let html = '&lt;h3 style="margin-top: 24px; border-bottom: 1px solid #ccc; padding-bottom: 8px;"&gt;その他に締切が近い課題&lt;/h3&gt;&lt;ul style="padding-left: 20px; list-style-type: none;"&gt;';
+    otherHomeworksList.forEach(item => {
+        html += `&lt;li style="margin-bottom: 12px;"&gt;&lt;strong&gt;${item.lessonName}&lt;/strong&gt;&lt;br&gt;　→${item.homeworkName}&lt;br&gt;&lt;span style="font-size: 0.9em; color: #555;"&gt;(締切: ${item.deadline})&lt;/span&gt;&lt;/li&gt;`;
+    });
+    html += '&lt;/ul&gt;';
+    return html;
+}
+
+function showScheduledHomework() {
+  const homeworksJSON = PropertiesService.getUserProperties().getProperty(PROPERTIES_KEY);
+  if (!homeworksJSON || homeworksJSON === '[]') {
+    console.log('現在登録されている課題リマインダーはありません。');
+    return;
+  }
+  
+  const homeworks = JSON.parse(homeworksJSON);
+  console.log(`--- 現在登録されている課題リマインダー (${homeworks.length}件) ---`);
+  homeworks.forEach((hw, index) => {
+    console.log(`[${index + 1}]`);
+    console.log(`  締切日: ${hw.deadline}`);
+    console.log(`  授業名: ${hw.lessonName}`);
+    console.log(`  課題名: ${hw.homeworkName}`);
+    console.log(`  通知状況: 18時間前:${hw.reminders.h18}, 6時間前:${hw.reminders.h6}, 1時間前:${hw.reminders.h1}`);
+    console.log('--------------------');
+  });
+}
+
+function clearAllTriggers() {
+    const allTriggers = ScriptApp.getProjectTriggers();
+    for (const trigger of allTriggers) {
+        if (trigger.getHandlerFunction() === 'checkDeadlinesAndSendReminders') {
+            ScriptApp.deleteTrigger(trigger);
+        }
+    }
+}
+
+function clearAllDataAndTriggers() {
+  clearAllTriggers();
+  console.log('定期実行トリガーを削除しました。');
+  PropertiesService.getUserProperties().deleteProperty(PROPERTIES_KEY);
+  console.log('すべての課題データを削除しました。');
+  console.log('リセットが完了しました。');
+}
+                  </code></pre>
+                </div>
+            </li>
+            <li>
+                <p><strong>プロジェクトの保存とデプロイ</strong><br>
+                コードを貼り付けたら、左上のフロッピーディスクのアイコン💾をクリックしてプロジェクトを保存します。次に、右上の「<strong>デプロイ</strong>」ボタンを押し、「<strong>新しいデプロイ</strong>」を選択します。</p>
+            </li>
+             <li>
+                <p><strong>デプロイ設定</strong><br>
+                「<strong>種類の選択</strong>」で歯車のアイコン⚙️をクリックし、「<strong>ウェブアプリ</strong>」を選択します。<br>次の項目を設定してください。<br>
+                ・説明: (任意、例: 課題リマインダー)<br>
+                ・次のユーザーとして実行: <strong>自分</strong><br>
+                ・アクセスできるユーザー: <strong>自分のみ</strong><br>
+                設定後、「<strong>デプロイ</strong>」ボタンを押します。</p>
+            </li>
+            <li>
+                <p><strong>権限の承認</strong><br>
+                「<strong>アクセスを承認</strong>」ボタンが表示されるのでクリックします。Googleアカウントの選択画面が表示されたら、現在ログインしている自分のアカウントを選択します。<br>
+                次に、プロジェクトがGoogleアカウントにアクセスするのを許可するために下にスクロールし「<strong>Allow</strong>」をクリックします。<br>
+                <small>※ このスクリプトはあなたのGmailアカウントを使って、あなた自身にのみメールを送信します。メール送信元と受信先のメールアドレスは同じになります。</small></p>
+            </li>
+            <li>
+                <p><strong>ウェブアプリURLの取得と設定</strong><br>
+                デプロイが完了すると、「<strong>ウェブアプリ URL</strong>」が表示されます。<br>このURLをコピーし、<strong>拡張機能のオプション画面にある「Webhook URL」の欄に貼り付け</strong>て保存します。<br>
+                <small>※ ウェブアプリURLは「https://script.google.com/a/macros/g.kogakuin.jp/s/...」から始まります。</small></p>
+            </li>
+            <li>
+                <p><strong>初回実行とトリガー設定</strong><br>
+                GASのエディタ画面に戻り、「<strong>完了</strong>」ボタンを押し、新しいデプロイの画面を閉じます。<br>
+                上部の関数選択ドロップダウンで「<strong>main</strong>」が選択されていることを確認し「<strong>実行</strong>」ボタン▶️を押します。<br>
+                権限を要求されるので「<strong>権限を確認</strong>」をクリックします。Googleアカウントの選択画面が表示されたら、現在ログインしている自分のアカウントを選択します。<br>
+                プロジェクトにログインする画面が表示されるので「<strong>次へ</strong>」を押し、プロジェクトがGoogleアカウントへのアクセスを求めている画面が表示されたら「<strong>続行</strong>」をクリックします。<br>
+                これにより初期設定が完了し、10分ごとに課題をチェックするトリガーが自動的に設定され、テストメールが送信されます。</p>
+            </li>
+            <li>
+                <p><strong>環境構築終了</strong><br>
+                以上で通知機能の環境構築が終了しましたので、拡張機能のオプション画面の「通知機能」をONにして、クルムスを開き課題リストアップの更新を完了させてください。
+                </p>
+            </li>
+        </ol>
+
+    </div>
+
+    <script src="setupgas.js"></script>
+</body>
+</html>
