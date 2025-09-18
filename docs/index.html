@@ -3,105 +3,299 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KLPF - 工学院大学 Ku-LMS拡張機能</title>
-    <meta name="description" content="KLPFは、工学院大学の学習管理システム「Ku-LMS」を拡張し、大学生活をより快適にするための非公式ブラウザ拡張機能です。自動ログイン、課題リスト表示、自動出席などの便利な機能を提供します。">
+    <title>KLPF - 拡張機能</title>
+    <meta name="description" content="工学院大学での生活をスマートに。KLPFで学習体験を革新しよう。">
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" type="image/png" href="../icon/icon16.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>
 <body>
-
+    <div id="app-loader" class="app-loader" aria-hidden="true">
+        <div class="wrapper">
+            <div class="box-wrap">
+            <div class="box one"></div>
+            <div class="box two"></div>
+            <div class="box three"></div>
+            <div class="box four"></div>
+            <div class="box five"></div>
+            <div class="box six"></div>
+            </div>
+        </div>
+    </div>
     <header>
-        <div class="container">
+        <div class="header-container">
             <a href="#" class="logo">KLPF</a>
             <nav>
-                <ul id="nav-menu">
+                <ul class="nav-menu">
                     <li><a href="#features">機能</a></li>
-                    <li><a href="#download">ダウンロード</a></li>
                     <li><a href="#install">導入方法</a></li>
-                    <li><a href="#contact">コンタクト</a></li>
+                    <li><a href="#download">ダウンロード</a></li>
+                    <li><a href="#contact">サポート</a></li>
                 </ul>
+                <button class="mobile-toggle">☰</button>
             </nav>
-            <button class="menu-toggle" id="menu-toggle" aria-label="Menu">☰</button>
         </div>
     </header>
 
     <main>
         <section class="hero">
-            <div class="hero-background-downloads" id="background-downloads-count">0</div>
             <div class="hero-content">
-                <h1 class="ml-1">KLPF</h1>
-                <p class="subtitle">
+                <h1 class="hero-title">KLPF</h1>
+                <p class="hero-subtitle">
                     Ku-LMS Plugin Framework<br>
-                    工学院大学での生活を、少しだけ怠惰にできる(非公式)拡張機能。
+                    学習体験を革新する、次世代の拡張機能
                 </p>
-                <p class="downloads-label">TOTAL DOWNLOADS</p>
-            </div>
-        </section>
-        
-        <div class="container">
-            <section id="features">
-                <h2>機能</h2>
-                <div class="grid">
-                    <div class="feature-card"><h3>自動ログイン</h3><p>Ku-LMSやku-portに自動でログイン。統合認証IDとパスワードの設定が必要です。</p></div>
-                    <div class="feature-card"><h3>自動ログアウト無効化</h3><p>Ku-LMSを開いているときの自動ログアウトを無効化します。</p></div>
-                    <div class="feature-card"><h3>課題リストアップ</h3><p>課題やテストをKu-LMSのホーム画面に一覧表示します。メール通知可能。</p></div>
-                    <div class="feature-card"><h3>Meetミュート参加</h3><p>Google Meetにカメラとマイクを自動でオフにして参加します。</p></div>
-                    <div class="feature-card"><h3>履修中科目のみ表示</h3><p>Ku-LMSの講義絞り込み設定を記憶し、自動で適用します。</p></div>
-                    <div class="feature-card"><h3>授業時間表示</h3><p>Ku-LMSの右上に現在時刻と、授業の開始/終了までの時間を表示します。</p></div>
-                    <div class="feature-card"><h3>ダークモード</h3><p>Ku-LMSの見た目をダークモードに変更します。</p></div>
-                    <div class="feature-card"><h3>自動出席</h3><p>指定した時間の3分前に、自動で出席ボタンを押しMeetに参加します。</p></div>
-                </div>
-            </section>
-
-            <section id="download">
-                <h2>ダウンロード</h2>
-                <div id="download-list" class="download-list">
-                    <p>リリース情報を読み込み中...</p>
-                </div>
-            </section>
-
-            <section id="install">
-                <h2>導入方法</h2>
-                <div class="youtube-embed">
-                    <p><strong>↓導入解説動画を再生↓</strong></p>
-                    <iframe src="https://www.youtube.com/embed/7dgIjZRtspg?si=Ewn8XuePUQEi28hX" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                <div class="hero-cta">
+                    <a href="#download" class="btn btn-primary">
+                        今すぐダウンロード
+                        <span>→</span>
+                    </a>
+                    <a href="#features" class="btn btn-secondary">
+                        機能を見る
+                    </a>
                 </div>
                 
-                <div class="install-step"><div class="step-number">1</div><div class="step-content"> <p><strong>最新版のZIPファイルをダウンロード</strong><br><a href="#download"> このサイト </a>もしくは、<a href="https://github.com/SAYUTIM/KLPF/releases" target="_blank" rel="noopener noreferrer"> ここ </a>から最新版のKLPFのZIPファイルをダウンロードします。</p><img src="https://github.com/user-attachments/assets/bd6f8efe-7f80-451e-af78-fc70d32fcb20" alt="ダウンロード画面"></div></div>
-                <div class="install-step"><div class="step-number">2</div><div class="step-content"><p><strong>ファイルを展開</strong><br>ダウンロードしたZIPファイルを右クリックし、「すべて展開」を選択して任意の場所に展開します。</p><img src="https://github.com/user-attachments/assets/3e3b8aa4-d7cb-41c7-9367-a61d96fd77f4" alt="展開画面"></div></div>
-                <div class="install-step"><div class="step-number">3</div><div class="step-content"><p><strong>デベロッパーモードを有効化</strong><br>Chromeの拡張機能ページを開きます。<br>「 …(縦) > 拡張機能 > 拡張機能の管理 」から拡張機能ページを開くか、<br>「 chrome://extensions/ 」にアクセスし、右上の「デベロッパーモード」をONにします。</p></div></div>
-                <div class="install-step"><div class="step-number">4</div><div class="step-content"><p><strong>拡張機能を読み込む</strong><br>「パッケージ化されていない拡張機能を読み込む」をクリックし、<br>ステップ2で展開したフォルダの中にある「KLPF」フォルダを選択します。</p></div></div>
-                <div class="install-step"><div class="step-number">5</div><div class="step-content"><p><strong>導入完了！</strong><br>拡張機能の一覧に「KLPF」が表示されたら導入は完了です。</p></div></div>
-                <div class="install-step"><div class="step-number">6</div><div class="step-content"><p><strong>設定ページを開く</strong><br>任意の画面でツールバー以外の任意の場所を右クリックし<br>「[KLPF] 設定を開く」 をクリックしたら設定画面が開きます。</p><img src="https://github.com/user-attachments/assets/36d90e8f-6309-4a85-9678-812769d2696e" alt="設定画面の開き方"></div></div>
-            </section>
-
-            <section id="contact">
-                <h2>コンタクト</h2>
-                <div class="contact-content">
-                    <p>不具合の報告や機能の要望、その他ご意見は<br>以下のTwitterアカウントのDMまでお気軽にご連絡ください。</p>
-                    <a href="https://x.com/i/user/1769273557606150144" class="contact-button" target="_blank" rel="noopener noreferrer">Twitterで連絡する</a>
+                <div class="stats-grid">
+                    <div class="stat-card fade-in">
+                        <div class="stat-number" id="totaldownload">0</div>
+                        <div class="stat-label">総ダウンロード数</div>
+                    </div>
+                    <div class="stat-card fade-in">
+                        <div class="stat-number" data-count="9">9</div>
+                        <div class="stat-label">便利機能</div>
+                    </div>
                 </div>
-            </section>
-        </div>
+
+                <p class="hero-disclaimer fade-in">
+                    この拡張機能は工学院大学が公式に提供するものではなく<br>学生が有志で開発した非公式のツールです
+                </p>
+            </div>
+        </section>
+
+        <section id="features" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-badge">Features</span>
+                    <h2 class="section-title fade-in">あなたの学習を加速する<br>9つの機能</h2>
+                    <p class="section-subtitle fade-in">
+                        日常的な操作を自動化し、学習により集中できる環境を提供します
+                    </p>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">🔐</div>
+                        <h3 class="feature-title">自動ログイン</h3>
+                        <p class="feature-description">
+                            Ku-LMSやku-portへの面倒なログイン作業を完全自動化。設定した認証情報で瞬時にアクセスできます。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">⏰</div>
+                        <h3 class="feature-title">自動ログアウト無効化</h3>
+                        <p class="feature-description">
+                            作業中の意図しないログアウトを防止。長時間の学習セッションも安心して続けられます。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">📝</div>
+                        <h3 class="feature-title">課題リストアップ</h3>
+                        <p class="feature-description">
+                            散らばった課題情報を一箇所に集約。期限順に整理され、メール通知で見逃しを防げます。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">🎥</div>
+                        <h3 class="feature-title">Meetミュート参加</h3>
+                        <p class="feature-description">
+                            Google Meetに自動的にミュート状態で参加。うっかりマイクがオンになる心配がありません。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">📚</div>
+                        <h3 class="feature-title">履修科目フィルター</h3>
+                        <p class="feature-description">
+                            履修中の科目のみを表示する設定を記憶。毎回の絞り込み操作が不要になります。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">🕐</div>
+                        <h3 class="feature-title">授業時間表示</h3>
+                        <p class="feature-description">
+                            現在時刻と次の授業までの時間をリアルタイム表示。スケジュール管理がより簡単に。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">🌙</div>
+                        <h3 class="feature-title">ダークモード</h3>
+                        <p class="feature-description">
+                            目に優しいダークテーマでKu-LMSを表示。長時間の利用でも疲労を軽減します。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">✅</div>
+                        <h3 class="feature-title">自動出席</h3>
+                        <p class="feature-description">
+                            指定時間に自動で出席処理とMeet参加。朝の授業も寝坊を心配する必要がありません。
+                        </p>
+                    </div>
+
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">📖</div>
+                        <h3 class="feature-title">教材一括開封</h3>
+                        <p class="feature-description">
+                            教材ページから詳細ページを開くことなく、選択した教材をワンクリックですべて開き、ステータスを参照済みにします。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="install" class="section">
+            <div class="container">
+                <div class="install-section">
+                    <div class="section-header">
+                        <span class="section-badge">Installation</span>
+                        <h2 class="section-title">簡単5ステップで導入完了</h2>
+                        <p class="section-subtitle">技術的な知識は不要。誰でも簡単にセットアップできます。</p>
+                    </div>
+                    
+                    <div class="install-timeline">
+                        <div class="timeline-item">
+                            <a href="#download" class="timeline-link">
+                                <div class="timeline-content step-card fade-in">
+                                    <span class="timeline-icon">📥</span>
+                                    <h3 class="step-title">ファイルをダウンロード</h3>
+                                    <p class="step-description">下のダウンロードから最新版の<br>ZIPファイルをダウンロードします。</p>
+                                </div>
+                            </a>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-content step-card fade-in">
+                                <span class="timeline-icon">📂</span>
+                                <h3 class="step-title">ファイルを解凍</h3>
+                                <p class="step-description">ダウンロードしたZIPファイルを<br>右クリックし「すべて展開」で<br>任意の場所に解凍します。</p>
+                            </div>
+                        </div>
+                        
+                        <div class="timeline-item">
+                            <div class="timeline-content step-card fade-in">
+                                <span class="timeline-icon">🧩</span>
+                                <h3 class="step-title">拡張機能ページを開く</h3>
+                                <p class="step-description">Chromeのアドレスバーに <br><code>chrome://extensions</code> と入力して<br>開きます。</p>
+                            </div>
+                        </div>
+                        
+                        <div class="timeline-item">
+                            <div class="timeline-content step-card fade-in">
+                                <span class="timeline-icon">🔧</span>
+                                <h3 class="step-title">デベロッパーモード有効化</h3>
+                                <p class="step-description">拡張機能ページの右上にある<br>「デベロッパーモード」をオンに<br>します。</p>
+                            </div>
+                        </div>
+                        
+                        <div class="timeline-item">
+                            <div class="timeline-content step-card fade-in">
+                                <span class="timeline-icon">✅</span>
+                                <h3 class="step-title">拡張機能を読み込む</h3>
+                                <p class="step-description">「パッケージ化されていない<br>拡張機能を読み込む」を押し<br>ステップ2で解凍したフォルダを<br>選択すれば完了です！</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="usage-notes">
+                        <h3 class="notes-title">💡 使い方</h3>
+                        <ul class="notes-list">
+                            <li><strong>設定の開き方:</strong> Chromeの画面で右クリックし、<strong style="color: var(--primary-blue);">「[KLPF] 設定を開く」</strong>を選択します。</li>
+                            <li><strong>初期設定:</strong> 推奨機能が導入時にオンになっています。</li>
+                            <li><strong>自動ログイン:</strong> ご利用には統合認証IDとパスワードの入力が必要です。<br>
+                            パスワードをブラウザに保存している場合は<code>chrome://password-manager/passwords/kogakuin.ac.jp</code>か<br>
+                            <code>chrome://password-manager/passwords/secioss.com</code>にアクセスすることで素早くIDとパスワードを入手できます。
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="install-notes">
+                        <h3 class="notes-title">⚠️ インストール時の注意点</h3>
+                        <ul class="notes-list">
+                            <li><strong>フォルダの選択:</strong> ZIPファイルではなく、<strong style="color: var(--primary-pink);">解凍後のフォルダ</strong>を選択してください。</li>
+                            <li><strong>エラーが出た場合:</strong> <code>manifest.json</code>ファイルが含まれるフォルダを選択しているか確認してください。</li>
+                            <li><strong>フォルダの保管:</strong> 導入後、解凍したフォルダは削除しないでください。削除すると拡張機能が動作しなくなります。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="download" class="section">
+            <div class="container">
+                <div class="download-section">
+                    <div class="section-header">
+                        <span class="section-badge">Download</span>
+                        <h2 class="section-title">最新リリース</h2>
+                        <p class="section-subtitle">
+                            常に最新機能をお届け。定期的なアップデートで体験がより良くなります
+                        </p>
+                    </div>
+
+                    <div id="releases-container">
+                        </div>
+
+                    <div class="more-releases-container">
+                        <p>全てのリリース履歴はこちら</p>
+                        <div class="more-releases-buttons">
+                            <a href="https://github.com/SAYUTIM/KLPF/releases" target="_blank" rel="noopener noreferrer" class="more-releases-link">[GitHub] KLPF Releases ( ~ v3.0.0 )
+                            <a href="https://github.com/SAYUTIM/KALI/releases" target="_blank" rel="noopener noreferrer" class="more-releases-link">[GitHub] KALI Releases ( v2.0.0 ~ )</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-badge">Support</span>
+                    <h2 class="section-title fade-in">サポート・お問い合わせ</h2>
+                    <p class="section-subtitle fade-in">
+                        ご質問やフィードバックはお気軽にどうぞ
+                    </p>
+                </div>
+
+                <div style="text-align: center;">
+                    <a href="https://x.com/i/user/1769273557606150144" target="_blank" class="btn btn-primary">
+                        Twitterでお問い合わせ
+                        <span>→</span>
+                    </a>
+                </div>
+            </div>
+        </section>
     </main>
 
     <footer>
-        <div class="container">
-            <p><a href="privacy_policy.html" style="color: var(--text-muted-color); text-decoration: none;">プライバシーポリシー</a></p>
-            <p>© 2025 SAYU. All Rights Reserved.</p>
+        <div class="footer-content">
+            <div class="footer-logo">KLPF</div>
+            <p class="footer-description">
+                工学院大学での学習体験を向上させる拡張機能
+            </p>
+            
+             <div class="footer-links">
+                <a href="privacy_policy.html">プライバシーポリシー</a>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>Copyright © 2024-2025 SAYU. All Rights Reserved.</p>
+            </div>
         </div>
     </footer>
 
-    <div id="feature-modal" class="modal-overlay">
-        <div class="modal-content">
-            <button id="modal-close-button" class="modal-close-button" aria-label="Close">&times;</button>
-            <h3 id="modal-title"></h3>
-            <div id="modal-description"></div>
-        </div>
-    </div>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
-    <script src="script.js" defer></script>
+    <script src="script.js"></script>
 </body>
-
 </html>
