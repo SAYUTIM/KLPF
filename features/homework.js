@@ -16,7 +16,6 @@
  */
 
 
-
 /**
  * 指定された課題に遷移するためのフォームを動的に作成し、サブミットする。
  * @param {string} sid - セッションID。
@@ -215,17 +214,8 @@ function manageLoadingIndicator(show) {
  * メイン処理
  */
 async function main() {
-    // 実行コンテキストを判定するため、フォームとヘッダーを取得
     const form = safeQuerySelector('form#homehomlInfo[name="homeHomlActionForm"]');
-    const header = safeQuerySelector('header.lms-header#lms-header');
-
-    // 画面に課題一覧を表示するかどうかのフラグ (フォームがある場合のみ表示)
-    const shouldDisplay = !!form;
-
-    // フォームもヘッダーも存在しない場合、または既に課題コンテナが表示されている場合は処理を終了
-    if ((!shouldDisplay && !header) || document.getElementById(HOMEWORK_CONTAINER_ID)) {
-        return;
-    }
+    if (!form || document.getElementById(HOMEWORK_CONTAINER_ID)) return;
 
     const sid = getSid();
     if (!sid) {
@@ -233,77 +223,64 @@ async function main() {
         return;
     }
 
-    // --- UI表示が有効な場合のみ、キャッシュされた課題をまず表示 ---
-    if (shouldDisplay) {
-        try {
-            const { homework: cachedHtml } = await chrome.storage.local.get("homework");
-            if (cachedHtml && typeof cachedHtml === 'string') {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = cachedHtml;
-                const cachedContainer = tempDiv.firstElementChild;
-                if (cachedContainer) {
-                    cachedContainer.id = HOMEWORK_CONTAINER_ID;
-                    form.insertAdjacentElement("afterend", cachedContainer);
-                    setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
-                }
+    // キャッシュされた課題をまず表示
+    try {
+        const { homework: cachedHtml } = await chrome.storage.local.get("homework");
+        if (cachedHtml && typeof cachedHtml === 'string') {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = cachedHtml;
+            const cachedContainer = tempDiv.firstElementChild;
+            if (cachedContainer) {
+                cachedContainer.id = HOMEWORK_CONTAINER_ID;
+                form.insertAdjacentElement("afterend", cachedContainer);
+                setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
             }
-        } catch (error) {
-            console.error("[KLPF] キャッシュされた課題の読み込みに失敗しました。", error);
         }
+    } catch (error) {
+        console.error("[KLPF] キャッシュされた課題の読み込みに失敗しました。", error);
     }
 
-    // --- ここから共通のバックグラウンド更新処理 ---
-
-    // ローディング表示はUI表示時のみ。それ以外は空の関数を設定。
-    const stopLoading = shouldDisplay ? manageLoadingIndicator(true) : () => {};
-
+    // 新しい課題データをバックグラウンドで取得
+    const stopLoading = manageLoadingIndicator(true);
     try {
-        // iframeを非表示で作成し、課題一覧ページを読み込む
+
         const iframe = document.createElement("iframe");
         iframe.src = `/lms/klmsKlil/;SID=${sid}`;
         iframe.id = HOMEWORK_RAW_DATA_IFRAME_ID;
         iframe.style.display = "none";
+
         document.body.appendChild(iframe);
 
         await new Promise((resolve, reject) => {
             iframe.onload = resolve;
-            iframe.onerror = (err) => reject(new Error("iframeの読み込みに失敗しました。"));
+            iframe.onerror = reject;
         });
 
         const iframeDoc = iframe.contentDocument;
         if (!iframeDoc) throw new Error("iframeのコンテンツが取得できませんでした。");
 
-        // iframe内で課題データが描画されるのを待つ
-        const waiting_tbody = await waitForElement("tbody tr", iframeDoc, 30000); // 30秒のタイムアウト
+        // iframe内で課題のtbodyが生成されるのを待機する
+        const waiting_tbody = await waitForElement("tbody tr", iframeDoc, 30000); //タイムアウト30秒
         if (!waiting_tbody) throw new Error("課題データの待機がタイムアウトしました。");
 
-        // データの解析とHTMLコンテナの生成
         const homeworkData = parseHomeworkData(iframeDoc);
         const newHomeworkContainer = renderHomework(homeworkData);
 
-        // --- UI表示が有効な場合のみ、画面を更新 ---
-        if (shouldDisplay) {
-            const oldContainer = document.getElementById(HOMEWORK_CONTAINER_ID);
-            if (oldContainer) oldContainer.remove();
-            form.insertAdjacentElement("afterend", newHomeworkContainer);
-            setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
-        }
+        // 表示を更新し、キャッシュを保存
+        const oldContainer = document.getElementById(HOMEWORK_CONTAINER_ID);
+        if (oldContainer) oldContainer.remove();
+        form.insertAdjacentElement("afterend", newHomeworkContainer);
+        setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
 
-        // --- 共通の通知処理 ---
-
-        // 新しい課題データをキャッシュに保存
         await chrome.storage.local.set({ homework: newHomeworkContainer.outerHTML });
 
         // GASに送信
-        const { gasWebhook } = await chrome.storage.sync.get(["gasWebhook"]);
-        if (gasWebhook) {
-            sendHomeworkToGAS(homeworkData);
-        }
+        const gas_send = await chrome.storage.sync.get(["gasWebhook"]);
+        if (gas_send) sendHomeworkToGAS(homeworkData);
 
     } catch (error) {
         console.error("[KLPF] 課題一覧の更新に失敗しました。", error);
     } finally {
-        // ローディング表示の停止とiframeのクリーンアップ
         stopLoading();
         const iframe = document.getElementById(HOMEWORK_RAW_DATA_IFRAME_ID);
         if (iframe) iframe.remove();
