@@ -24,6 +24,9 @@ const URLS = {
   KOGAKUIN_LMS: 'https://study.ns.kogakuin.ac.jp/*',
   KOGAKUIN_LMS_HOME: 'https://study.ns.kogakuin.ac.jp/lms/homeHoml/*',
   KOGAKUIN_LMS_GENERAL: 'https://study.ns.kogakuin.ac.jp/lms/*',
+  KOGAKUIN_LMS_hH_KYOZAI: 'https://study.ns.kogakuin.ac.jp/lms/homeHoml/doLinkKougi*',
+  KOGAKUIN_LMS_cC: 'https://study.ns.kogakuin.ac.jp/lms/corsColl/*',
+  KOGAKUIN_LMS_sS: 'https://study.ns.kogakuin.ac.jp/lms/srcsSrcl/*',
   KOGAKUIN_AUTH: 'https://auth.kogakuin.ac.jp/*',
   SECIOSS: 'https://slink.secioss.com/*',
   GOOGLE_MEET: 'https://meet.google.com/*',
@@ -119,6 +122,14 @@ export const CONTENT_SCRIPTS_CONFIG = [
         matches: [URLS.KOGAKUIN_LMS_GENERAL],
         runAt: 'document_end',
     },*/
+    {
+        id: 'kyozaiopen',
+        storageKey: 'kyozaiopen',
+        js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}kyozaiopen.js`],
+        matches: [URLS.KOGAKUIN_LMS_hH_KYOZAI,URLS.KOGAKUIN_LMS_cC,URLS.KOGAKUIN_LMS_sS],
+        runAt: 'document_end',
+        enabledByDefault: true,
+    },
 ];
 
 /**

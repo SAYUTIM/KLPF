@@ -26,6 +26,7 @@ const SETTINGS_CONFIG = [
     { id: 'home-work',        key: 'homework',      type: 'checked', storage: 'sync' },
     { id: 'logout-block',    key: 'logoutblock',   type: 'checked', storage: 'sync' },
     //{ id: 'custom-theme',    key: 'customtheme',   type: 'checked', storage: 'sync' },
+    { id: 'kyozai-open',    key: 'kyozaiopen',   type: 'checked', storage: 'sync' },
 
     // 自動出席の詳細設定 (syncストレージで同期)
     { id: 'class-term',      key: 'attendC',       type: 'value',   storage: 'sync' },
