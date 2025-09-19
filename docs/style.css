@@ -801,6 +801,12 @@ header.scrolled .nav-menu a:hover {
     font-size: 1rem;
 }
 
+.changelog-arrow {
+    color: var(--primary-blue);
+    margin-right: 0.25rem;
+    font-weight: bold;
+}
+
 .download-button {
     background: linear-gradient(45deg, var(--primary-blue), var(--primary-pink));
     color: white;

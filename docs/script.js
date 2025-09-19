@@ -287,22 +287,21 @@ class ModernKLPFSite {
 
             lines.forEach(line => {
                 const trimmed = line.trim();
+                const isIndented = (/^\s{2,}|^\u3000/).test(line) && trimmed !== '';
                 const isListItem = /^[\s*・-]+\s*/.test(trimmed);
-                const isIndented = /^\s{2,}/.test(line) && trimmed !== '';
 
                 if (isListItem) {
                     finalizeLi();
                     currentLiContent = trimmed.replace(/^[\s*・-]+\s*/, '');
                 } else if (isIndented && currentLiContent) {
-                    currentLiContent += `<span class="changelog-sub-item">${trimmed}</span>`;
+                    const subItemText = trimmed.replace(/^(→|-&gt;)\s*/, '<span class="changelog-arrow">→</span> ');
+                    currentLiContent += `<span class="changelog-sub-item">${subItemText}</span>`;
                 } else {
                     finalizeLi();
                     if (trimmed.startsWith('#')) {
                         htmlParts.push('<h4>' + trimmed.replace(/^#+\s*/, '') + '</h4>');
                     } else if (trimmed !== '') {
-                        htmlParts.push('<p>' + line + '</p>');
-                    } else {
-                        htmlParts.push('<br>');
+                        htmlParts.push('<p>' + trimmed + '</p>');
                     }
                 }
             });
