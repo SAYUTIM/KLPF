@@ -53,11 +53,11 @@
             DETAIL_BULK_BUTTON: 'klpf-detail-bulk-open-btn',
         },
         MESSAGES: {
-            FETCHING: '教材情報を取得中...', 
+            FETCHING: '教材情報を取得中...',
             NAVIGATING: '教材詳細ページに移動中...',
-            OPENING: '開封中...', 
+            OPENING: '開封中...',
             PROCESSING: '処理中...',
-            UPDATING_STATUS: 'ステータス更新中...', 
+            UPDATING_STATUS: 'ステータス更新中...',
             NO_MATERIALS_FOUND: 'この資料には開封できるファイルが見つかりませんでした。',
             FETCH_FAILED: '教材情報の取得に失敗しました。手動で教材詳細ページから開封してください。',
             BULK_OPEN_FAILED: '教材の一括開封中にエラーが発生しました。',
@@ -79,13 +79,13 @@
             },
             CONFIRM_DIRECT_PROMPT: function(materials) {
                 var message = materials.length + '個の資料を直接開封します。';
-                message += '資料一覧:\n' + materials.map(function(m, i) { return (i + 1) + '. ' + m.name; }).join('\n') + '\n\n';
+                message += '\n資料一覧:\n' + materials.map(function(m, i) { return (i + 1) + '. ' + m.name; }).join('\n') + '\n\n';
                 message += 'よろしいですか？';
                 return message;
             },
             CONFIRM_DETAIL_PROMPT: function(materials) {
                 var message = materials.length + '個の資料を一括で開封し、参照済みにします。';
-                message += '資料一覧:\n' + materials.map(function(m, i) { return (i + 1) + '. ' + m.name + ' (' + m.type + ')'; }).join('\n') + '\n\n';
+                message += '\n資料一覧:\n' + materials.map(function(m, i) { return (i + 1) + '. ' + m.name + ' (' + m.type + ')'; }).join('\n') + '\n\n';
                 message += 'よろしいですか？';
                 return message;
             },
@@ -337,18 +337,24 @@
 
             const windowMatch = onclick.match(/openWindow\('([^']+)'/);
             if (windowMatch) {
-                const rawUrl = windowMatch[1].replace(/&amp;/g, '&');
-                let finalUrl = rawUrl;
+                const trackingUrl = windowMatch[1].replace(/&amp;/g, '&');
+                let finalUrl = trackingUrl; // 解析失敗時のフォールバック
                 try {
-                    const urlObj = new URL(rawUrl, window.location.origin);
-                    if (urlObj.pathname.includes("/srcsSrcl/downloadUrl") && urlObj.searchParams.has("fileurl")) {
-                        finalUrl = decodeURIComponent(urlObj.searchParams.get("fileurl"));
+                    // 安全なURLSearchParamsを使用してfinalUrlを抽出
+                    const fullTrackingUrl = new URL(trackingUrl, window.location.origin);
+                    if (fullTrackingUrl.searchParams.has("fileurl")) {
+                        finalUrl = fullTrackingUrl.searchParams.get("fileurl");
                     }
                 } catch (e) {
-                    logDebug("URLの解析に失敗:", rawUrl, e);
+                    logDebug("Final URLの解析に失敗:", trackingUrl, e);
                 }
-                finalUrl = finalUrl.endsWith("/") ? finalUrl.slice(0, -1) : finalUrl;
-                return { name: name, type: 'external', trackingUrl: finalUrl, uniqueKey: 'external_' + finalUrl };
+                return {
+                    name: name,
+                    type: 'external',
+                    trackingUrl: trackingUrl, // アクセス記録用
+                    finalUrl: finalUrl,       // ユーザー表示用
+                    uniqueKey: 'external_' + trackingUrl
+                };
             }
 
             return null;
@@ -369,7 +375,7 @@
                     case 'reference':
                         return this._openReference(material.fileId, material.officeFlg);
                     case 'external':
-                        return this._openExternal(material.trackingUrl);
+                        return this._openExternal(material);
                     default:
                         console.warn('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 未対応の教材タイプ: ' + material.type, material);
                         return false;
@@ -416,23 +422,55 @@
             return this._createIframeFormSubmit(fileId, null, true, officeFlg);
         }
 
-        static _openExternal(url) {
+        static _openExternal(material) {
             try {
-                const absoluteUrl = url.startsWith('/') ? new URL(LMS_URL).origin + url : url;
-                window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+                // 1. バックグラウンドでトラッキングURLにアクセスして参照を記録
+                const trackingIframe = document.createElement('iframe');
+                trackingIframe.style.display = 'none';
+                trackingIframe.src = material.trackingUrl.startsWith('/') ? new URL(LMS_URL).origin + material.trackingUrl : material.trackingUrl;
+                document.body.appendChild(trackingIframe);
+
+                // 一定時間後にiframeをDOMから削除してクリーンアップ
+                setTimeout(() => {
+                    if (trackingIframe.parentNode) {
+                        trackingIframe.parentNode.removeChild(trackingIframe);
+                    }
+                }, 5000);
+
+                // 2. ユーザーには最終的なURLを新しいタブで表示
+                window.open(material.finalUrl, '_blank', 'noopener,noreferrer');
+
+                logDebug(`トラッキングURLにアクセス: ${trackingIframe.src}`);
+                logDebug(`最終URLを開きました: ${material.finalUrl}`);
                 return true;
+
             } catch (error) {
-                console.error('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 外部リンクを開けませんでした:', url, error);
+                console.error('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 外部リンクを開けませんでした:', material, error);
+                // エラーが発生した場合は、少なくともトラッキングURLを開く試みをする（フォールバック）
+                try {
+                    const absoluteUrl = material.trackingUrl.startsWith('/') ? new URL(LMS_URL).origin + material.trackingUrl : material.trackingUrl;
+                    window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+                } catch (fallbackError) {
+                    // Fallback failed
+                }
                 return false;
             }
         }
 
+        /**
+         * BUGFIX: 既存フォームのダウンロード処理を修正
+         * @description ダウンロード時にページ遷移が起きないよう、隠しiframeをターゲットにする方式に変更。
+         * これにより、複数のファイルを連続してダウンロードできるようになります。
+         */
         static _submitSrclForm(fileId, syosaiId, isReference, officeFlg) {
             const form = safeQuerySelector(FEATURE_CONSTANTS.SELECTORS.SRCL_FORM);
             if (!form) return false;
 
             const sid = getSid();
             if (!sid) return false;
+
+            const originalTarget = form.target; // 元のターゲットを保存
+            const originalAction = form.action; // 元のアクションを保存
 
             try {
                 const fileIdInput = safeQuerySelector(FEATURE_CONSTANTS.SELECTORS.FORM_FILE_ID, form);
@@ -444,20 +482,41 @@
                 }
 
                 if (isReference) {
+                    // 参照（Reference）の場合は別タブで開くので、従来のままでOK
                     form.action = officeFlg ?
                         '/lms/srcsSrcl/downloadOffice;SID=' + sid :
                         '/lms/srcsSrcl/downloadImage;SID=' + sid;
                     form.target = '_blank';
+                    form.submit();
                 } else {
+                    // ダウンロードの場合は、隠しiframeをターゲットにしてページ遷移を防ぐ
+                    const iframe = document.createElement('iframe');
+                    const iframeName = 'klpf_download_iframe_' + Date.now();
+                    iframe.name = iframeName;
+                    iframe.style.display = 'none';
+                    document.body.appendChild(iframe);
+
                     form.action = '/lms/srcsSrcl/downloadFile;SID=' + sid;
-                    form.target = '';
+                    form.target = iframeName;
+                    form.submit();
+
+                    // 一定時間後に後片付け
+                    setTimeout(() => {
+                        if (iframe.parentNode) {
+                            iframe.parentNode.removeChild(iframe);
+                        }
+                    }, 10000);
                 }
-                form.submit();
-                if (isReference) form.target = '_self';
                 return true;
             } catch (error) {
                 console.error('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] srcl_formの操作に失敗', error);
                 return false;
+            } finally {
+                // フォームの状態を元に戻す
+                setTimeout(() => {
+                    form.target = originalTarget;
+                    form.action = originalAction;
+                }, 500);
             }
         }
 
@@ -517,7 +576,7 @@
             try {
                 const materials = await MaterialParser.fetchAndParseMaterials(kyozaiId, kyozaiSyCd);
                 if (materials.length === 0) {
-                    alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
+                    // alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
                     UIManager.updateButtonState(button, originalText, false);
                     return;
                 }
@@ -544,15 +603,15 @@
             try {
                 const allMaterials = MaterialParser.extractFromDetailPage();
                 if (allMaterials.length === 0) {
-                    alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
+                    // alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
                     UIManager.updateButtonState(button, originalText, false);
                     return;
                 }
 
-                if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_DETAIL_PROMPT(allMaterials))) {
-                    UIManager.updateButtonState(button, originalText, false);
-                    return;
-                }
+                // if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_DETAIL_PROMPT(allMaterials))) {
+                //     UIManager.updateButtonState(button, originalText, false);
+                //     return;
+                // }
 
                 const externals = allMaterials.filter(function(m) { return m.type === 'external'; });
                 externals.forEach(function(m) { Downloader.processMaterial(m); });
@@ -569,7 +628,7 @@
                     window.link();
                 }
 
-                alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(allMaterials.length));
+                // alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(allMaterials.length));
                 UIManager.updateButtonState(button, originalText, false);
 
             } catch (error) {
@@ -587,16 +646,31 @@
             }
 
             const bulkData = state.getBulkOperation();
-            if (!bulkData || !Array.isArray(bulkData.materials) || bulkData.materials.length === 0) {
-                logDebug("一括操作データ不整合のため自動実行をスキップ");
+            if (!bulkData) {
+                logDebug("一括操作データがないため自動実行をスキップ");
                 state.clearBulkOperation();
                 return;
             }
 
-            console.info('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 自動ダウンロード開始（教材数: ' + bulkData.materials.length + '）');
+            const materialsOnPage = MaterialParser.extractFromDetailPage();
+            if (materialsOnPage.length === 0) {
+                logDebug("詳細ページで教材が見つからなかったため処理を終了");
+                state.clearBulkOperation();
 
-            await this._processMaterialsInSequence(bulkData.materials);
+                if (typeof window.bacKyozai === 'function') {
+                    window.bacKyozai();
+                } else {
+                    window.location.href = bulkData.returnUrl;
+                }
+                return;
+            }
 
+            console.info('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 自動開封処理を開始（教材数: ' + materialsOnPage.length + '）');
+
+            // ページ内の全教材に対して処理を実行
+            await this._processMaterialsInSequence(materialsOnPage);
+
+            // 参照状況を更新するLMSの関数を呼び出す
             if (typeof window.link === 'function') {
                 try {
                     window.link();
@@ -605,14 +679,16 @@
                 }
             }
 
+            // 完了情報を保存
             state.setCompletionData({
-                materialCount: bulkData.materials.length,
+                materialCount: materialsOnPage.length, 
                 buttonSelector: bulkData.buttonSelector,
                 originalText: bulkData.originalText
             });
 
             await sleep(CONFIG.RETURN_DELAY);
 
+            // 元の教材一覧ページに戻る
             if (typeof window.bacKyozai === 'function') {
                 window.bacKyozai();
             } else {
@@ -621,18 +697,18 @@
         }
 
         static _handleNavigationRequired(kyozaiId, kyozaiSyCd, materials, button, originalText) {
-            const downloadable = materials.filter(function(m) { return m.type === 'download' || m.type === 'reference'; });
             const externals = materials.filter(function(m) { return m.type === 'external'; });
 
-            if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_PROMPT(materials, downloadable, externals))) {
-                UIManager.updateButtonState(button, originalText, false);
-                return;
-            }
+            // if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_PROMPT(materials, downloadable, externals))) {
+            //     UIManager.updateButtonState(button, originalText, false);
+            //     return;
+            // }
 
+            // 外部リンクのみ先に開く
             externals.forEach(function(m) { Downloader.processMaterial(m); });
 
+            // 【変更】遷移先に教材リスト(materials)を渡さない
             state.setBulkOperation({
-                materials: downloadable,
                 returnUrl: window.location.href,
                 originalText: originalText,
                 buttonSelector: '.' + FEATURE_CONSTANTS.CLASS_NAMES.MAIN_BULK_BUTTON + '[data-kyozai-key="' + kyozaiId + '_' + kyozaiSyCd + '"]'
@@ -651,20 +727,20 @@
 
         static async _handleDirectOpening(materials, button, originalText) {
             if (materials.length === 0) {
-                alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
+                // alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
                 UIManager.updateButtonState(button, originalText, false);
                 return;
             }
 
-            if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_DIRECT_PROMPT(materials))) {
-                UIManager.updateButtonState(button, originalText, false);
-                return;
-            }
+            // if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_DIRECT_PROMPT(materials))) {
+            //     UIManager.updateButtonState(button, originalText, false);
+            //     return;
+            // }
 
             UIManager.updateButtonState(button, FEATURE_CONSTANTS.MESSAGES.OPENING, true);
             await this._processMaterialsInSequence(materials, button);
 
-            alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(materials.length));
+            // alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(materials.length));
             UIManager.updateButtonState(button, originalText, false);
         }
 
@@ -778,7 +854,7 @@
                     this.updateButtonState(button, completionData.originalText, false);
                 }
                 setTimeout(function() {
-                    alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(completionData.materialCount));
+                    // alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(completionData.materialCount));
                     state.clearBulkOperation();
                 }, 500);
             }
@@ -843,6 +919,7 @@
             }
         }
     }
+
 
     // =========================================================================
     // 初期化 (Initialization)
