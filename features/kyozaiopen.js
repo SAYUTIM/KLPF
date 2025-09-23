@@ -366,7 +366,7 @@
     // =========================================================================
 
     class Downloader {
-        static processMaterial(material) {
+        static async processMaterial(material) {
             logDebug("教材処理開始:", material);
             try {
                 switch (material.type) {
@@ -375,7 +375,7 @@
                     case 'reference':
                         return this._openReference(material.fileId, material.officeFlg);
                     case 'external':
-                        return this._openExternal(material);
+                        return await this._openExternal(material);
                     default:
                         console.warn('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 未対応の教材タイプ: ' + material.type, material);
                         return false;
@@ -423,38 +423,43 @@
         }
 
         static _openExternal(material) {
-            try {
-                // 1. バックグラウンドでトラッキングURLにアクセスして参照を記録
-                const trackingIframe = document.createElement('iframe');
-                trackingIframe.style.display = 'none';
-                trackingIframe.src = material.trackingUrl.startsWith('/') ? new URL(LMS_URL).origin + material.trackingUrl : material.trackingUrl;
-                document.body.appendChild(trackingIframe);
-
-                // 一定時間後にiframeをDOMから削除してクリーンアップ
-                setTimeout(() => {
-                    if (trackingIframe.parentNode) {
-                        trackingIframe.parentNode.removeChild(trackingIframe);
-                    }
-                }, 5000);
-
-                // 2. ユーザーには最終的なURLを新しいタブで表示
-                window.open(material.finalUrl, '_blank', 'noopener,noreferrer');
-
-                logDebug(`トラッキングURLにアクセス: ${trackingIframe.src}`);
-                logDebug(`最終URLを開きました: ${material.finalUrl}`);
-                return true;
-
-            } catch (error) {
-                console.error('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 外部リンクを開けませんでした:', material, error);
-                // エラーが発生した場合は、少なくともトラッキングURLを開く試みをする（フォールバック）
+            return new Promise((resolve) => {
                 try {
-                    const absoluteUrl = material.trackingUrl.startsWith('/') ? new URL(LMS_URL).origin + material.trackingUrl : material.trackingUrl;
-                    window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
-                } catch (fallbackError) {
-                    // Fallback failed
+                    const trackingIframe = document.createElement('iframe');
+                    trackingIframe.style.display = 'none';
+
+                    const cleanupAndResolve = (status) => {
+                        clearTimeout(timeoutId);
+                        if (trackingIframe.parentNode) {
+                            trackingIframe.parentNode.removeChild(trackingIframe);
+                        }
+                        resolve(status);
+                    };
+
+                    trackingIframe.onload = () => {
+                        logDebug(`トラッキング成功: ${trackingIframe.src}`);
+                        cleanupAndResolve(true);
+                    };
+
+                    trackingIframe.onerror = () => {
+                        console.error(`トラッキング失敗: ${trackingIframe.src}`);
+                        cleanupAndResolve(false);
+                    };
+
+                    const timeoutId = setTimeout(() => {
+                        console.warn(`トラッキング タイムアウト: ${trackingIframe.src}`);
+                        cleanupAndResolve(false);
+                    }, 5000); // 5秒でタイムアウト
+
+                    trackingIframe.src = material.trackingUrl.startsWith('/') ? new URL(LMS_URL).origin + material.trackingUrl : material.trackingUrl;
+                    document.body.appendChild(trackingIframe);
+                    logDebug(`トラッキングURLにアクセス開始: ${trackingIframe.src}`);
+
+                } catch (error) {
+                    console.error(`[${FEATURE_CONSTANTS.FEATURE_NAME}] 外部リンクのトラッキングで例外発生:`, material, error);
+                    resolve(false);
                 }
-                return false;
-            }
+            });
         }
 
         /**
@@ -482,7 +487,6 @@
                 }
 
                 if (isReference) {
-                    // 参照（Reference）の場合は別タブで開くので、従来のままでOK
                     form.action = officeFlg ?
                         '/lms/srcsSrcl/downloadOffice;SID=' + sid :
                         '/lms/srcsSrcl/downloadImage;SID=' + sid;
@@ -599,38 +603,36 @@
         static async handleDetailPageClick(button) {
             const originalText = button.textContent;
             UIManager.updateButtonState(button, FEATURE_CONSTANTS.MESSAGES.PROCESSING, true);
-
+        
             try {
                 const allMaterials = MaterialParser.extractFromDetailPage();
                 if (allMaterials.length === 0) {
-                    // alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
                     UIManager.updateButtonState(button, originalText, false);
                     return;
                 }
-
-                // if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_DETAIL_PROMPT(allMaterials))) {
-                //     UIManager.updateButtonState(button, originalText, false);
-                //     return;
-                // }
-
-                const externals = allMaterials.filter(function(m) { return m.type === 'external'; });
-                externals.forEach(function(m) { Downloader.processMaterial(m); });
-
-                const downloadable = allMaterials.filter(function(m) { return m.type !== 'external'; });
-                if (downloadable.length > 0) {
-                    await this._processMaterialsInSequence(downloadable, button);
-                }
-
+        
+                // 1. 外部リンクのタブだけ先に一斉に開く
+                const externals = allMaterials.filter(m => m.type === 'external');
+                externals.forEach(material => {
+                    try {
+                        window.open(material.finalUrl, '_blank', 'noopener,noreferrer');
+                    } catch (e) {
+                        console.error(`[${FEATURE_CONSTANTS.FEATURE_NAME}] 最終URLを開けませんでした:`, material, e);
+                    }
+                });
+        
+                // 2. 全ての教材の参照記録とダウンロードを逐次実行する
+                await this._processMaterialsInSequence(allMaterials, button);
+        
                 await sleep(CONFIG.RETURN_DELAY);
                 UIManager.updateButtonState(button, FEATURE_CONSTANTS.MESSAGES.UPDATING_STATUS, true);
-
+        
                 if (typeof window.link === 'function') {
                     window.link();
                 }
-
-                // alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(allMaterials.length));
+        
                 UIManager.updateButtonState(button, originalText, false);
-
+        
             } catch (error) {
                 console.error('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 詳細ページ一括開封処理でエラー:', error);
                 alert(FEATURE_CONSTANTS.MESSAGES.BULK_OPEN_FAILED);
@@ -696,26 +698,27 @@
             }
         }
 
-        static _handleNavigationRequired(kyozaiId, kyozaiSyCd, materials, button, originalText) {
+        static _handleNavigationRequired(kyozaiId, kyozaiSyCd, materials, button, originalText) { // ★★★ 修正箇所 ★★★
             const externals = materials.filter(function(m) { return m.type === 'external'; });
-
-            // if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_PROMPT(materials, downloadable, externals))) {
-            //     UIManager.updateButtonState(button, originalText, false);
-            //     return;
-            // }
-
-            // 外部リンクのみ先に開く
-            externals.forEach(function(m) { Downloader.processMaterial(m); });
-
-            // 【変更】遷移先に教材リスト(materials)を渡さない
+        
+            // 外部リンクのタブだけ先に一斉に開く（参照記録はしない）
+            externals.forEach(material => {
+                try {
+                    window.open(material.finalUrl, '_blank', 'noopener,noreferrer');
+                } catch (e) {
+                    console.error(`[${FEATURE_CONSTANTS.FEATURE_NAME}] 最終URLを開けませんでした:`, material, e);
+                }
+            });
+        
+            // 状態を保存して詳細ページに遷移する（詳細ページ側で全教材の参照記録が行われる）
             state.setBulkOperation({
                 returnUrl: window.location.href,
                 originalText: originalText,
                 buttonSelector: '.' + FEATURE_CONSTANTS.CLASS_NAMES.MAIN_BULK_BUTTON + '[data-kyozai-key="' + kyozaiId + '_' + kyozaiSyCd + '"]'
             });
-
+        
             UIManager.updateButtonState(button, FEATURE_CONSTANTS.MESSAGES.NAVIGATING, true);
-
+        
             setTimeout(() => {
                 if (typeof window.kyozaiTitleLink === 'function') {
                     window.kyozaiTitleLink(kyozaiId, kyozaiSyCd);
@@ -727,19 +730,23 @@
 
         static async _handleDirectOpening(materials, button, originalText) {
             if (materials.length === 0) {
-                // alert(FEATURE_CONSTANTS.MESSAGES.NO_MATERIALS_FOUND);
                 UIManager.updateButtonState(button, originalText, false);
                 return;
             }
-
-            // if (!confirm(FEATURE_CONSTANTS.MESSAGES.CONFIRM_DIRECT_PROMPT(materials))) {
-            //     UIManager.updateButtonState(button, originalText, false);
-            //     return;
-            // }
-
+        
+            // 1. 先にユーザー向けのタブを一斉に開く
+            materials.forEach(material => {
+                try {
+                    window.open(material.finalUrl, '_blank', 'noopener,noreferrer');
+                } catch (e) {
+                    console.error(`[${FEATURE_CONSTANTS.FEATURE_NAME}] 最終URLを開けませんでした:`, material, e);
+                }
+            });
+        
+            // 2. 次に、裏側で参照記録を逐次実行する
             UIManager.updateButtonState(button, FEATURE_CONSTANTS.MESSAGES.OPENING, true);
-            await this._processMaterialsInSequence(materials, button);
-
+            await this._processMaterialsInSequence(materials, button); // ここでは参照記録だけが行われる
+        
             // alert(FEATURE_CONSTANTS.MESSAGES.COMPLETED_ALERT(materials.length));
             UIManager.updateButtonState(button, originalText, false);
         }
@@ -749,7 +756,8 @@
                 if (button) {
                     button.textContent = FEATURE_CONSTANTS.MESSAGES.OPENING + ' (' + (i + 1) + '/' + materials.length + ')';
                 }
-                Downloader.processMaterial(materials[i]);
+                // processMaterialが非同期になったので、完了を待つ
+                await Downloader.processMaterial(materials[i]);
                 await sleep(CONFIG.OPEN_DELAY);
             }
         }
