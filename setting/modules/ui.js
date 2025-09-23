@@ -19,6 +19,7 @@ const elements = {
     loadingScreen: null,
     particleCanvas: null,
     customCursor: null,
+    updateNotification: null,
     // 機能スイッチ
     autoLoginCheckbox: null,
     autoAttendCheckbox: null,
@@ -49,6 +50,7 @@ function cacheDOMElements() {
     elements.loadingScreen = document.querySelector('.loading');
     elements.particleCanvas = document.getElementById('particle-canvas');
     elements.customCursor = document.querySelector('.custom-cursor');
+    elements.updateNotification = document.getElementById('update-notification');
 
     // 機能スイッチ
     elements.autoLoginCheckbox = document.getElementById("auto-login");
@@ -258,6 +260,20 @@ function hideModal() {
 }
 
 // --- UI更新ヘルパー ---
+
+/**
+ * ページにアップデート通知バーを表示。
+ * @param {string} newVersion - 表示する新しいバージョン文字列。
+ */
+export function showUpdateNotification(newVersion) {
+    if (!elements.updateNotification) return;
+
+    elements.updateNotification.innerHTML = `
+        新しいバージョン ( ${newVersion} ) が利用可能です！<br>
+        <a href="https://sayutim.github.io/KLPF/#download" target="_blank" rel="noopener noreferrer">アップデートはこちら</a>
+    `;
+    elements.updateNotification.classList.add('visible');
+}
 
 function updateSwitchGradientLabels() {
     const switches = document.querySelectorAll(".switch-container");

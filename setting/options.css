@@ -19,6 +19,41 @@ body {
     position: relative;
 }
 
+.update-notification {
+    display: none;
+    background-color: rgba(255, 171, 0, 0.15);
+    border: 2px solid #ffab00;
+    border-radius: 10px;
+    padding: 15px;
+    margin: -10px auto 20px auto;
+    text-align: center;
+    color: #ffd966;
+    font-size: 18px;
+    box-shadow: 0 0 15px rgba(255, 171, 0, 0.4);
+    width: 90%;
+    max-width: 500px;
+    transition: opacity 0.5s, transform 0.5s;
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.update-notification.visible {
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.update-notification a {
+    color: #ffc107;
+    font-weight: bold;
+    text-decoration: underline;
+    cursor: none;
+}
+
+.update-notification a:hover {
+    color: #ffffff;
+}
+
 #particle-canvas {
     background-color: black;
     height: 100vh;

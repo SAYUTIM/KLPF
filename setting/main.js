@@ -6,8 +6,9 @@
  * @module main
  */
 
-import { loadAndApplySettings, addEventListenersToSettings, saveSettings } from './modules/settings.js';
+import { loadAndApplySettings, addEventListenersToSettings } from './modules/settings.js';
 import { initializeUI } from './modules/ui.js';
+import { checkForUpdates } from './modules/updatecheck.js';
 
 /**
  * アプリケーションを初期化する。
@@ -21,6 +22,9 @@ async function main() {
 
     // 各設定項目に変更があった場合に保存処理を紐付ける
     addEventListenersToSettings();
+
+    // アップデートを確認する
+    await checkForUpdates();
 }
 
 // 実行開始
