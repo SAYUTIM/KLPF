@@ -40,6 +40,9 @@ const elements = {
     modalMessage: null,
     modalLink: null,
     modalCloseButton: null,
+    // TOTP
+    totpSecretInput: null,
+    totpStatus: null,
 };
 
 /**
@@ -75,6 +78,10 @@ function cacheDOMElements() {
     elements.modalMessage = document.getElementById('modal-message');
     elements.modalLink = document.getElementById('modal-link');
     elements.modalCloseButton = document.getElementById('modal-close-button');
+
+    // TOTP
+    elements.totpSecretInput = document.getElementById('totp-secret');
+    elements.totpStatus = document.getElementById('totp-status');
 }
 
 // --- UI初期化処理 ---
@@ -187,6 +194,9 @@ function showStatusMessage(text, color = 'lightgreen', duration = STATUS_MESSAGE
 function handleSettingsLoaded() {
     updateSwitchGradientLabels();
     reorderAndShowPanels();
+
+    // 設定読み込み後にTOTP鍵を検証
+    validateTotpSecret();
 }
 
 function handleDOMContentLoaded() {
@@ -196,6 +206,7 @@ function handleDOMContentLoaded() {
     initCustomCursor();
     setupInteractions();
     addEventListenersToUI();
+    initTotpValidation();
 }
 
 function addEventListenersToUI() {
@@ -416,6 +427,47 @@ function createPowderParticle() {
         this.remove();
         createPowderParticle();
     });
+}
+
+// --- TOTP関連 ---
+
+/**
+ * TOTP秘密鍵のバリデーションを初期化する。
+ * 入力変更時に鍵が正常かどうかを検証して表示する。
+ */
+function initTotpValidation() {
+    if (!elements.totpSecretInput) return;
+    elements.totpSecretInput.addEventListener('input', validateTotpSecret);
+}
+
+/**
+ * TOTP秘密鍵が正常かどうかを検証し、結果を表示する。
+ */
+async function validateTotpSecret() {
+    const secret = elements.totpSecretInput?.value?.trim();
+    if (!elements.totpStatus) return;
+
+    if (!secret) {
+        elements.totpStatus.textContent = '';
+        elements.totpStatus.className = 'totp-status';
+        return;
+    }
+
+    if (typeof window.generateTOTP !== 'function') return;
+
+    try {
+        const code = await window.generateTOTP(secret);
+        if (code) {
+            elements.totpStatus.textContent = '✓ 有効な鍵です';
+            elements.totpStatus.className = 'totp-status totp-valid';
+        } else {
+            elements.totpStatus.textContent = '✗ 無効な鍵です';
+            elements.totpStatus.className = 'totp-status totp-invalid';
+        }
+    } catch {
+        elements.totpStatus.textContent = '✗ 無効な鍵です';
+        elements.totpStatus.className = 'totp-status totp-invalid';
+    }
 }
 
 /**

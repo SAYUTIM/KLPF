@@ -17,6 +17,7 @@ const PATHS = {
 const MODULES = {
   CONSTANTS: `${PATHS.MODULES}constants.js`,
   DOM_UTILS: `${PATHS.MODULES}dom-utils.js`,
+  TOTP: `${PATHS.MODULES}totp.js`,
 };
 
 // スクリプトを注入するURLパターン。
@@ -54,7 +55,7 @@ export const CONTENT_SCRIPTS_CONFIG = [
     {
         id: 'AutoLoginScript',
         storageKey: 'autoLogin',
-        js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}AutoLogin.js`],
+        js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, MODULES.TOTP, `${PATHS.FEATURES}AutoLogin.js`],
         matches: [URLS.KOGAKUIN_LMS, URLS.SECIOSS],
         runAt: 'document_start',
         enabledByDefault: true,

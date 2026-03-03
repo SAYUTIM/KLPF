@@ -540,6 +540,21 @@ select:hover {
     outline: none;
 }
 
+.totp-status {
+    display: block;
+    font-size: 14px;
+    margin: 8px 0 5px 0;
+    min-height: 1.2em;
+}
+
+.totp-status.totp-valid {
+    color: #66ff66;
+}
+
+.totp-status.totp-invalid {
+    color: #ff6e6e;
+}
+
 .options-container .inline-container {
     display: flex;
     gap: 10px;
