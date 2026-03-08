@@ -16,6 +16,7 @@ if (typeof LMS_URL === 'undefined') {
     var KU_SSO = 'https://slink.secioss.com/';
     var SSO_PRELOGIN_URL = `${KU_SSO}pub/prelogin.cgi`;
     var SSO_LOGIN_URL = `${KU_SSO}pub/login.cgi`;
+    var SSO_OTP_URL = `${KU_SSO}pub/otplogin.cgi`;
     var SSO_TIMEOUT_URL = `${KU_SSO}sso/timeout.cgi`;
 
     // 正規表現

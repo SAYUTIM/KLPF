@@ -7,12 +7,12 @@
 
 
 /**
- * 保存されたユーザーIDとパスワードを取得する。
- * @returns {Promise<{username?: string, password?: string}>}
+ * 保存されたユーザーIDとパスワード、TOTP秘密鍵を取得する。
+ * @returns {Promise<{username?: string, password?: string, totpSecret?: string}>}
  */
 async function getCredentials() {
     try {
-        return await chrome.storage.local.get(["username", "password"]);
+        return await chrome.storage.local.get(["username", "password", "totpSecret"]);
     } catch (error) {
         console.error("[KLPF] ログイン情報の取得に失敗しました。", error);
         return {};
@@ -77,12 +77,51 @@ function lms_errorpage() {
     location.pathname = "/lms/lginLgir/";
 }
 
+/**
+ * 統合認証のTOTP入力ページ（otplogin.cgi）を処理する。
+ * @param {string} totpSecret - Base32エンコードされたTOTP秘密鍵
+ */
+async function handleTotpPage(totpSecret) {
+    
+    if (!totpSecret) return;
+
+    const otpInput = safeQuerySelector(
+        "input#password_input.onetime_input, input[autocomplete='one-time-code']"
+    );
+    if (!otpInput) {
+        console.warn("[KLPF] OTP入力フィールドが見つかりませんでした。");
+        return;
+    }
+
+    const code = await generateTOTP(totpSecret);
+    if (!code) {
+        console.error("[KLPF] TOTPコードの生成に失敗しました。秘密鍵を確認してください。");
+        return;
+    }
+
+    otpInput.value = code;
+    otpInput.dispatchEvent(new Event('input', { bubbles: true }));
+    otpInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // MFA記憶チェックボックスが存在すればチェックする
+    const rememberCheckbox = safeQuerySelector("input#remember[name='remember']");
+    if (rememberCheckbox && !rememberCheckbox.checked) {
+        rememberCheckbox.click();
+    }
+
+    const form = safeQuerySelector("form#login");
+    if (form) {
+        form.submit();
+    } else {
+        console.warn("[KLPF] OTPフォームが見つかりませんでした。");
+    }
+}
 
 /**
  * メイン処理
  */
 async function main() {
-    const { username, password } = await getCredentials();
+    const { username, password, totpSecret } = await getCredentials();
 
     if (!username || !password) {
         console.log("[KLPF] ユーザー名またはパスワードが未設定のため、自動ログインをスキップします。");
@@ -97,6 +136,8 @@ async function main() {
         handlePreLogin(username);
     } else if (href.startsWith(SSO_LOGIN_URL)) {
         handleLogin(password);
+    } else if (href.startsWith(SSO_OTP_URL)) {
+        await handleTotpPage(totpSecret);
     } else if (href.startsWith(SSO_TIMEOUT_URL)) {
         sso_timeoutpage();
     } else if (href.startsWith(LMS_ERROR_URL)) {

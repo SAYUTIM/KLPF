@@ -118,6 +118,9 @@
                     <input type="text" id="username" placeholder="ユーザー名を入力">
                     <label for="password">パスワード</label>
                     <input type="password" id="password" placeholder="パスワードを入力">
+                    <label for="totp-secret">TOTP 秘密鍵 (オプション)</label>
+                    <input type="password" id="totp-secret" placeholder="秘密鍵を入力">
+                    <span id="totp-status" class="totp-status"></span>
                 </div>
             </div>
 
@@ -188,6 +191,7 @@
         </div>
     </div>
 
+    <script src="../features/modules/totp.js"></script>
     <script type="module" src="main.js"></script>
 
     <div id="validation-modal" class="modal-overlay">

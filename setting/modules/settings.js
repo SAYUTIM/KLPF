@@ -15,6 +15,7 @@ const SETTINGS_CONFIG = [
     // 認証情報 (localストレージに保存)
     { id: 'username',        key: 'username',      type: 'value',   storage: 'local' },
     { id: 'password',        key: 'password',      type: 'value',   storage: 'local' },
+    { id: 'totp-secret',     key: 'totpSecret',    type: 'value',   storage: 'local' },
 
     // 機能の有効/無効 (syncストレージで同期)
     { id: 'auto-login',      key: 'autoLogin',     type: 'checked', storage: 'sync' },
