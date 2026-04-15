@@ -1,6 +1,8 @@
 class ModernKLPFSite {
     constructor() {
         this.observer = null;
+        this.revealSelector = '.fade-in, .feature-card, .step-card, .stat-number, .download-card';
+        this.revealMarginPx = 110;
         this.init();
     }
 
@@ -56,21 +58,15 @@ class ModernKLPFSite {
     setupIntersectionObserver() {
         const observerOptions = {
             root: null,
-            rootMargin: '0px 0px -50px 0px',
-            threshold: 0.1
+            rootMargin: `0px 0px ${this.revealMarginPx}px 0px`,
+            threshold: 0.01
         };
 
         this.observer = new IntersectionObserver((entries) => {
-            entries.forEach((entry, index) => {
+            entries.forEach((entry) => {
                 if (!this._revealDone) return;
                 if (entry.isIntersecting) {
-                    if (entry.target.classList.contains('step-card')) {
-                        setTimeout(() => {
-                            entry.target.classList.add('visible');
-                        }, index * 100);
-                    } else {
-                        entry.target.classList.add('visible');
-                    }
+                    entry.target.classList.add('visible');
                     
                     if (entry.target.classList.contains('stat-number')) {
                         this.animateCounter(entry.target);
@@ -80,9 +76,19 @@ class ModernKLPFSite {
             });
         }, observerOptions);
 
-        document.querySelectorAll('.fade-in, .feature-card, .step-card, .stat-number').forEach(el => {
+        this.getRevealTargets().forEach((el, index) => {
             this.observer.observe(el);
         });
+    }
+
+    getRevealTargets() {
+        return document.querySelectorAll(this.revealSelector);
+    }
+
+    isElementNearViewport(el) {
+        const rect = el.getBoundingClientRect();
+        return rect.top < window.innerHeight + this.revealMarginPx
+            && rect.bottom >= -this.revealMarginPx;
     }
 
     setupMobileMenu() {
@@ -237,7 +243,6 @@ class ModernKLPFSite {
             }
             latestReleases.forEach((release, index) => {
                 const releaseCard = this.createReleaseCard(release);
-                releaseCard.style.transitionDelay = `${index * 0.1}s`;
                 container.appendChild(releaseCard);
                 if (this.observer) {
                     this.observer.observe(releaseCard);
@@ -381,10 +386,8 @@ class ModernKLPFSite {
             (this._deferredCounters || []).forEach(el => this.animateCounter(el));
             this._deferredCounters = [];
             
-            const elementsToAnimate = document.querySelectorAll('.fade-in, .feature-card, .step-card, .stat-number, .download-card');
-            elementsToAnimate.forEach(el => {
-                const rect = el.getBoundingClientRect();
-                if (rect.top < window.innerHeight && rect.bottom >= 0) {
+            this.getRevealTargets().forEach(el => {
+                if (this.isElementNearViewport(el)) {
                     el.classList.add('visible');
                 }
             });
@@ -417,12 +420,4 @@ class ModernKLPFSite {
 
 document.addEventListener('DOMContentLoaded', () => {
     new ModernKLPFSite();
-});
-
-window.addEventListener('load', () => {
-    setTimeout(() => {
-        document.querySelectorAll('.fade-in').forEach((el, index) => {
-            el.style.transitionDelay = `${index * 0.05}s`;
-        });
-    }, 100);
 });
