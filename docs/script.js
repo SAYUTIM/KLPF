@@ -1,8 +1,10 @@
 class ModernKLPFSite {
     constructor() {
         this.observer = null;
+        this.stepCardObserver = null;
         this.revealSelector = '.fade-in, .feature-card, .step-card, .stat-number, .download-card';
         this.revealMarginPx = 110;
+        this.stepCardRevealMarginPx = -20;
         this.init();
     }
 
@@ -56,39 +58,50 @@ class ModernKLPFSite {
     }
 
     setupIntersectionObserver() {
-        const observerOptions = {
-            root: null,
-            rootMargin: `0px 0px ${this.revealMarginPx}px 0px`,
-            threshold: 0.01
-        };
-
-        this.observer = new IntersectionObserver((entries) => {
-            entries.forEach((entry) => {
-                if (!this._revealDone) return;
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                    
-                    if (entry.target.classList.contains('stat-number')) {
-                        this.animateCounter(entry.target);
-                    }
-                    this.observer.unobserve(entry.target);
-                }
-            });
-        }, observerOptions);
-
-        this.getRevealTargets().forEach((el, index) => {
-            this.observer.observe(el);
-        });
+        this.observer = this.createRevealObserver(
+            this.revealMarginPx,
+            '.fade-in:not(.step-card), .feature-card, .stat-number, .download-card'
+        );
+        this.stepCardObserver = this.createRevealObserver(this.stepCardRevealMarginPx, '.step-card');
     }
 
     getRevealTargets() {
         return document.querySelectorAll(this.revealSelector);
     }
 
+    createRevealObserver(marginPx, selector) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (!this._revealDone) return;
+                if (!entry.isIntersecting) return;
+
+                entry.target.classList.add('visible');
+
+                if (entry.target.classList.contains('stat-number')) {
+                    this.animateCounter(entry.target);
+                }
+                observer.unobserve(entry.target);
+            });
+        }, {
+            root: null,
+            rootMargin: `0px 0px ${marginPx}px 0px`,
+            threshold: 0.01
+        });
+
+        document.querySelectorAll(selector).forEach((el) => {
+            observer.observe(el);
+        });
+
+        return observer;
+    }
+
     isElementNearViewport(el) {
+        const revealMargin = el.classList.contains('step-card')
+            ? this.stepCardRevealMarginPx
+            : this.revealMarginPx;
         const rect = el.getBoundingClientRect();
-        return rect.top < window.innerHeight + this.revealMarginPx
-            && rect.bottom >= -this.revealMarginPx;
+        return rect.top < window.innerHeight + revealMargin
+            && rect.bottom >= -revealMargin;
     }
 
     setupMobileMenu() {
@@ -171,9 +184,9 @@ class ModernKLPFSite {
 
     setupSmoothScrolling() {
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
+            anchor.addEventListener('click', (e) => {
                 e.preventDefault();
-                const href = this.getAttribute('href');
+                const href = anchor.getAttribute('href');
                 if (href === '#') {
                     window.scrollTo({
                         top: 0,
@@ -182,14 +195,21 @@ class ModernKLPFSite {
                 } else {
                     const target = document.querySelector(href);
                     if (target) {
-                        target.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'start'
+                        const headerOffset = this.getHeaderOffset();
+                        const targetTop = window.scrollY + target.getBoundingClientRect().top - headerOffset;
+                        window.scrollTo({
+                            top: Math.max(0, targetTop),
+                            behavior: 'smooth'
                         });
                     }
                 }
             });
         });
+    }
+
+    getHeaderOffset() {
+        const header = document.querySelector('header');
+        return header ? header.offsetHeight + 16 : 0;
     }
 
     async loadData() {
