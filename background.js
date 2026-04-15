@@ -51,7 +51,9 @@ async function initializeScripts() {
     }
 
     for (const config of CONTENT_SCRIPTS_CONFIG) {
-        const isEnabled = result[config.storageKey] || false;
+        const isEnabled = result[config.storageKey] !== undefined
+            ? result[config.storageKey]
+            : !!config.enabledByDefault;
         await unregisterContentScript(config.id); // 念のため既存のスクリプトを解除
 
         if (isEnabled) {

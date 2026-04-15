@@ -109,6 +109,14 @@ export const CONTENT_SCRIPTS_CONFIG = [
         optionsPanelId: 'homework-options',
     },
     {
+        id: 'HomeAttendanceBadge',
+        storageKey: 'homeAttendanceBadge',
+        js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}homeAttendance.js`],
+        matches: [URLS.KOGAKUIN_LMS_HOME],
+        runAt: 'document_idle',
+        enabledByDefault: true,
+    },
+    {
         id: 'logoutblock',
         storageKey: 'logoutblock',
         js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}LMSlogoutblock.js`],

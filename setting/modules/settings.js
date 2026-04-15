@@ -23,6 +23,7 @@ const SETTINGS_CONFIG = [
     { id: 'auto-attend',     key: 'autoAttend',    type: 'checked', storage: 'sync' },
     { id: 'auto-meet',       key: 'autoMeet',      type: 'checked', storage: 'sync' },
     { id: 'search-subject',  key: 'searchSubject', type: 'checked', storage: 'sync' },
+    { id: 'home-attendance-badge', key: 'homeAttendanceBadge', type: 'checked', storage: 'sync' },
     { id: 'dark-mode',       key: 'darkMode',      type: 'checked', storage: 'sync' },
     { id: 'home-work',        key: 'homework',      type: 'checked', storage: 'sync' },
     { id: 'logout-block',    key: 'logoutblock',   type: 'checked', storage: 'sync' },
