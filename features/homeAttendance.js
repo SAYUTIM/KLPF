@@ -11,7 +11,6 @@
     const FEATURE_NAME = 'KLPF';
     const STYLE_ID = 'klpf-home-attendance-style';
     const CARD_INFO_CLASS = 'klpf-attendance-card-info';
-    const CARD_INFO_TEXT_CLASS = 'klpf-attendance-card-info-text';
     const BADGE_CLASS = 'klpf-attendance-badge';
     const HOME_INFO_FORM_SELECTOR = 'form#homehomlInfo[name="homeHomlActionForm"]';
     const HOME_MAIN_FORM_SELECTOR = 'form#homeHomlForm[name="homeHomlActionForm"]';
@@ -35,26 +34,14 @@
         style.id = STYLE_ID;
         style.textContent = `
             .${CARD_INFO_CLASS} {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 8px;
-                flex-wrap: wrap;
-            }
-            .${CARD_INFO_TEXT_CLASS} {
-                flex: 1 1 auto;
-                min-width: 0;
+                position: relative;
+                padding-right: 68px;
             }
             .${BADGE_CLASS} {
-                display: none;
-                flex: 0 0 auto;
-            }
-            .${BADGE_CLASS}[data-visible="true"] {
-                display: inline-flex;
-                align-items: center;
-            }
-            .${BADGE_CLASS}::before {
-                content: "出席";
+                position: absolute;
+                top: 50%;
+                right: 8px;
+                transform: translateY(-50%);
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -70,6 +57,9 @@
                 color: #fff7f7;
                 background: #cf4b4b;
                 box-shadow: none;
+            }
+            .${BADGE_CLASS}::before {
+                content: "出席";
             }
         `;
         document.head.appendChild(style);
@@ -235,38 +225,31 @@
 
         courseInfo.classList.add(CARD_INFO_CLASS);
 
-        let textWrapper = safeQuerySelector(`.${CARD_INFO_TEXT_CLASS}`, courseInfo);
-        if (!textWrapper) {
-            textWrapper = document.createElement('span');
-            textWrapper.className = CARD_INFO_TEXT_CLASS;
-
-            while (courseInfo.firstChild) {
-                textWrapper.appendChild(courseInfo.firstChild);
-            }
-
-            courseInfo.appendChild(textWrapper);
-        }
-
         badge = document.createElement('span');
         badge.className = BADGE_CLASS;
-        badge.dataset.visible = 'false';
         badge.setAttribute('aria-hidden', 'true');
         courseInfo.appendChild(badge);
         return badge;
     }
 
+    function cleanupBadge(courseInfo) {
+        const badge = safeQuerySelector(`.${BADGE_CLASS}`, courseInfo);
+        if (badge) {
+            badge.remove();
+        }
+        courseInfo.classList.remove(CARD_INFO_CLASS);
+    }
+
     function showAttendanceBadge(targets) {
         targets.forEach(({ card, courseInfo }) => {
-            const badge = ensureBadge(courseInfo);
-            badge.dataset.visible = 'true';
+            ensureBadge(courseInfo);
             card.dataset.klpfAttendance = 'true';
         });
     }
 
     function hideAttendanceBadge(targets) {
         targets.forEach(({ card, courseInfo }) => {
-            const badge = ensureBadge(courseInfo);
-            badge.dataset.visible = 'false';
+            cleanupBadge(courseInfo);
             delete card.dataset.klpfAttendance;
         });
     }
