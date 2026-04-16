@@ -6,6 +6,8 @@
  * @module modules/settings
  */
 
+import { CONTENT_SCRIPTS_CONFIG } from '../../scripts.config.js';
+
 /**
  * 設定項目の定義。
  * HTML要素のID、ストレージキー、値の型をマッピングする。
@@ -22,6 +24,7 @@ const SETTINGS_CONFIG = [
     { id: 'show-time',       key: 'showTime',      type: 'checked', storage: 'sync' },
     { id: 'auto-attend',     key: 'autoAttend',    type: 'checked', storage: 'sync' },
     { id: 'auto-meet',       key: 'autoMeet',      type: 'checked', storage: 'sync' },
+    { id: 'kuport-dialog-outside-close', key: 'kuportDialogOutsideClose', type: 'checked', storage: 'sync' },
     { id: 'search-subject',  key: 'searchSubject', type: 'checked', storage: 'sync' },
     { id: 'home-attendance-badge', key: 'homeAttendanceBadge', type: 'checked', storage: 'sync' },
     { id: 'dark-mode',       key: 'darkMode',      type: 'checked', storage: 'sync' },
@@ -41,6 +44,10 @@ const SETTINGS_CONFIG = [
     { id: 'homework-notification', key: 'gasWebhook',    type: 'checked', storage: 'sync' },
     { id: 'homework-webhook-url',  key: 'gaswebhookurl', type: 'value',   storage: 'sync' },
 ];
+
+const DEFAULT_ENABLED_MAP = new Map(
+    CONTENT_SCRIPTS_CONFIG.map((config) => [config.storageKey, !!config.enabledByDefault]),
+);
 
 /**
  * 設定を対応するストレージ領域に保存する。
@@ -92,19 +99,38 @@ export async function loadAndApplySettings() {
         ]);
 
         const allSettings = { ...syncSettings, ...localSettings };
+        const missingDefaultSyncSettings = {};
 
         for (const config of SETTINGS_CONFIG) {
             const element = document.getElementById(config.id);
-            if (element && allSettings[config.key] !== undefined) {
-                // 型の整合性を確認
+            if (!element) continue;
+
+            const storedValue = allSettings[config.key];
+            if (storedValue !== undefined) {
                 const expectedType = config.type === 'checked' ? 'boolean' : 'string';
-                if (typeof allSettings[config.key] === expectedType) {
-                    element[config.type] = allSettings[config.key];
+                if (typeof storedValue === expectedType) {
+                    element[config.type] = storedValue;
                 } else {
-                    console.warn(`設定キー"${config.key}"の型が不正。期待値: ${expectedType}, 実際値: ${typeof allSettings[config.key]}`);
+                    console.warn(`設定キー"${config.key}"の型が不正。期待値: ${expectedType}, 実際値: ${typeof storedValue}`);
                 }
+                continue;
+            }
+
+            if (
+                config.storage === 'sync'
+                && config.type === 'checked'
+                && DEFAULT_ENABLED_MAP.has(config.key)
+            ) {
+                const defaultValue = DEFAULT_ENABLED_MAP.get(config.key);
+                element.checked = defaultValue;
+                missingDefaultSyncSettings[config.key] = defaultValue;
             }
         }
+
+        if (Object.keys(missingDefaultSyncSettings).length > 0) {
+            await chrome.storage.sync.set(missingDefaultSyncSettings);
+        }
+
         // UIに読み込み完了を通知
         document.dispatchEvent(new CustomEvent("settings-loaded"));
     } catch (error) {

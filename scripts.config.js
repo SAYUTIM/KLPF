@@ -28,6 +28,7 @@ const URLS = {
   KOGAKUIN_LMS_hH_KYOZAI: 'https://study.ns.kogakuin.ac.jp/lms/homeHoml/doLinkKougi*',
   KOGAKUIN_LMS_cC: 'https://study.ns.kogakuin.ac.jp/lms/corsColl/*',
   KOGAKUIN_LMS_sS: 'https://study.ns.kogakuin.ac.jp/lms/srcsSrcl/*',
+  KOGAKUIN_KUPORT: 'https://ku-port.sc.kogakuin.ac.jp/*',
   KOGAKUIN_AUTH: 'https://auth.kogakuin.ac.jp/*',
   SECIOSS: 'https://slink.secioss.com/*',
   GOOGLE_MEET: 'https://meet.google.com/*',
@@ -82,6 +83,14 @@ export const CONTENT_SCRIPTS_CONFIG = [
         js: [MODULES.DOM_UTILS, `${PATHS.FEATURES}meet.js`],
         matches: [URLS.GOOGLE_MEET],
         runAt: 'document_idle',
+        enabledByDefault: true,
+    },
+    {
+        id: 'KuPortDialogCloseScript',
+        storageKey: 'kuportDialogOutsideClose',
+        js: [MODULES.DOM_UTILS, `${PATHS.FEATURES}kuportDialogClose.js`],
+        matches: [URLS.KOGAKUIN_KUPORT],
+        runAt: 'document_end',
         enabledByDefault: true,
     },
     {
