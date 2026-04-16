@@ -158,12 +158,24 @@ function setupInteractions() {
 
 // --- イベントリスナー ---
 
-function handleSettingsSaved() {
+function handleSettingsSaved(e) {
+    const detail = e?.detail;
+    if (detail && typeof detail === 'object') {
+        showStatusMessage(
+            detail.text || "設定が保存されました",
+            detail.color || "lightgreen",
+            detail.duration || STATUS_MESSAGE_DURATION,
+        );
+        return;
+    }
+
     showStatusMessage("設定が保存されました", "lightgreen");
 }
 
 function handleSettingsError(e) {
-    const message = e.detail || "不明なエラーが発生しました";
+    const message = typeof e.detail === 'string'
+        ? e.detail
+        : e.detail?.message || "不明なエラーが発生しました";
     showStatusMessage(message, "#ff6e6e", STATUS_MESSAGE_DURATION + 2000);
 }
 

@@ -17,6 +17,12 @@
         <div class="orbit1 w3 leo"></div>
     </div>
 
+    <div class="backup-actions">
+        <button type="button" id="export-settings-button" class="backup-action-button">設定をエクスポート</button>
+        <button type="button" id="import-settings-button" class="backup-action-button backup-action-button-secondary">設定をインポート</button>
+        <input type="file" id="import-settings-file" accept=".json,application/json" hidden>
+    </div>
+
     <div class="settings-wrapper">
 
         <div class="container main-settings">
@@ -215,6 +221,20 @@
             <p id="modal-message"></p>
             <a id="modal-link" href="../gas/setupgas.html" target="_blank" rel="noopener noreferrer">詳しくはこちら</a>
             <button id="modal-close-button">閉じる</button>
+        </div>
+    </div>
+
+    <div id="backup-confirm-modal" class="modal-overlay">
+        <div class="modal-content backup-modal-content">
+            <h2>設定をエクスポート</h2>
+            <p>
+                このバックアップファイルには、ユーザー名、パスワード、Webhook URL などの情報が平文で含まれます。<br>
+                安全な場所にのみ保存してください。
+            </p>
+            <div class="backup-modal-actions">
+                <button type="button" id="backup-cancel-button" class="backup-action-button backup-action-button-secondary">キャンセル</button>
+                <button type="button" id="backup-confirm-button" class="backup-action-button">エクスポートする</button>
+            </div>
         </div>
     </div>
 </body>

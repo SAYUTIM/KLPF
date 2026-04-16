@@ -112,6 +112,47 @@ input[type="password"] {
     transform: translateY(-4px);
 }
 
+.backup-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-self: flex-start;
+    margin: 0 0 8px 20px;
+    width: auto;
+    z-index: 2;
+}
+
+.backup-action-button {
+    background: rgba(102, 255, 102, 0.14);
+    border: 2px solid #66ff66;
+    border-radius: 10px;
+    color: #66ff66;
+    cursor: none;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 8px 12px;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, color 0.25s ease;
+}
+
+.backup-action-button:hover {
+    background: #66ff66;
+    box-shadow: 0 0 18px rgba(102, 255, 102, 0.45);
+    color: #101010;
+    transform: translateY(-2px);
+}
+
+.backup-action-button.backup-action-button-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #87cefa;
+    color: #87cefa;
+}
+
+.backup-action-button.backup-action-button-secondary:hover {
+    background: #87cefa;
+    box-shadow: 0 0 18px rgba(135, 206, 250, 0.45);
+    color: #101010;
+}
+
 .switch {
     display: inline-block;
     height: 40px;
@@ -456,6 +497,7 @@ select:hover {
     justify-content: center;
     padding: 0 20px;
     box-sizing: border-box;
+    position: relative;
 }
 
 .main-settings {
@@ -612,6 +654,18 @@ select:hover {
     color: #eee;
 }
 
+.backup-modal-content h2 {
+    color: #fff;
+    font-size: 24px;
+    margin: 0 0 18px 0;
+}
+
+.backup-modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
 .modal-content a {
     color: #66ff66;
     text-decoration: none;
@@ -632,4 +686,29 @@ select:hover {
     background-color: #66ff66;
     color: #1a1a1a;
     box-shadow: 0 0 15px 5px #66ff66;
+}
+
+.modal-content .backup-action-button {
+    background: rgba(102, 255, 102, 0.14);
+    border: 2px solid #66ff66;
+    color: #66ff66;
+    padding: 12px 18px;
+}
+
+.modal-content .backup-action-button:hover {
+    background: #66ff66;
+    box-shadow: 0 0 18px rgba(102, 255, 102, 0.45);
+    color: #101010;
+}
+
+.modal-content .backup-action-button.backup-action-button-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #87cefa;
+    color: #87cefa;
+}
+
+.modal-content .backup-action-button.backup-action-button-secondary:hover {
+    background: #87cefa;
+    box-shadow: 0 0 18px rgba(135, 206, 250, 0.45);
+    color: #101010;
 }
