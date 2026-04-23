@@ -21,6 +21,9 @@
     const CACHE_KEY = 'klpf-home-attendance-cache';
     const CACHE_TTL_MS = 5 * 60 * 1000;
 
+    let activeProbeController = null;
+    let hasUserInteracted = false;
+
     function isHomePage() {
         return window.location.href.startsWith(LMS_HOME_URL)
             || !!safeQuerySelector(HOME_INFO_FORM_SELECTOR)
@@ -133,6 +136,35 @@
         return cache.detectedCourseIds;
     }
 
+    function abortActiveProbe() {
+        if (activeProbeController) {
+            activeProbeController.abort();
+            activeProbeController = null;
+        }
+    }
+
+    function markUserInteraction() {
+        hasUserInteracted = true;
+        abortActiveProbe();
+    }
+
+    function setupAbortOnUserInteraction(homeForm) {
+        document.addEventListener('pointerdown', (event) => {
+            if (event.target.closest(COURSE_CARD_SELECTOR) || event.target.closest(COURSE_LINK_SELECTOR)) {
+                markUserInteraction();
+            }
+        }, true);
+
+        document.addEventListener('click', (event) => {
+            if (event.target.closest(COURSE_CARD_SELECTOR) || event.target.closest(COURSE_LINK_SELECTOR)) {
+                markUserInteraction();
+            }
+        }, true);
+
+        homeForm.addEventListener('submit', markUserInteraction, true);
+        window.addEventListener('pagehide', markUserInteraction, { once: true });
+    }
+
     function serializeFormFields(form) {
         const fields = {};
         const formData = new FormData(form);
@@ -169,12 +201,13 @@
         });
     }
 
-    async function probeCourseAttendance(linkKougiUrl, formFields, courseId) {
+    async function probeCourseAttendance(linkKougiUrl, formFields, courseId, signal) {
         const response = await fetch(linkKougiUrl, {
             method: 'POST',
             credentials: 'include',
             cache: 'no-store',
             redirect: 'follow',
+            signal,
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             },
@@ -191,18 +224,22 @@
         return hasAttendance;
     }
 
-    async function probeAttendances(linkKougiUrl, formFields, courseIds, concurrency, onResult) {
+    async function probeAttendances(linkKougiUrl, formFields, courseIds, concurrency, signal, onResult) {
         const queue = [...courseIds];
         const detectedCourseIds = [];
         const workerCount = Math.min(concurrency, queue.length);
 
         async function worker() {
             while (queue.length > 0) {
+                if (signal?.aborted) return;
+
                 const courseId = queue.shift();
                 if (!courseId) return;
 
                 try {
-                    const hasAttendance = await probeCourseAttendance(linkKougiUrl, formFields, courseId);
+                    const hasAttendance = await probeCourseAttendance(linkKougiUrl, formFields, courseId, signal);
+                    if (signal?.aborted) return;
+
                     if (typeof onResult === 'function') {
                         onResult(courseId, hasAttendance);
                     }
@@ -210,6 +247,9 @@
                         detectedCourseIds.push(courseId);
                     }
                 } catch (error) {
+                    if (error?.name === 'AbortError') {
+                        return;
+                    }
                     // console.warn(`[${FEATURE_NAME}] 科目 ${courseId} の出席判定に失敗しました。`, error);
                 }
             }
@@ -274,6 +314,8 @@
         if (courseEntries.length === 0) return;
         const homeForm = safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
         if (!homeForm) return;
+        setupAbortOnUserInteraction(homeForm);
+
         const formFields = serializeFormFields(homeForm);
         const linkKougiUrl = buildLinkKougiUrl(homeForm.action);
         const courseIds = courseEntries.map(entry => entry.courseId);
@@ -291,17 +333,21 @@
                 }
             }
 
+            activeProbeController = new AbortController();
             const detectedCourseIds = new Set(await probeAttendances(
                 linkKougiUrl,
                 formFields,
                 courseIds,
                 PROBE_CONCURRENCY,
+                activeProbeController.signal,
                 (courseId, hasAttendance) => {
                     const entry = courseEntryMap.get(courseId);
                     if (!entry) return;
                     applyAttendanceState(entry, hasAttendance);
                 },
             ));
+            activeProbeController = null;
+            if (hasUserInteracted) return;
 
             writeCache(linkKougiUrl, courseIds, Array.from(detectedCourseIds));
 
@@ -309,6 +355,9 @@
                 applyAttendanceState(entry, detectedCourseIds.has(entry.courseId));
             }
         } catch (error) {
+            if (error?.name === 'AbortError') {
+                return;
+            }
             console.error(`[${FEATURE_NAME}] ホーム画面の出席バッジ表示に失敗しました。`, error);
         }
     }
