@@ -190,6 +190,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // 非同期処理を示す
     }
 
+    if (message.type === 'refresh-content-scripts') {
+        (async () => {
+            try {
+                await initializeScripts();
+                sendResponse({ success: true });
+            } catch (error) {
+                console.error('[KLPF] コンテンツスクリプトの再初期化に失敗しました:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+
+    if (message.type === 'get-inline-settings-features') {
+        sendResponse({
+            success: true,
+            features: CONTENT_SCRIPTS_CONFIG
+                .filter((config) => config.displayName)
+                .sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))
+                .map((config) => ({
+                    key: config.storageKey,
+                    label: config.displayName,
+                    defaultValue: !!config.enabledByDefault,
+                })),
+        });
+        return true;
+    }
+
     if (message.type === 'inject') {
         if (message.data === "gassetup") registerContentScript(GAS_SETUP_CONFIG);
         if (message.data === "gassetupstop") unregisterContentScript(GAS_SETUP_CONFIG.id);

@@ -144,6 +144,17 @@ async function replaceStorageArea(area, data) {
     }
 }
 
+async function refreshBackgroundContentScripts() {
+    try {
+        const response = await chrome.runtime.sendMessage({ type: 'refresh-content-scripts' });
+        if (response && response.success === false) {
+            throw new Error(response.error || 'backgroundの再初期化に失敗しました。');
+        }
+    } catch (error) {
+        console.warn('[KLPF] backgroundへの設定再反映に失敗しました。', error);
+    }
+}
+
 async function importPayload(payload) {
     validateImportPayload(payload);
 
@@ -153,6 +164,7 @@ async function importPayload(payload) {
     ]);
 
     await loadAndApplySettings();
+    await refreshBackgroundContentScripts();
 }
 
 async function handleImportFileChange(event) {

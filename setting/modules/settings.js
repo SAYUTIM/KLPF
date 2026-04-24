@@ -13,7 +13,7 @@ import { CONTENT_SCRIPTS_CONFIG } from '../../scripts.config.js';
  * HTML要素のID、ストレージキー、値の型をマッピングする。
  * @type {Array<object>}
  */
-const SETTINGS_CONFIG = [
+export const SETTINGS_CONFIG = [
     // 認証情報 (localストレージに保存)
     { id: 'username',        key: 'username',      type: 'value',   storage: 'local' },
     { id: 'password',        key: 'password',      type: 'value',   storage: 'local' },
@@ -49,6 +49,45 @@ const DEFAULT_ENABLED_MAP = new Map(
     CONTENT_SCRIPTS_CONFIG.map((config) => [config.storageKey, !!config.enabledByDefault]),
 );
 
+function getStorageArea(config) {
+    return config.storage || 'sync';
+}
+
+function getExpectedType(config) {
+    return config.type === 'checked' ? 'boolean' : 'string';
+}
+
+function getFallbackValue(config) {
+    if (config.type === 'value') {
+        return '';
+    }
+
+    if (getStorageArea(config) === 'sync' && DEFAULT_ENABLED_MAP.has(config.key)) {
+        return DEFAULT_ENABLED_MAP.get(config.key);
+    }
+
+    return false;
+}
+
+function applySettingToElement(element, config, value) {
+    if (config.type === 'checked') {
+        element.checked = value;
+        return;
+    }
+
+    element.value = value;
+}
+
+export function getSettingsStorageKeys() {
+    return SETTINGS_CONFIG.reduce((keys, config) => {
+        keys[getStorageArea(config)].add(config.key);
+        return keys;
+    }, {
+        sync: new Set(['optionsOrder']),
+        local: new Set(),
+    });
+}
+
 /**
  * 設定を対応するストレージ領域に保存する。
  * @returns {Promise<void>}
@@ -62,7 +101,7 @@ export async function saveSettings() {
     for (const config of SETTINGS_CONFIG) {
         const element = document.getElementById(config.id);
         if (element) {
-            const storageArea = config.storage || 'sync'; // デフォルトはsync
+            const storageArea = getStorageArea(config);
             settingsToSave[storageArea][config.key] = element[config.type];
         }
     }
@@ -88,8 +127,8 @@ export async function saveSettings() {
  */
 export async function loadAndApplySettings() {
     const keys = {
-        sync: [...SETTINGS_CONFIG.filter(c => (c.storage || 'sync') === 'sync').map(c => c.key), 'optionsOrder'],
-        local: SETTINGS_CONFIG.filter(c => c.storage === 'local').map(c => c.key)
+        sync: [...SETTINGS_CONFIG.filter(c => getStorageArea(c) === 'sync').map(c => c.key), 'optionsOrder'],
+        local: SETTINGS_CONFIG.filter(c => getStorageArea(c) === 'local').map(c => c.key)
     };
 
     try {
@@ -107,22 +146,21 @@ export async function loadAndApplySettings() {
 
             const storedValue = allSettings[config.key];
             if (storedValue !== undefined) {
-                const expectedType = config.type === 'checked' ? 'boolean' : 'string';
+                const expectedType = getExpectedType(config);
                 if (typeof storedValue === expectedType) {
-                    element[config.type] = storedValue;
+                    applySettingToElement(element, config, storedValue);
                 } else {
                     console.warn(`設定キー"${config.key}"の型が不正。期待値: ${expectedType}, 実際値: ${typeof storedValue}`);
+                    applySettingToElement(element, config, getFallbackValue(config));
                 }
                 continue;
             }
 
-            if (
-                config.storage === 'sync'
-                && config.type === 'checked'
-                && DEFAULT_ENABLED_MAP.has(config.key)
-            ) {
-                const defaultValue = DEFAULT_ENABLED_MAP.get(config.key);
-                element.checked = defaultValue;
+            const fallbackValue = getFallbackValue(config);
+            applySettingToElement(element, config, fallbackValue);
+
+            if (getStorageArea(config) === 'sync' && config.type === 'checked' && DEFAULT_ENABLED_MAP.has(config.key)) {
+                const defaultValue = fallbackValue;
                 missingDefaultSyncSettings[config.key] = defaultValue;
             }
         }

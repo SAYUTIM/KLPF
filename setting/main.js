@@ -6,7 +6,7 @@
  * @module main
  */
 
-import { loadAndApplySettings, addEventListenersToSettings } from './modules/settings.js';
+import { loadAndApplySettings, addEventListenersToSettings, getSettingsStorageKeys } from './modules/settings.js';
 import { initializeUI } from './modules/ui.js';
 import { checkForUpdates } from './modules/updatecheck.js';
 import { initializeBackupControls } from './modules/backup.js';
@@ -17,6 +17,7 @@ import { initializeBackupControls } from './modules/backup.js';
 async function main() {
     // UIの初期化（DOMのキャッシュ、イベントリスナーの設定など）
     initializeUI();
+    displayManifestVersion();
 
     // 保存されている設定を読み込み、UIに適用する
     await loadAndApplySettings();
@@ -31,6 +32,13 @@ async function main() {
     await checkForUpdates();
 }
 
+function displayManifestVersion() {
+    const versionElement = document.getElementById('manifest-version');
+    if (!versionElement) return;
+
+    versionElement.textContent = `v${chrome.runtime.getManifest().version}`;
+}
+
 // 実行開始
 main();
 
@@ -38,22 +46,28 @@ main();
 /**
  * ストレージの変更を監視し、UIにリアルタイムで反映させる。
  */
-chrome.storage.onChanged.addListener((changes, area) => {
-    // GASのWebhook URLが更新された場合の処理
-    if (area === 'sync' && changes.gaswebhookurl) {
-        const newUrl = changes.gaswebhookurl.newValue;
-        if (newUrl) {
-            const urlInput = document.getElementById('homework-webhook-url');
-            const notificationCheckbox = document.getElementById('homework-notification');
+const settingsStorageKeys = getSettingsStorageKeys();
+let settingsReloadTimer = null;
 
-            if (urlInput) {
-                urlInput.value = newUrl;
-            }
-            if (notificationCheckbox && !notificationCheckbox.checked) {
-                notificationCheckbox.checked = true;
-                // UIの更新と設定の保存をトリガーする
-                notificationCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        }
+function isSettingsChange(changes, area) {
+    const targetKeys = settingsStorageKeys[area];
+    if (!targetKeys) return false;
+    return Object.keys(changes).some((key) => targetKeys.has(key));
+}
+
+function scheduleSettingsReload() {
+    if (settingsReloadTimer) {
+        clearTimeout(settingsReloadTimer);
+    }
+
+    settingsReloadTimer = setTimeout(async () => {
+        settingsReloadTimer = null;
+        await loadAndApplySettings();
+    }, 50);
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (isSettingsChange(changes, area)) {
+        scheduleSettingsReload();
     }
 });

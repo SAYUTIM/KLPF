@@ -17,6 +17,12 @@
     const COURSE_CARD_SELECTOR = '.lms-card';
     const COURSE_LINK_SELECTOR = '.lms-cardname a[onclick*="formSubmit"]';
     const COURSE_INFO_SELECTOR = '.courseCardInfo';
+    const ATTENDANCE_IFRAME_SELECTOR = '#iframeCosa';
+    const ATTENDANCE_IFRAME_FORM_SELECTOR = 'form[name="corsCosaActionForm"]';
+    const ATTENDANCE_IFRAME_TARGET = 'dispCosa';
+    const PAGE_BRIDGE_SCRIPT_ID = 'klpf-home-attendance-page-bridge';
+    const PAGE_BRIDGE_RESOURCE_PATH = 'features/pageWorld/homeAttendance.js';
+    const OPEN_POPUP_EVENT_NAME = 'klpf-home-attendance-open-popup';
     const PROBE_CONCURRENCY = 1;
     const CACHE_KEY = 'klpf-home-attendance-cache';
     const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -28,44 +34,6 @@
         return window.location.href.startsWith(LMS_HOME_URL)
             || !!safeQuerySelector(HOME_INFO_FORM_SELECTOR)
             || !!safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
-    }
-
-    function injectStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-
-        const style = document.createElement('style');
-        style.id = STYLE_ID;
-        style.textContent = `
-            .${CARD_INFO_CLASS} {
-                position: relative;
-                padding-right: 68px;
-            }
-            .${BADGE_CLASS} {
-                position: absolute;
-                top: 50%;
-                right: 8px;
-                transform: translateY(-50%);
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 22px;
-                padding: 0 9px;
-                border-radius: 999px;
-                border: 1px solid #c94747;
-                font-size: 11px;
-                font-weight: 600;
-                line-height: 1;
-                letter-spacing: 0.02em;
-                white-space: nowrap;
-                color: #fff7f7;
-                background: #cf4b4b;
-                box-shadow: none;
-            }
-            .${BADGE_CLASS}::before {
-                content: "出席";
-            }
-        `;
-        document.head.appendChild(style);
     }
 
     function extractCourseId(link) {
@@ -97,6 +65,8 @@
         const sidPart = actionUrl.pathname.match(/;SID=.*$/)?.[0] || '';
         return `${actionUrl.origin}/lms/homeHoml/linkKougi${sidPart}`;
     }
+
+    // ---- キャッシュ / 出席判定 ----
 
     function readCache() {
         try {
@@ -191,6 +161,198 @@
         return params.toString();
     }
 
+    function buildProbeContext(homeForm) {
+        return {
+            formFields: serializeFormFields(homeForm),
+            linkKougiUrl: buildLinkKougiUrl(homeForm.action),
+        };
+    }
+
+    // ---- UI / クリック / ポップアップ ----
+
+    function injectStyles() {
+        if (document.getElementById(STYLE_ID)) return;
+
+        const style = document.createElement('style');
+        style.id = STYLE_ID;
+        style.textContent = `
+            .${CARD_INFO_CLASS} {
+                position: relative;
+                padding-right: 68px;
+                z-index: 1;
+            }
+            .${BADGE_CLASS} {
+                position: absolute;
+                top: 50%;
+                right: 8px;
+                transform: translateY(-50%);
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                height: 22px;
+                min-height: 22px;
+                padding: 0 9px;
+                border-radius: 999px;
+                border: 1px solid #c94747;
+                font-size: 11px;
+                font-weight: 600;
+                line-height: 1;
+                letter-spacing: 0.02em;
+                white-space: nowrap;
+                color: #fff7f7;
+                background: #cf4b4b;
+                box-shadow: none;
+                cursor: pointer;
+                appearance: none;
+                -webkit-appearance: none;
+                outline: none;
+                pointer-events: auto;
+                z-index: 10;
+            }
+            .${BADGE_CLASS}:disabled {
+                opacity: 0.75;
+                cursor: wait;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function injectPageBridge() {
+        if (document.getElementById(PAGE_BRIDGE_SCRIPT_ID)) {
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.id = PAGE_BRIDGE_SCRIPT_ID;
+        script.src = chrome.runtime.getURL(PAGE_BRIDGE_RESOURCE_PATH);
+        script.async = false;
+        (document.head || document.documentElement).appendChild(script);
+    }
+
+    function buildPopupDetail(homeForm) {
+        const sid = homeForm.action.match(/;SID=[^/?#]*/)?.[0] || `;SID=${getSid() || ''}`;
+        return {
+            action: `${window.location.origin}/lms/corsCosa/${sid}`,
+            iframeSelector: ATTENDANCE_IFRAME_SELECTOR,
+            iframeId: ATTENDANCE_IFRAME_TARGET,
+            formSelector: ATTENDANCE_IFRAME_FORM_SELECTOR,
+            targetName: ATTENDANCE_IFRAME_TARGET,
+        };
+    }
+
+    function openAttendancePopupViaPage(homeForm) {
+        document.dispatchEvent(new CustomEvent(OPEN_POPUP_EVENT_NAME, {
+            detail: buildPopupDetail(homeForm),
+        }));
+    }
+
+    async function setCurrentCourseContext(linkKougiUrl, formFields, courseId) {
+        const response = await fetch(linkKougiUrl, {
+            method: 'POST',
+            credentials: 'include',
+            cache: 'no-store',
+            redirect: 'follow',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            },
+            body: buildRequestBody(formFields, courseId),
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        await response.text();
+    }
+
+    async function openAttendancePopupForCourse(courseId, badge) {
+        const homeForm = safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
+        if (!homeForm) {
+            throw new Error('出席ポップアップを開くために必要な要素が見つかりません。');
+        }
+
+        markUserInteraction();
+        badge.disabled = true;
+
+        try {
+            const { formFields, linkKougiUrl } = buildProbeContext(homeForm);
+            await setCurrentCourseContext(linkKougiUrl, formFields, courseId);
+            openAttendancePopupViaPage(homeForm);
+        } finally {
+            badge.disabled = false;
+        }
+    }
+
+    async function tryOpenAttendancePopup(courseId, badge) {
+        try {
+            await openAttendancePopupForCourse(courseId, badge);
+        } catch (error) {
+            console.error(`[${FEATURE_NAME}] 出席ポップアップの表示に失敗しました。`, error);
+        }
+    }
+
+    function isEventInsideElement(event, element) {
+        const rect = element.getBoundingClientRect();
+        return event.clientX >= rect.left
+            && event.clientX <= rect.right
+            && event.clientY >= rect.top
+            && event.clientY <= rect.bottom;
+    }
+
+    function handleCardBadgeInteraction(event) {
+        const card = event.currentTarget;
+        if (!(card instanceof HTMLElement)) {
+            return;
+        }
+
+        const badge = safeQuerySelector(`.${BADGE_CLASS}`, card);
+        if (!(badge instanceof HTMLButtonElement) || !isEventInsideElement(event, badge)) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        if (event.type !== 'click' || badge.disabled) {
+            return;
+        }
+
+        const courseId = card.dataset.klpfCourseId || '';
+        if (!courseId) {
+            return;
+        }
+
+        void tryOpenAttendancePopup(courseId, badge);
+    }
+
+    function setupCardBadgeInterception(card) {
+        if (card.dataset.klpfAttendanceInterceptBound === 'true') {
+            return;
+        }
+
+        card.addEventListener('pointerdown', handleCardBadgeInteraction, true);
+        card.addEventListener('click', handleCardBadgeInteraction, true);
+        card.dataset.klpfAttendanceInterceptBound = 'true';
+    }
+
+    function handleAttendanceBadgePointerDown(event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    function handleAttendanceBadgeClick(event, courseId) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const badge = event.currentTarget;
+        if (!(badge instanceof HTMLButtonElement) || badge.disabled) {
+            return;
+        }
+
+        void tryOpenAttendancePopup(courseId, badge);
+    }
+
     function hasAttendanceButton(htmlText) {
         const doc = new DOMParser().parseFromString(htmlText, 'text/html');
         const buttons = Array.from(doc.querySelectorAll('input[value="出席"]'));
@@ -259,15 +421,20 @@
         return detectedCourseIds;
     }
 
-    function ensureBadge(courseInfo) {
+    function ensureBadge(card, courseInfo, courseId) {
         let badge = safeQuerySelector(`.${BADGE_CLASS}`, courseInfo);
         if (badge) return badge;
 
         courseInfo.classList.add(CARD_INFO_CLASS);
+        setupCardBadgeInterception(card);
 
-        badge = document.createElement('span');
+        badge = document.createElement('button');
+        badge.type = 'button';
         badge.className = BADGE_CLASS;
-        badge.setAttribute('aria-hidden', 'true');
+        badge.textContent = '出席';
+        badge.setAttribute('aria-label', '出席ポップアップを開く');
+        badge.addEventListener('pointerdown', handleAttendanceBadgePointerDown);
+        badge.addEventListener('click', event => handleAttendanceBadgeClick(event, courseId));
         courseInfo.appendChild(badge);
         return badge;
     }
@@ -282,7 +449,8 @@
 
     function showAttendanceBadge(targets) {
         targets.forEach(({ card, courseInfo }) => {
-            ensureBadge(courseInfo);
+            const courseId = card.dataset.klpfCourseId || '';
+            ensureBadge(card, courseInfo, courseId);
             card.dataset.klpfAttendance = 'true';
         });
     }
@@ -295,6 +463,9 @@
     }
 
     function applyAttendanceState(entry, hasAttendance) {
+        entry.targets.forEach(({ card }) => {
+            card.dataset.klpfCourseId = entry.courseId;
+        });
         if (hasAttendance) {
             showAttendanceBadge(entry.targets);
         } else {
@@ -309,6 +480,7 @@
         if (!safeQuerySelector(HOME_MAIN_FORM_SELECTOR)) return;
 
         injectStyles();
+        injectPageBridge();
 
         const courseEntries = collectCourseEntries();
         if (courseEntries.length === 0) return;
@@ -316,8 +488,7 @@
         if (!homeForm) return;
         setupAbortOnUserInteraction(homeForm);
 
-        const formFields = serializeFormFields(homeForm);
-        const linkKougiUrl = buildLinkKougiUrl(homeForm.action);
+        const { formFields, linkKougiUrl } = buildProbeContext(homeForm);
         const courseIds = courseEntries.map(entry => entry.courseId);
         const courseEntryMap = new Map(courseEntries.map(entry => [entry.courseId, entry]));
         // console.log(`[${FEATURE_NAME}] ホーム出席表示を開始します。対象科目数: ${courseEntries.length}, 並列数: ${Math.min(PROBE_CONCURRENCY, courseEntries.length)}`);

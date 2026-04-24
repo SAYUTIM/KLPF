@@ -1,0 +1,9 @@
+{
+    id: 'TodoFeatureScript',
+    storageKey: 'todoFeature',
+    js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}TodoFeature.js`],
+    matches: [URLS.KOGAKUIN_LMS],
+    runAt: 'document_end',
+    enabledByDefault: false,
+    optionsPanelId: 'todo-feature-options',
+},
