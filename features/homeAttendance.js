@@ -23,13 +23,47 @@
     const PAGE_BRIDGE_SCRIPT_ID = 'klpf-home-attendance-page-bridge';
     const PAGE_BRIDGE_RESOURCE_PATH = 'features/pageWorld/homeAttendance.js';
     const OPEN_POPUP_EVENT_NAME = 'klpf-home-attendance-open-popup';
+    const HOMEWORK_NAVIGATION_REQUEST_EVENT = 'klpf-homework-navigation-request';
+    const HOMEWORK_NAVIGATION_READY_EVENT = 'klpf-home-attendance-navigation-ready';
+    const HOMEWORK_NAVIGATION_FLAG = 'klpfHomeworkNavigation';
+    const ATTENDANCE_READY_FLAG = 'klpfHomeAttendanceReady';
     const PROBE_CONCURRENCY = 1;
     const CACHE_KEY = 'klpf-home-attendance-cache';
     const CACHE_TTL_MS = 5 * 60 * 1000;
 
     let activeProbeController = null;
+    let activeProbePromise = null;
     let hasAbortListenersBound = false;
     let hasUserInteracted = false;
+    const pendingHomeworkNavigationRequests = new Set();
+
+    function isHomeworkNavigationPending() {
+        return document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG] === 'true';
+    }
+
+    function notifyHomeworkNavigationReady() {
+        for (const requestId of pendingHomeworkNavigationRequests) {
+            document.dispatchEvent(new CustomEvent(HOMEWORK_NAVIGATION_READY_EVENT, {
+                detail: { requestId },
+            }));
+        }
+        pendingHomeworkNavigationRequests.clear();
+    }
+
+    function handleHomeworkNavigationRequest(event) {
+        const requestId = event.detail?.requestId;
+        if (!requestId) return;
+
+        hasUserInteracted = true;
+        pendingHomeworkNavigationRequests.add(requestId);
+
+        if (!activeProbePromise) {
+            notifyHomeworkNavigationReady();
+        }
+    }
+
+    document.documentElement.dataset[ATTENDANCE_READY_FLAG] = 'true';
+    document.addEventListener(HOMEWORK_NAVIGATION_REQUEST_EVENT, handleHomeworkNavigationRequest);
 
     function isHomePage() {
         return window.location.href.startsWith(LMS_HOME_URL)
@@ -399,14 +433,14 @@
 
         async function worker() {
             while (queue.length > 0) {
-                if (signal?.aborted) return;
+                if (signal?.aborted || hasUserInteracted || isHomeworkNavigationPending()) return;
 
                 const courseId = queue.shift();
                 if (!courseId) return;
 
                 try {
                     const hasAttendance = await probeCourseAttendance(linkKougiUrl, formFields, courseId, signal);
-                    if (signal?.aborted) return;
+                    if (signal?.aborted || hasUserInteracted || isHomeworkNavigationPending()) return;
 
                     if (typeof onResult === 'function') {
                         onResult(courseId, hasAttendance);
@@ -480,7 +514,7 @@
     }
 
     async function main() {
-        if (!isHomePage()) return;
+        if (!isHomePage() || isHomeworkNavigationPending()) return;
 
         await waitForElement(COURSE_CARD_SELECTOR, document, 10000);
         if (!safeQuerySelector(HOME_MAIN_FORM_SELECTOR)) return;
@@ -510,8 +544,10 @@
                 }
             }
 
+            if (hasUserInteracted || isHomeworkNavigationPending()) return;
+
             activeProbeController = new AbortController();
-            const detectedCourseIds = new Set(await probeAttendances(
+            activeProbePromise = probeAttendances(
                 linkKougiUrl,
                 formFields,
                 courseIds,
@@ -522,7 +558,9 @@
                     if (!entry) return;
                     applyAttendanceState(entry, hasAttendance);
                 },
-            ));
+            );
+            const detectedCourseIds = new Set(await activeProbePromise);
+            activeProbePromise = null;
             activeProbeController = null;
             if (hasUserInteracted) return;
 
@@ -536,6 +574,10 @@
                 return;
             }
             console.error(`[${FEATURE_NAME}] ホーム画面の出席バッジ表示に失敗しました。`, error);
+        } finally {
+            activeProbePromise = null;
+            activeProbeController = null;
+            notifyHomeworkNavigationReady();
         }
     }
 

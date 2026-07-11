@@ -7,10 +7,13 @@
 
 let activeHomeworkUpdate = null;
 let hasHomeworkUserInteracted = false;
-let homeworkClickUnlockTimerId = null;
-let homeworkClickLockedUntil = 0;
+let homeworkNavigationInProgress = false;
 
-const HOMEWORK_CLICK_LOCK_MS = 1000;
+const HOMEWORK_NAVIGATION_REQUEST_EVENT = 'klpf-homework-navigation-request';
+const HOMEWORK_NAVIGATION_READY_EVENT = 'klpf-home-attendance-navigation-ready';
+const HOMEWORK_NAVIGATION_FLAG = 'klpfHomeworkNavigation';
+const ATTENDANCE_READY_FLAG = 'klpfHomeAttendanceReady';
+const HOMEWORK_NAVIGATION_TIMEOUT_MS = 15000;
 
 /**
  * 課題データを表現する型定義
@@ -56,44 +59,74 @@ function submitKyozaiForm(sid, kyozaiId, kyozaiSyCd) {
     }
 }
 
-function isHomeworkClickLocked() {
-    return Date.now() < homeworkClickLockedUntil;
-}
+function waitForHomeAttendanceIdle() {
+    document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG] = 'true';
 
-function setHomeworkItemsLocked(container, locked) {
-    const items = safeQuerySelectorAll(`.${HOMEWORK_ITEM_CLASS}`, container);
-
-    for (const item of items) {
-        if (!item.dataset.kyozaiId || !item.dataset.kyozaiSyCd) continue;
-
-        item.style.opacity = locked ? '0.55' : '';
-        item.style.cursor = locked ? 'wait' : 'pointer';
-        item.setAttribute('aria-disabled', locked ? 'true' : 'false');
-    }
-}
-
-function refreshHomeworkClickLock(container = document.getElementById(HOMEWORK_CONTAINER_ID)) {
-    if (!container) return;
-
-    const locked = isHomeworkClickLocked();
-    setHomeworkItemsLocked(container, locked);
-
-    if (homeworkClickUnlockTimerId) {
-        clearTimeout(homeworkClickUnlockTimerId);
-        homeworkClickUnlockTimerId = null;
+    if (document.documentElement.dataset[ATTENDANCE_READY_FLAG] !== 'true') {
+        return Promise.resolve();
     }
 
-    if (!locked) return;
+    return new Promise((resolve, reject) => {
+        const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        let timeoutId = null;
 
-    homeworkClickUnlockTimerId = setTimeout(() => {
-        homeworkClickUnlockTimerId = null;
-        refreshHomeworkClickLock(container);
-    }, Math.max(0, homeworkClickLockedUntil - Date.now()));
+        const cleanup = () => {
+            document.removeEventListener(HOMEWORK_NAVIGATION_READY_EVENT, handleReady);
+            if (timeoutId) clearTimeout(timeoutId);
+        };
+
+        const handleReady = (event) => {
+            if (event.detail?.requestId !== requestId) return;
+            cleanup();
+            resolve();
+        };
+
+        document.addEventListener(HOMEWORK_NAVIGATION_READY_EVENT, handleReady);
+        timeoutId = setTimeout(() => {
+            cleanup();
+            reject(new Error('ホーム出席表示の停止待機がタイムアウトしました。'));
+        }, HOMEWORK_NAVIGATION_TIMEOUT_MS);
+
+        document.dispatchEvent(new CustomEvent(HOMEWORK_NAVIGATION_REQUEST_EVENT, {
+            detail: { requestId },
+        }));
+    });
 }
 
-function startHomeworkClickLock() {
-    homeworkClickLockedUntil = Date.now() + HOMEWORK_CLICK_LOCK_MS;
-    refreshHomeworkClickLock();
+async function restoreHomeworkListContext(sid) {
+    const response = await fetch(`/lms/klmsKlil/;SID=${sid}`, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        redirect: 'follow',
+    });
+
+    if (!response.ok) {
+        throw new Error(`課題一覧コンテキストの復元に失敗しました: HTTP ${response.status}`);
+    }
+
+    await response.text();
+}
+
+async function navigateToHomework(sid, kyozaiId, kyozaiSyCd, item) {
+    if (homeworkNavigationInProgress) return;
+
+    homeworkNavigationInProgress = true;
+    item.setAttribute('aria-busy', 'true');
+    item.style.cursor = 'wait';
+
+    try {
+        await waitForHomeAttendanceIdle();
+        abortActiveHomeworkUpdate();
+        await restoreHomeworkListContext(sid);
+        submitKyozaiForm(sid, kyozaiId, kyozaiSyCd);
+    } catch (error) {
+        delete document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG];
+        homeworkNavigationInProgress = false;
+        item.removeAttribute('aria-busy');
+        item.style.cursor = 'pointer';
+        console.error('[KLPF] 課題ページへの遷移準備に失敗しました。', error);
+    }
 }
 
 function cleanupHomeworkUpdate(updateState) {
@@ -173,37 +206,19 @@ function setupHomeworkClickListener(containerId, sid) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    refreshHomeworkClickLock(container);
-
     container.addEventListener('pointerdown', (event) => {
         const item = event.target.closest(`.${HOMEWORK_ITEM_CLASS}`);
         if (!item) return;
-
-        if (isHomeworkClickLocked()) {
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-            return;
-        }
-
-        abortActiveHomeworkUpdate();
+        document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG] = 'true';
     }, true);
 
     container.addEventListener('click', (event) => {
         const item = event.target.closest(`.${HOMEWORK_ITEM_CLASS}`);
         if (!item) return;
 
-        if (isHomeworkClickLocked()) {
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-            return;
-        }
-
-        abortActiveHomeworkUpdate();
         const { kyozaiId, kyozaiSyCd } = item.dataset;
         if (kyozaiId && kyozaiSyCd) {
-            submitKyozaiForm(sid, kyozaiId, kyozaiSyCd);
+            void navigateToHomework(sid, kyozaiId, kyozaiSyCd, item);
         }
     });
 }
@@ -363,8 +378,6 @@ async function main() {
     }
 
     window.addEventListener('pagehide', abortActiveHomeworkUpdate, { once: true });
-    window.addEventListener('pageshow', startHomeworkClickLock);
-    startHomeworkClickLock();
 
     // キャッシュされた課題をまず表示
     try {
