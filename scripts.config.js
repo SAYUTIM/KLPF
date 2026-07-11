@@ -140,7 +140,7 @@ export const CONTENT_SCRIPTS_CONFIG = [
         displayOrder: 60,
         js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}homeAttendance.js`],
         matches: [URLS.KOGAKUIN_LMS_HOME],
-        runAt: 'document_idle',
+        runAt: 'document_start',
         enabledByDefault: true,
     },
     {

@@ -35,6 +35,7 @@
     let activeProbePromise = null;
     let hasAbortListenersBound = false;
     let hasUserInteracted = false;
+    let courseNavigationInProgress = false;
     const pendingHomeworkNavigationRequests = new Set();
 
     function isHomeworkNavigationPending() {
@@ -64,6 +65,72 @@
 
     document.documentElement.dataset[ATTENDANCE_READY_FLAG] = 'true';
     document.addEventListener(HOMEWORK_NAVIGATION_REQUEST_EVENT, handleHomeworkNavigationRequest);
+
+    async function waitForActiveProbeToSettle() {
+        if (!activeProbePromise) return;
+
+        try {
+            await activeProbePromise;
+        } catch (error) {
+            if (error?.name !== 'AbortError') throw error;
+        }
+    }
+
+    function submitCourseNavigation(courseId) {
+        const homeForm = safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
+        if (!homeForm) {
+            throw new Error('講義ページへの遷移に必要なフォームが見つかりません。');
+        }
+
+        const courseIdInput = safeQuerySelector('input[name="kougiId"]', homeForm);
+        const groupIdInput = safeQuerySelector('input[name="groupId"]', homeForm);
+        if (!courseIdInput) {
+            throw new Error('講義IDを設定するフォーム項目が見つかりません。');
+        }
+
+        courseIdInput.value = courseId;
+        if (groupIdInput) groupIdInput.value = '';
+        homeForm.action = buildLinkKougiUrl(homeForm.action);
+        homeForm.submit();
+    }
+
+    async function navigateToCourse(courseId) {
+        if (courseNavigationInProgress) return;
+
+        courseNavigationInProgress = true;
+        hasUserInteracted = true;
+
+        try {
+            await waitForActiveProbeToSettle();
+            submitCourseNavigation(courseId);
+        } catch (error) {
+            courseNavigationInProgress = false;
+            console.error(`[${FEATURE_NAME}] 講義ページへの遷移準備に失敗しました。`, error);
+        }
+    }
+
+    function handleCourseNavigationPointerDown(event) {
+        if (event.target instanceof Element && event.target.closest(COURSE_LINK_SELECTOR)) {
+            hasUserInteracted = true;
+        }
+    }
+
+    function handleCourseNavigationClick(event) {
+        if (!(event.target instanceof Element)) return;
+        const link = event.target.closest(COURSE_LINK_SELECTOR);
+        if (!link) return;
+
+        const courseId = extractCourseId(link);
+        if (!courseId) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        void navigateToCourse(courseId);
+    }
+
+    document.addEventListener('pointerdown', handleCourseNavigationPointerDown, true);
+    document.addEventListener('click', handleCourseNavigationClick, true);
 
     function isHomePage() {
         return window.location.href.startsWith(LMS_HOME_URL)
@@ -157,18 +224,6 @@
         if (hasAbortListenersBound) {
             return;
         }
-
-        document.addEventListener('pointerdown', (event) => {
-            if (event.target.closest(COURSE_CARD_SELECTOR) || event.target.closest(COURSE_LINK_SELECTOR)) {
-                markUserInteraction();
-            }
-        }, true);
-
-        document.addEventListener('click', (event) => {
-            if (event.target.closest(COURSE_CARD_SELECTOR) || event.target.closest(COURSE_LINK_SELECTOR)) {
-                markUserInteraction();
-            }
-        }, true);
 
         homeForm.addEventListener('submit', markUserInteraction, true);
         window.addEventListener('pagehide', markUserInteraction, { once: true });
