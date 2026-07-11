@@ -5,6 +5,13 @@
  * @file 課題一覧の取得、表示、GAS連携を行うモジュール
  */
 
+let activeHomeworkUpdate = null;
+let hasHomeworkUserInteracted = false;
+let homeworkClickUnlockTimerId = null;
+let homeworkClickLockedUntil = 0;
+
+const HOMEWORK_CLICK_LOCK_MS = 1000;
+
 /**
  * 課題データを表現する型定義
  * @typedef {object} HomeworkItem
@@ -49,6 +56,114 @@ function submitKyozaiForm(sid, kyozaiId, kyozaiSyCd) {
     }
 }
 
+function isHomeworkClickLocked() {
+    return Date.now() < homeworkClickLockedUntil;
+}
+
+function setHomeworkItemsLocked(container, locked) {
+    const items = safeQuerySelectorAll(`.${HOMEWORK_ITEM_CLASS}`, container);
+
+    for (const item of items) {
+        if (!item.dataset.kyozaiId || !item.dataset.kyozaiSyCd) continue;
+
+        item.style.opacity = locked ? '0.55' : '';
+        item.style.cursor = locked ? 'wait' : 'pointer';
+        item.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    }
+}
+
+function refreshHomeworkClickLock(container = document.getElementById(HOMEWORK_CONTAINER_ID)) {
+    if (!container) return;
+
+    const locked = isHomeworkClickLocked();
+    setHomeworkItemsLocked(container, locked);
+
+    if (homeworkClickUnlockTimerId) {
+        clearTimeout(homeworkClickUnlockTimerId);
+        homeworkClickUnlockTimerId = null;
+    }
+
+    if (!locked) return;
+
+    homeworkClickUnlockTimerId = setTimeout(() => {
+        homeworkClickUnlockTimerId = null;
+        refreshHomeworkClickLock(container);
+    }, Math.max(0, homeworkClickLockedUntil - Date.now()));
+}
+
+function startHomeworkClickLock() {
+    homeworkClickLockedUntil = Date.now() + HOMEWORK_CLICK_LOCK_MS;
+    refreshHomeworkClickLock();
+}
+
+function cleanupHomeworkUpdate(updateState) {
+    if (!updateState) return;
+
+    if (updateState.timeoutId) clearTimeout(updateState.timeoutId);
+    if (updateState.abortIntervalId) clearInterval(updateState.abortIntervalId);
+    if (updateState.observer) updateState.observer.disconnect();
+    if (updateState.iframe?.isConnected) updateState.iframe.remove();
+
+    if (activeHomeworkUpdate === updateState) {
+        activeHomeworkUpdate = null;
+    }
+}
+
+function abortActiveHomeworkUpdate() {
+    hasHomeworkUserInteracted = true;
+
+    if (!activeHomeworkUpdate) return;
+
+    const error = new DOMException('Homework update aborted.', 'AbortError');
+    const { reject } = activeHomeworkUpdate;
+    cleanupHomeworkUpdate(activeHomeworkUpdate);
+    reject?.(error);
+}
+
+function waitForHomeworkRows(doc, timeout = 30000) {
+    return new Promise((resolve, reject) => {
+        const existingRow = safeQuerySelector("tbody tr", doc);
+        if (existingRow) {
+            resolve(existingRow);
+            return;
+        }
+
+        const updateState = activeHomeworkUpdate || {};
+        const finish = (result, error = null) => {
+            cleanupHomeworkUpdate(updateState);
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve(result);
+        };
+
+        updateState.reject = reject;
+        updateState.timeoutId = setTimeout(() => {
+            console.warn("[KLPF] 要素の待機がタイムアウトしました: tbody tr");
+            finish(null);
+        }, timeout);
+
+        updateState.abortIntervalId = setInterval(() => {
+            if (hasHomeworkUserInteracted) {
+                finish(null, new DOMException('Homework update aborted.', 'AbortError'));
+            }
+        }, 50);
+
+        updateState.observer = new MutationObserver(() => {
+            const row = safeQuerySelector("tbody tr", doc);
+            if (row) {
+                finish(row);
+            }
+        });
+
+        updateState.observer.observe(doc, {
+            childList: true,
+            subtree: true,
+        });
+    });
+}
+
 /**
  * 課題コンテナにクリックイベントリスナーを設定する。
  * @param {string} containerId - イベントリスナーを設定するコンテナのID。
@@ -58,10 +173,34 @@ function setupHomeworkClickListener(containerId, sid) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    refreshHomeworkClickLock(container);
+
+    container.addEventListener('pointerdown', (event) => {
+        const item = event.target.closest(`.${HOMEWORK_ITEM_CLASS}`);
+        if (!item) return;
+
+        if (isHomeworkClickLocked()) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            return;
+        }
+
+        abortActiveHomeworkUpdate();
+    }, true);
+
     container.addEventListener('click', (event) => {
         const item = event.target.closest(`.${HOMEWORK_ITEM_CLASS}`);
         if (!item) return;
 
+        if (isHomeworkClickLocked()) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            return;
+        }
+
+        abortActiveHomeworkUpdate();
         const { kyozaiId, kyozaiSyCd } = item.dataset;
         if (kyozaiId && kyozaiSyCd) {
             submitKyozaiForm(sid, kyozaiId, kyozaiSyCd);
@@ -223,6 +362,10 @@ async function main() {
         return;
     }
 
+    window.addEventListener('pagehide', abortActiveHomeworkUpdate, { once: true });
+    window.addEventListener('pageshow', startHomeworkClickLock);
+    startHomeworkClickLock();
+
     // キャッシュされた課題をまず表示
     try {
         const { homework: cachedHtml } = await chrome.storage.local.get("homework");
@@ -243,25 +386,36 @@ async function main() {
     // 新しい課題データをバックグラウンドで取得
     const stopLoading = manageLoadingIndicator(true);
     try {
+        hasHomeworkUserInteracted = false;
 
         const iframe = document.createElement("iframe");
         iframe.src = `/lms/klmsKlil/;SID=${sid}`;
         iframe.id = HOMEWORK_RAW_DATA_IFRAME_ID;
         iframe.style.display = "none";
 
+        activeHomeworkUpdate = { iframe };
         document.body.appendChild(iframe);
 
         await new Promise((resolve, reject) => {
+            activeHomeworkUpdate.reject = reject;
             iframe.onload = resolve;
             iframe.onerror = reject;
         });
+
+        if (hasHomeworkUserInteracted) {
+            throw new DOMException('Homework update aborted.', 'AbortError');
+        }
 
         const iframeDoc = iframe.contentDocument;
         if (!iframeDoc) throw new Error("iframeのコンテンツが取得できませんでした。");
 
         // iframe内で課題のtbodyが生成されるのを待機する
-        const waiting_tbody = await waitForElement("tbody tr", iframeDoc, 30000); //タイムアウト30秒
+        const waiting_tbody = await waitForHomeworkRows(iframeDoc, 30000);
         if (!waiting_tbody) throw new Error("課題データの待機がタイムアウトしました。");
+
+        if (hasHomeworkUserInteracted) {
+            throw new DOMException('Homework update aborted.', 'AbortError');
+        }
 
         const homeworkData = parseHomeworkData(iframeDoc);
         const newHomeworkContainer = renderHomework(homeworkData);
@@ -279,11 +433,13 @@ async function main() {
         if (gas_send) sendHomeworkToGAS(homeworkData);
 
     } catch (error) {
+        if (error?.name === 'AbortError') {
+            return;
+        }
         console.error("[KLPF] 課題一覧の更新に失敗しました。", error);
     } finally {
         stopLoading();
-        const iframe = document.getElementById(HOMEWORK_RAW_DATA_IFRAME_ID);
-        if (iframe) iframe.remove();
+        cleanupHomeworkUpdate(activeHomeworkUpdate);
     }
 }
 

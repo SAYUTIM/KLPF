@@ -28,6 +28,7 @@
     const CACHE_TTL_MS = 5 * 60 * 1000;
 
     let activeProbeController = null;
+    let hasAbortListenersBound = false;
     let hasUserInteracted = false;
 
     function isHomePage() {
@@ -119,6 +120,10 @@
     }
 
     function setupAbortOnUserInteraction(homeForm) {
+        if (hasAbortListenersBound) {
+            return;
+        }
+
         document.addEventListener('pointerdown', (event) => {
             if (event.target.closest(COURSE_CARD_SELECTOR) || event.target.closest(COURSE_LINK_SELECTOR)) {
                 markUserInteraction();
@@ -133,6 +138,7 @@
 
         homeForm.addEventListener('submit', markUserInteraction, true);
         window.addEventListener('pagehide', markUserInteraction, { once: true });
+        hasAbortListenersBound = true;
     }
 
     function serializeFormFields(form) {
