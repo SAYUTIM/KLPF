@@ -10,6 +10,7 @@ import { loadAndApplySettings } from './settings.js';
 
 const EXPORT_APP_NAME = 'KLPF';
 const EXPORT_SCHEMA_VERSION = 1;
+const SENSITIVE_LOCAL_KEYS = new Set(['username', 'password', 'totpSecret']);
 
 const elements = {
     exportButton: null,
@@ -62,12 +63,20 @@ async function buildExportPayload() {
         chrome.storage.local.get(null),
     ]);
 
+    const safeLocalData = { ...localData };
+    for (const key of SENSITIVE_LOCAL_KEYS) {
+        delete safeLocalData[key];
+    }
+
     return {
         app: EXPORT_APP_NAME,
         schemaVersion: EXPORT_SCHEMA_VERSION,
         exportedAt: new Date().toISOString(),
         sync: syncData,
-        local: localData,
+        local: safeLocalData,
+        excluded: {
+            local: [...SENSITIVE_LOCAL_KEYS],
+        },
     };
 }
 
@@ -158,9 +167,18 @@ async function refreshBackgroundContentScripts() {
 async function importPayload(payload) {
     validateImportPayload(payload);
 
+    const currentCredentials = await chrome.storage.local.get([...SENSITIVE_LOCAL_KEYS]);
+    const safeLocalData = { ...payload.local };
+    for (const key of SENSITIVE_LOCAL_KEYS) {
+        delete safeLocalData[key];
+    }
+
     await Promise.all([
         replaceStorageArea(chrome.storage.sync, payload.sync),
-        replaceStorageArea(chrome.storage.local, payload.local),
+        replaceStorageArea(chrome.storage.local, {
+            ...safeLocalData,
+            ...currentCredentials,
+        }),
     ]);
 
     await loadAndApplySettings();
@@ -176,7 +194,7 @@ async function handleImportFileChange(event) {
         const text = await file.text();
         const payload = JSON.parse(text);
         await importPayload(payload);
-        dispatchStatusMessage('設定をインポートしました。');
+        dispatchStatusMessage('設定をインポートしました（認証情報は変更していません）。');
     } catch (error) {
         console.error('[KLPF] 設定のインポートに失敗しました。', error);
         const message = error instanceof Error ? error.message : '設定のインポートに失敗しました。';

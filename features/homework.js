@@ -229,16 +229,6 @@ function setupHomeworkClickListener(containerId, sid) {
  */
 function sendHomeworkToGAS(homeworkData) {
     if (homeworkData.length === 0) return;
-    
-    chrome.storage.sync.get(["gaswebhookurl"], function(result) {
-        const gas_webhook = result.gaswebhookurl;
-
-        if (!gas_webhook || !gas_webhook.match(/^https:\/\/script\.google\.com\/a\/macros\/g\.kogakuin\.jp\/s\//)) {
-            console.log("GASのWebhook URLが正しくないため、処理を中断しました。");
-            return;
-        }
-
-    });
 
     // 日付でソートしてから送信
     const sortedData = [...homeworkData].sort((a, b) => {
@@ -442,8 +432,8 @@ async function main() {
         await chrome.storage.local.set({ homework: newHomeworkContainer.outerHTML });
 
         // GASに送信
-        const gas_send = await chrome.storage.sync.get(["gasWebhook"]);
-        if (gas_send) sendHomeworkToGAS(homeworkData);
+        const { gasWebhook } = await chrome.storage.sync.get(["gasWebhook"]);
+        if (gasWebhook === true) sendHomeworkToGAS(homeworkData);
 
     } catch (error) {
         if (error?.name === 'AbortError') {

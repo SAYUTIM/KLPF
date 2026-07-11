@@ -27,7 +27,22 @@
     async function loadSettings() {
         try {
             const result = await chrome.storage.local.get(SUBJECT_FILTER_STORAGE_KEY);
-            return result[SUBJECT_FILTER_STORAGE_KEY] ? JSON.parse(result[SUBJECT_FILTER_STORAGE_KEY]) : {};
+            const rawSettings = result[SUBJECT_FILTER_STORAGE_KEY];
+            if (!rawSettings) return {};
+
+            const parsed = JSON.parse(rawSettings);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+            return {
+                isAutoActive: parsed.isAutoActive === true,
+                yobi: typeof parsed.yobi === 'string' ? parsed.yobi : 'all',
+                jigen: typeof parsed.jigen === 'string' ? parsed.jigen : 'all',
+                kougiName: typeof parsed.kougiName === 'string' ? parsed.kougiName : '',
+                kyoinName: typeof parsed.kyoinName === 'string' ? parsed.kyoinName : '',
+                checkKiList: Array.isArray(parsed.checkKiList)
+                    ? parsed.checkKiList.filter(value => typeof value === 'string')
+                    : [],
+            };
         } catch (error) {
             console.error("[KLPF] フィルター設定の読み込みに失敗しました。", error);
             return {};
@@ -137,11 +152,31 @@
 
     function addAutoFilterCheckbox(targetCell) {
         if (document.getElementById('autoFilterCheckbox')) return;
-        targetCell.insertAdjacentHTML('afterbegin', `
-            <label class="lms-form-checkbox-label" style="font-weight: bold; color: #d9534f; padding-right: 10px;">
-                <span class="lms-checkbox"><input type="checkbox" id="autoFilterCheckbox"><label for="autoFilterCheckbox"><span class="fj-icon fj-icon-check"></span></label></span>自動
-            </label>
-        `);
+
+        const container = document.createElement('span');
+        container.className = 'lms-form-checkbox-label';
+        container.style.fontWeight = 'bold';
+        container.style.color = '#d9534f';
+        container.style.paddingRight = '10px';
+
+        const checkboxWrapper = document.createElement('span');
+        checkboxWrapper.className = 'lms-checkbox';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = 'autoFilterCheckbox';
+
+        const checkboxLabel = document.createElement('label');
+        checkboxLabel.htmlFor = checkbox.id;
+        checkboxLabel.setAttribute('aria-label', '履修中科目のみ自動表示');
+
+        const checkIcon = document.createElement('span');
+        checkIcon.className = 'fj-icon fj-icon-check';
+
+        checkboxLabel.appendChild(checkIcon);
+        checkboxWrapper.append(checkbox, checkboxLabel);
+        container.append(checkboxWrapper, document.createTextNode('自動'));
+        targetCell.prepend(container);
     }
 
     function setupEventListeners(form) {

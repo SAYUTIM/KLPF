@@ -3,6 +3,19 @@
 
 import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
 
+function isAllowedGasWebhookUrl(value) {
+    if (typeof value !== 'string') return false;
+
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:'
+            && url.hostname === 'script.google.com'
+            && url.pathname.startsWith('/a/macros/g.kogakuin.jp/s/');
+    } catch {
+        return false;
+    }
+}
+
 /**
  * コンテンツスクリプトを登録する。
  * @param {ContentScriptConfig} config - 登録するスクリプトの設定。
@@ -166,8 +179,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         (async () => {
             try {
                 const result = await chrome.storage.sync.get(["gaswebhookurl", "gasWebhook"]);
-                if (!result.gaswebhookurl || !result.gasWebhook) {
-                    throw new Error('GAS Webhook URLが未設定です。');
+                if (result.gasWebhook !== true) {
+                    throw new Error('課題通知が無効です。');
+                }
+                if (!isAllowedGasWebhookUrl(result.gaswebhookurl)) {
+                    throw new Error('GAS Webhook URLが未設定または許可対象外です。');
                 }
 
                 const response = await fetch(result.gaswebhookurl, {
