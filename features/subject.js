@@ -85,6 +85,26 @@
         }
     }
 
+    function getCurrentQuarter(month = new Date().getMonth() + 1) {
+        if (month >= 4 && month <= 5) return 1;
+        if (month >= 6 && month <= 7) return 2;
+        if (month >= 8 && month <= 10) return 3;
+        return 4;
+    }
+
+    function isCurrentSemester(semesterText, quarter = getCurrentQuarter()) {
+        const termsByQuarter = [
+            ['1Q', '前期', '通年'],
+            ['2Q', '前期', '通年'],
+            ['3Q', '後期', '通年'],
+            ['4Q', '後期', '通年'],
+        ];
+        const alwaysAvailableTerms = ['その他', '集中・特週', '自己学習', '講義'];
+
+        return alwaysAvailableTerms.some(term => semesterText.includes(term))
+            || termsByQuarter[quarter - 1].some(term => semesterText.includes(term));
+    }
+
     function applyClientSideFilter(form) {
         const settings = {
             isAutoActive: form.querySelector('#autoFilterCheckbox')?.checked || false,
@@ -97,16 +117,14 @@
 
         toggleSearchButtonVisibility(settings.isAutoActive);
 
-        const nowQ = (month => (month >= 4 && month <= 5) ? 1 : (month >= 6 && month <= 7) ? 2 : (month >= 8 && month <= 10) ? 3 : 4)(new Date().getMonth() + 1);
+        const currentQuarter = getCurrentQuarter();
 
         safeQuerySelectorAll('.lms-card').forEach(card => {
             const info = extractCardInfo(card);
             let isVisible = true;
 
             if (settings.isAutoActive) {
-                const termMatch = [["1Q", "前期", "通年"], ["2Q", "前期", "通年"], ["3Q", "後期", "通年"], ["4Q", "後期", "通年"]];
-                const otherTerms = ["その他", "集中・特週", "自己学習", "講義"];
-                if (!otherTerms.some(term => info.semesterText.includes(term)) && !termMatch[nowQ - 1].some(term => info.semesterText.includes(term))) {
+                if (!isCurrentSemester(info.semesterText, currentQuarter)) {
                     isVisible = false;
                 }
             } else if (settings.checkKiList.length > 0) {
@@ -140,11 +158,16 @@
         if (!currentPeriod || !currentPeriod.label.includes('限')) return;
 
         const periodCodeToHighlight = ('0' + currentPeriod.label.replace('限', '')).slice(-2);
+        const currentQuarter = getCurrentQuarter(now.getMonth() + 1);
 
         safeQuerySelectorAll('.lms-card').forEach(card => {
             if (card.style.display === 'none') return;
             const info = extractCardInfo(card);
-            if (info.dayCode === currentDayCode && info.periodCode === periodCodeToHighlight) {
+            if (
+                info.dayCode === currentDayCode
+                && info.periodCode === periodCodeToHighlight
+                && isCurrentSemester(info.semesterText, currentQuarter)
+            ) {
                 card.classList.add(SUBJECT_HIGHLIGHT_CLASS);
             }
         });
@@ -216,9 +239,8 @@
         addAutoFilterCheckbox(termCell);
 
         const savedSettings = await loadSettings();
+        const autoCheckbox = form.querySelector('#autoFilterCheckbox');
         if (Object.keys(savedSettings).length > 0) {
-            const autoCheckbox = form.querySelector('#autoFilterCheckbox');
-            if (autoCheckbox) autoCheckbox.checked = savedSettings.isAutoActive || false;
             form.querySelector('select[name="yobi"]').value = savedSettings.yobi || 'all';
             form.querySelector('select[name="jigen"]').value = savedSettings.jigen || 'all';
             form.querySelector('input[name="kougiName"]').value = savedSettings.kougiName || '';
@@ -229,7 +251,15 @@
             });
         }
 
+        if (autoCheckbox) {
+            autoCheckbox.checked = true;
+            safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => {
+                cb.disabled = true;
+            });
+        }
+
         applyClientSideFilter(form);
+        saveSettings(form);
         setupEventListeners(form);
         highlightCurrentClass();
         setInterval(highlightCurrentClass, 60000);
