@@ -11,6 +11,7 @@
     const COLUMN_SELECTOR = 'div.lms-menu-column.lms-home';
     const LAYOUT_STORAGE_KEY = 'klpf-home-dashboard-layout';
     const HIDDEN_HOMEWORK_STORAGE_KEY = 'klpf-hidden-homework-items';
+    const DELETED_HOMEWORK_STORAGE_KEY = 'klpf-deleted-homework-keys';
     const DEFAULT_ORDER = ['profile', 'study', 'activity', 'calendar', 'homework'];
     const MODULES = {
         profile: { label: 'プロフィール', description: '利用者名とプロフィール画像' },
@@ -26,7 +27,6 @@
     let moduleList = null;
     let restoredList = null;
     let calendarElement = null;
-    let calendarUpcomingElement = null;
     let editorCalendarElement = null;
     let compactCalendar = null;
     let editorCalendar = null;
@@ -34,6 +34,7 @@
     let applyScheduled = false;
     let layoutState = { order: [...DEFAULT_ORDER], hidden: [] };
     let hiddenHomeworkItems = [];
+    let deletedHomeworkKeys = [];
 
     function normalizeLayout(value) {
         const order = Array.isArray(value?.order)
@@ -70,9 +71,13 @@
         const result = await chrome.storage.local.get([
             LAYOUT_STORAGE_KEY,
             HIDDEN_HOMEWORK_STORAGE_KEY,
+            DELETED_HOMEWORK_STORAGE_KEY,
         ]);
         layoutState = normalizeLayout(result[LAYOUT_STORAGE_KEY]);
         hiddenHomeworkItems = normalizeHiddenHomework(result[HIDDEN_HOMEWORK_STORAGE_KEY]);
+        deletedHomeworkKeys = Array.isArray(result[DELETED_HOMEWORK_STORAGE_KEY])
+            ? [...new Set(result[DELETED_HOMEWORK_STORAGE_KEY].filter(key => typeof key === 'string'))]
+            : [];
     }
 
     async function saveLayout() {
@@ -81,6 +86,10 @@
 
     async function saveHiddenHomework() {
         await chrome.storage.local.set({ [HIDDEN_HOMEWORK_STORAGE_KEY]: hiddenHomeworkItems });
+    }
+
+    async function saveDeletedHomework() {
+        await chrome.storage.local.set({ [DELETED_HOMEWORK_STORAGE_KEY]: deletedHomeworkKeys });
     }
 
     function createButton(text, className, label) {
@@ -137,7 +146,7 @@
     }
 
     function isHomeworkHidden(key) {
-        return hiddenHomeworkItems.some(item => item.key === key);
+        return deletedHomeworkKeys.includes(key) || hiddenHomeworkItems.some(item => item.key === key);
     }
 
     async function hideHomework(item) {
@@ -154,6 +163,15 @@
     async function restoreHomework(key) {
         hiddenHomeworkItems = hiddenHomeworkItems.filter(item => item.key !== key);
         await saveHiddenHomework();
+        applyHomeworkVisibility();
+        refreshCalendars();
+        renderRestoredHomeworkList();
+    }
+
+    async function permanentlyDeleteHomework(key) {
+        hiddenHomeworkItems = hiddenHomeworkItems.filter(item => item.key !== key);
+        if (!deletedHomeworkKeys.includes(key)) deletedHomeworkKeys.push(key);
+        await Promise.all([saveHiddenHomework(), saveDeletedHomework()]);
         applyHomeworkVisibility();
         refreshCalendars();
         renderRestoredHomeworkList();
@@ -231,7 +249,7 @@
         return {
             initialView: 'dayGridMonth',
             locale: 'ja',
-            firstDay: 1,
+            firstDay: 0,
             height: 'auto',
             dayMaxEvents: compact ? 1 : 3,
             eventDisplay: compact ? 'list-item' : 'block',
@@ -240,6 +258,9 @@
                 ? { left: 'prev', center: 'title', right: 'next' }
                 : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
             buttonText: { today: '今日', month: '月', list: '一覧' },
+            dayCellContent(info) {
+                return String(info.date.getDate());
+            },
             events: collectCalendarEvents(),
             eventDidMount(info) {
                 const homeworkName = info.event.extendedProps.homeworkName || '';
@@ -253,7 +274,6 @@
         compactCalendar?.destroy();
         compactCalendar = new FullCalendar.Calendar(calendarElement, calendarOptions(true));
         compactCalendar.render();
-        renderUpcomingHomework();
     }
 
     function renderEditorCalendar() {
@@ -270,55 +290,25 @@
             calendar.removeAllEvents();
             calendar.addEventSource(events);
         }
-        renderUpcomingHomework();
     }
 
-    function renderUpcomingHomework() {
-        if (!calendarUpcomingElement) return;
-        calendarUpcomingElement.replaceChildren();
-
-        const upcoming = collectCalendarEvents()
-            .map(event => ({ ...event, date: new Date(event.start) }))
-            .filter(event => !Number.isNaN(event.date.getTime()) && event.date.getTime() >= Date.now() - 86400000)
-            .sort((a, b) => a.date - b.date)
-            .slice(0, 4);
-
-        if (upcoming.length === 0) {
-            const empty = document.createElement('p');
-            empty.className = 'klpf-calendar-upcoming-empty';
-            empty.textContent = '予定されている提出はありません';
-            calendarUpcomingElement.appendChild(empty);
-            return;
-        }
-
-        for (const event of upcoming) {
-            const row = document.createElement('div');
-            row.className = 'klpf-calendar-upcoming-row';
-            const date = document.createElement('time');
-            date.dateTime = event.start;
-            date.textContent = `${event.date.getMonth() + 1}/${event.date.getDate()}`;
-            const copy = document.createElement('div');
-            const lesson = document.createElement('strong');
-            lesson.textContent = event.title;
-            const homework = document.createElement('span');
-            homework.textContent = event.extendedProps.homeworkName || '課題';
-            copy.append(lesson, homework);
-            row.append(date, copy);
-            calendarUpcomingElement.appendChild(row);
-        }
+    function createCalendarActions() {
+        const actions = document.createElement('div');
+        actions.className = 'klpf-home-calendar-actions';
+        const expandButton = createButton('拡大表示 ↗', 'klpf-calendar-expand', 'カレンダーを拡大');
+        expandButton.addEventListener('click', openEditor);
+        actions.appendChild(expandButton);
+        return actions;
     }
 
     function createCalendarModule() {
         const existingModule = column.querySelector('#klpf-home-calendar');
         if (existingModule) {
             calendarElement = existingModule.querySelector('#klpf-home-calendar-body');
-            calendarUpcomingElement = existingModule.querySelector('.klpf-calendar-upcoming');
-            if (!calendarUpcomingElement) {
-                calendarUpcomingElement = document.createElement('div');
-                calendarUpcomingElement.className = 'klpf-calendar-upcoming';
-                existingModule.appendChild(calendarUpcomingElement);
-            }
-            renderUpcomingHomework();
+            existingModule.querySelector('.klpf-calendar-upcoming')?.remove();
+            existingModule.querySelector('.klpf-home-calendar-header')?.remove();
+            existingModule.querySelector('.klpf-home-calendar-actions')?.remove();
+            existingModule.appendChild(createCalendarActions());
             return;
         }
 
@@ -326,19 +316,9 @@
         module.id = 'klpf-home-calendar';
         module.className = 'klpf-home-calendar-module';
 
-        const header = document.createElement('div');
-        header.className = 'klpf-home-calendar-header';
-        const title = document.createElement('h3');
-        title.textContent = '課題カレンダー';
-        const expandButton = createButton('↗', 'klpf-calendar-expand', 'カレンダーを拡大');
-        expandButton.addEventListener('click', openEditor);
-        header.append(title, expandButton);
-
         calendarElement = document.createElement('div');
         calendarElement.id = 'klpf-home-calendar-body';
-        calendarUpcomingElement = document.createElement('div');
-        calendarUpcomingElement.className = 'klpf-calendar-upcoming';
-        module.append(header, calendarElement, calendarUpcomingElement);
+        module.append(calendarElement, createCalendarActions());
         column.appendChild(module);
         renderCompactCalendar();
     }
@@ -423,7 +403,19 @@
             copy.append(lesson, detail);
             const restore = createButton('+', 'klpf-editor-icon-button klpf-restore-button', `${item.lessonName || '課題'}を元に戻す`);
             restore.addEventListener('click', () => void restoreHomework(item.key));
-            row.append(copy, restore);
+            const remove = createButton('', 'klpf-editor-icon-button klpf-permanent-delete', `${item.lessonName || '課題'}を完全に削除`);
+            const trashIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            trashIcon.setAttribute('viewBox', '0 0 24 24');
+            trashIcon.setAttribute('aria-hidden', 'true');
+            const trashPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            trashPath.setAttribute('d', 'M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5');
+            trashIcon.appendChild(trashPath);
+            remove.appendChild(trashIcon);
+            remove.addEventListener('click', () => void permanentlyDeleteHomework(item.key));
+            const actions = document.createElement('div');
+            actions.className = 'klpf-restored-homework-actions';
+            actions.append(restore, remove);
+            row.append(copy, actions);
             restoredList.appendChild(row);
         }
     }
