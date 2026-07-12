@@ -163,6 +163,10 @@
 
 .klpf-dashboard-column #homework {
     margin-top: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    filter: none !important;
 }
 
 #homework > #updatingNotice {
