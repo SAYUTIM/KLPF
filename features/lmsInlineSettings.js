@@ -79,7 +79,7 @@
     let themeInspectMode = false;
     let themeHoveredElement = null;
     let themeInspectCandidates = [];
-    let themeInspectCandidateIndex = 0;
+    let selectedThemeHierarchy = [];
     let draftColorSelections = new Map();
     let themeLastFocusedElement = null;
     let menuObserver = null;
@@ -123,6 +123,7 @@
                 html.klpf-inline-modal-open,
                 html.klpf-inline-modal-open body { overflow: hidden !important; overscroll-behavior: none !important; }
                 [data-klpf-theme-hover] { outline: 3px solid #18a8cc !important; outline-offset: 2px !important; cursor: crosshair !important; }
+                [data-klpf-theme-selected] { outline: 2px dashed #168eb5 !important; outline-offset: 2px !important; }
             `;
             (document.head || document.documentElement).appendChild(style);
         }
@@ -670,6 +671,35 @@
             .theme-target span { display: block; color: var(--muted); font-size: 9px; font-weight: 800; }
             .theme-target strong { display: block; overflow: hidden; margin-top: 3px; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
+            .theme-hierarchy {
+                display: flex;
+                gap: 5px;
+                margin: -3px 0 11px;
+                padding: 2px 1px 5px;
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+
+            .theme-hierarchy[hidden] { display: none; }
+
+            .theme-hierarchy button {
+                flex: 0 0 auto;
+                min-height: 27px;
+                padding: 4px 8px;
+                border: 1px solid #d5e1e6;
+                border-radius: 7px;
+                color: #617582;
+                background: #fff;
+                cursor: pointer;
+                font: 700 10px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+            }
+
+            .theme-hierarchy button.is-active {
+                border-color: #168eb5;
+                color: #075f88;
+                background: #e9f7fb;
+            }
+
             .theme-inspect {
                 border: 1px solid #0a78ad;
                 border-radius: 10px;
@@ -734,6 +764,19 @@
                 background: #f7fafb;
             }
 
+            .theme-reset-all {
+                width: 100%;
+                min-height: 32px;
+                margin-top: 12px;
+                border: 1px solid #d9e3e8;
+                border-radius: 8px;
+                color: #647682;
+                background: #f8fafb;
+                cursor: pointer;
+                font-size: 10px;
+                font-weight: 800;
+            }
+
             .theme-workspace .theme-help { margin-top: 11px; }
             .theme-workspace .theme-actions { padding: 11px 14px 13px; }
             .theme-workspace .theme-button { min-height: 34px; padding: 6px 12px; font-size: 10px; }
@@ -783,6 +826,7 @@
                             <div class="theme-target"><span>選択中</span><strong data-theme-target-label>未選択</strong></div>
                             <button type="button" class="theme-inspect" data-theme-inspect>要素を選択</button>
                         </div>
+                        <div class="theme-hierarchy" data-theme-hierarchy hidden></div>
                         <div class="theme-property" data-theme-property role="radiogroup" aria-label="変更する色">
                             <button type="button" data-theme-property-value="color" role="radio">文字</button>
                             <button type="button" data-theme-property-value="background-color" role="radio">背景</button>
@@ -794,6 +838,7 @@
                         </div>
                         <p class="theme-recents-label">最近使った色</p>
                         <div class="theme-recents" data-theme-recents></div>
+                        <button type="button" class="theme-reset-all" data-theme-reset-all>すべて既定値に戻す</button>
                     </div>
                     <footer class="theme-actions">
                         <button type="button" class="theme-button reset" data-theme-reset-selected>既定色に戻す</button>
@@ -818,6 +863,35 @@
         const identity = element.id ? `#${element.id}` : (className ? `.${className}` : '');
         const text = element.textContent?.replace(/\s+/g, ' ').trim().slice(0, 28);
         return `${element.tagName.toLowerCase()}${identity}${text ? ` · ${text}` : ''}`;
+    }
+
+    function getThemeHierarchyLabel(element) {
+        if (!(element instanceof Element)) return '';
+        if (element.id && !element.id.startsWith('fc-dom-')) return `#${element.id}`;
+        const className = [...element.classList].find(name => !name.startsWith('klpf-'));
+        return className ? `.${className}` : element.tagName.toLowerCase();
+    }
+
+    function renderThemeHierarchy() {
+        const container = themeShadowRoot?.querySelector('[data-theme-hierarchy]');
+        if (!container) return;
+        container.replaceChildren();
+        const hierarchy = selectedThemeHierarchy.filter(element => element?.isConnected).slice(0, 7);
+        container.hidden = hierarchy.length < 2;
+        for (const element of hierarchy) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = getThemeHierarchyLabel(element);
+            button.title = getThemeElementLabel(element);
+            button.classList.toggle('is-active', element === selectedThemeTarget);
+            button.addEventListener('click', () => {
+                selectedThemeTarget?.removeAttribute('data-klpf-theme-selected');
+                selectedThemeTarget = element;
+                selectedThemeTarget.setAttribute('data-klpf-theme-selected', '');
+                syncSelectedThemeControls();
+            });
+            container.appendChild(button);
+        }
     }
 
     function buildThemeSelector(element) {
@@ -891,6 +965,7 @@
         const propertyButtons = [...themeShadowRoot?.querySelectorAll('[data-theme-property-value]') || []];
         const reset = themeShadowRoot?.querySelector('[data-theme-reset-selected]');
         if (label) label.textContent = getThemeElementLabel(selectedThemeTarget);
+        renderThemeHierarchy();
         for (const button of propertyButtons) {
             const isActive = button.dataset.themePropertyValue === selectedThemeProperty;
             button.classList.toggle('is-active', isActive);
@@ -946,9 +1021,7 @@
         workspace?.classList.remove('is-inspecting');
         if (button) button.textContent = '要素を選択';
         themeInspectCandidates = [];
-        themeInspectCandidateIndex = 0;
         workspace?.removeEventListener('pointermove', handleThemeInspectHover);
-        workspace?.removeEventListener('wheel', handleThemeInspectWheel);
         workspace?.removeEventListener('pointerdown', handleThemeInspectPointerDown);
         syncSelectedThemeControls();
     }
@@ -971,28 +1044,9 @@
             current = current.parentElement;
         }
         themeInspectCandidates = [...new Set(candidates)];
-        themeInspectCandidateIndex = 0;
         themeHoveredElement?.removeAttribute('data-klpf-theme-hover');
         themeHoveredElement = themeInspectCandidates[0] || element;
         themeHoveredElement.setAttribute('data-klpf-theme-hover', '');
-        const label = themeShadowRoot?.querySelector('[data-theme-target-label]');
-        if (label) label.textContent = getThemeElementLabel(themeHoveredElement);
-    }
-
-    function handleThemeInspectWheel(event) {
-        const panel = themeShadowRoot?.querySelector('.theme-panel');
-        if (panel && event.composedPath().includes(panel)) return;
-        if (themeInspectCandidates.length < 2) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        const direction = event.deltaY > 0 ? 1 : -1;
-        themeInspectCandidateIndex = Math.max(0, Math.min(
-            themeInspectCandidates.length - 1,
-            themeInspectCandidateIndex + direction,
-        ));
-        themeHoveredElement?.removeAttribute('data-klpf-theme-hover');
-        themeHoveredElement = themeInspectCandidates[themeInspectCandidateIndex];
-        themeHoveredElement?.setAttribute('data-klpf-theme-hover', '');
         const label = themeShadowRoot?.querySelector('[data-theme-target-label]');
         if (label) label.textContent = getThemeElementLabel(themeHoveredElement);
     }
@@ -1005,7 +1059,12 @@
         event.preventDefault();
         event.stopImmediatePropagation();
         const backgroundTarget = element.closest('.courseCardInfo, .lms-news-block');
+        selectedThemeTarget?.removeAttribute('data-klpf-theme-selected');
         selectedThemeTarget = backgroundTarget || element;
+        selectedThemeHierarchy = themeInspectCandidates.includes(selectedThemeTarget)
+            ? [...themeInspectCandidates]
+            : [selectedThemeTarget, ...themeInspectCandidates];
+        selectedThemeTarget.setAttribute('data-klpf-theme-selected', '');
         selectedThemeProperty = backgroundTarget ? 'background-color' : 'color';
         stopThemeInspection();
         syncSelectedThemeControls();
@@ -1025,7 +1084,6 @@
         workspace?.classList.add('is-inspecting');
         if (button) button.textContent = '選択中…';
         workspace?.addEventListener('pointermove', handleThemeInspectHover);
-        workspace?.addEventListener('wheel', handleThemeInspectWheel, { passive: false });
         workspace?.addEventListener('pointerdown', handleThemeInspectPointerDown);
         setThemeStatus('色を変えたい要素をクリックしてください。');
     }
@@ -1073,7 +1131,9 @@
     function closeThemePanel({ restoreSavedColor = true } = {}) {
         if (!isThemeOpen) return;
         stopThemeInspection();
+        selectedThemeTarget?.removeAttribute('data-klpf-theme-selected');
         selectedThemeTarget = null;
+        selectedThemeHierarchy = [];
         if (restoreSavedColor) applyThemeColors(persistedThemeColors, persistedElementRules);
 
         isThemeOpen = false;
@@ -1104,6 +1164,7 @@
         const closeButton = themeShadowRoot.querySelector('.theme-close');
         const cancelButton = themeShadowRoot.querySelector('[data-theme-cancel]');
         const resetButton = themeShadowRoot.querySelector('[data-theme-reset-selected]');
+        const resetAllButton = themeShadowRoot.querySelector('[data-theme-reset-all]');
 
         themeShadowRoot.addEventListener('keydown', handleThemeFocusTrap);
         closeButton.addEventListener('click', () => closeThemePanel());
@@ -1127,18 +1188,38 @@
         }
         resetButton.addEventListener('click', () => {
             if (!selectedThemeTarget) return;
-            const selector = buildThemeSelector(selectedThemeTarget);
-            draftElementRules = draftElementRules.filter(rule => !(rule.selector === selector && rule.property === selectedThemeProperty));
-            draftColorSelections.delete(`${selector}\u0000${selectedThemeProperty}`);
+            const affectsSelection = (ruleSelector, property) => {
+                if (property !== selectedThemeProperty) return false;
+                try {
+                    return selectedThemeTarget.matches(ruleSelector)
+                        || (property === 'color' && !!selectedThemeTarget.closest(ruleSelector));
+                } catch {
+                    return false;
+                }
+            };
+            draftElementRules = draftElementRules.filter(rule => !affectsSelection(rule.selector, rule.property));
+            for (const key of [...draftColorSelections.keys()]) {
+                const [ruleSelector, property] = key.split('\u0000');
+                if (affectsSelection(ruleSelector, property)) draftColorSelections.delete(key);
+            }
             for (const config of THEME_COLOR_CONFIG) {
                 if (config.property !== selectedThemeProperty || !draftThemeBaseColors[config.key]) continue;
-                if (config.selectors.some(configSelector => selectedThemeTarget.matches(configSelector))) {
+                if (config.selectors.some(configSelector => affectsSelection(configSelector, config.property))) {
                     delete draftThemeBaseColors[config.key];
                 }
             }
             applyThemeColors(draftThemeBaseColors, draftElementRules);
             syncSelectedThemeControls();
             setThemeStatus('選択した色指定をサイト既定へ戻しました。');
+        });
+        resetAllButton.addEventListener('click', () => {
+            draftThemeBaseColors = {};
+            draftElementRules = [];
+            draftRecentColors = [];
+            draftColorSelections.clear();
+            applyThemeColors({}, []);
+            renderRecentThemeColors();
+            syncSelectedThemeControls();
         });
 
         panel.addEventListener('submit', async (event) => {
@@ -1172,7 +1253,9 @@
         draftRecentColors = [...recentThemeColors];
         draftColorSelections = new Map();
         selectedThemeTarget = null;
+        selectedThemeHierarchy = [];
         isThemeOpen = true;
+        updatePageScrollLock('theme-support', false);
 
         ensureThemeRoot();
         themeShadowRoot.innerHTML = getThemePanelMarkup();
