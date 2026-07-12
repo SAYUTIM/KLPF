@@ -12,6 +12,7 @@
     const LAYOUT_STORAGE_KEY = 'klpf-home-dashboard-layout';
     const HIDDEN_HOMEWORK_STORAGE_KEY = 'klpf-hidden-homework-items';
     const DELETED_HOMEWORK_STORAGE_KEY = 'klpf-deleted-homework-keys';
+    const OPEN_HOME_EDITOR_EVENT = 'klpf-open-home-editor';
     const DEFAULT_ORDER = ['profile', 'study', 'activity', 'calendar', 'homework'];
     const MODULES = {
         profile: { label: 'プロフィール', description: '利用者名とプロフィール画像' },
@@ -22,7 +23,7 @@
     };
 
     let column = null;
-    let editButton = null;
+    let editorLastFocusedElement = null;
     let overlay = null;
     let moduleList = null;
     let restoredList = null;
@@ -565,11 +566,15 @@
         if (!overlay) return;
         overlay.hidden = true;
         document.documentElement.classList.remove('klpf-dashboard-editing');
-        editButton?.focus();
+        if (editorLastFocusedElement instanceof HTMLElement && editorLastFocusedElement.isConnected) {
+            editorLastFocusedElement.focus();
+        }
+        editorLastFocusedElement = null;
     }
 
     function openEditor() {
         if (!overlay) createEditor();
+        editorLastFocusedElement = document.activeElement;
         overlay.hidden = false;
         document.documentElement.classList.add('klpf-dashboard-editing');
         renderModuleList();
@@ -662,29 +667,6 @@
         document.body.appendChild(overlay);
     }
 
-    function createEditButton() {
-        document.querySelectorAll('#klpf-dashboard-edit-button').forEach(button => button.remove());
-        editButton = document.createElement('button');
-        editButton.type = 'button';
-        editButton.className = 'klpf-dashboard-edit-button';
-        editButton.setAttribute('aria-label', 'ホームの表示を編集');
-        editButton.title = 'ホームの表示を編集';
-        editButton.id = 'klpf-dashboard-edit-button';
-
-        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        icon.setAttribute('viewBox', '0 0 24 24');
-        icon.setAttribute('aria-hidden', 'true');
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4');
-        icon.appendChild(path);
-        const label = document.createElement('span');
-        label.textContent = '編集';
-        editButton.append(icon, label);
-        editButton.addEventListener('click', openEditor);
-        const sideMenu = document.querySelector('#lms-side-menu, .lms-side-menu');
-        (sideMenu || column).appendChild(editButton);
-    }
-
     function scheduleApply() {
         if (applyScheduled) return;
         applyScheduled = true;
@@ -715,13 +697,14 @@
 
         await loadState();
         createCalendarModule();
-        createEditButton();
+        document.querySelectorAll('#klpf-dashboard-edit-button').forEach(button => button.remove());
         document.querySelectorAll('#klpf-dashboard-editor-overlay').forEach(element => element.remove());
         createEditor();
         applyLayout();
         applyHomeworkVisibility();
         renderCompactCalendar();
         observeDashboard();
+        document.addEventListener(OPEN_HOME_EDITOR_EVENT, openEditor);
     }
 
     main().catch(error => {

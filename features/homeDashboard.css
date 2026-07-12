@@ -24,46 +24,6 @@
     display: none !important;
 }
 
-.klpf-dashboard-edit-button {
-    position: static;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    width: calc(100% - 16px);
-    height: 36px;
-    margin: 12px 8px 8px;
-    padding: 0 12px;
-    border: 1px solid rgba(18, 111, 137, 0.2);
-    border-radius: 8px;
-    color: #126f89;
-    background: rgba(240, 250, 252, 0.86);
-    box-shadow: none;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
-}
-
-.klpf-dashboard-edit-button svg {
-    width: 14px;
-    height: 14px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.klpf-dashboard-edit-button:hover {
-    transform: translateY(-1px);
-    color: var(--klpf-dashboard-accent);
-    border-color: rgba(180, 63, 70, 0.3);
-    background: #fff;
-    box-shadow: 0 4px 12px rgba(33, 40, 48, 0.1);
-}
-
 .klpf-home-calendar-module {
     margin-top: 0;
     padding: 12px 9px 10px;
@@ -258,6 +218,12 @@
 
 .klpf-dashboard-editor-overlay[hidden] {
     display: none !important;
+}
+
+html.klpf-dashboard-editing,
+html.klpf-dashboard-editing body {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
 }
 
 .klpf-dashboard-editor {
@@ -654,6 +620,5 @@
 @media (prefers-reduced-motion: reduce) {
     .klpf-dashboard-editor-overlay,
     .klpf-dashboard-editor,
-    .klpf-dashboard-edit-button,
     .klpf-homework-remove { animation: none; transition: none; }
 }

@@ -12,12 +12,17 @@
     }
 
     const MENU_ITEM_ID = 'klpf-inline-settings-menu-item';
+    const HOME_EDITOR_MENU_ITEM_ATTRIBUTE = 'data-klpf-home-editor-menu-item';
+    const OPEN_HOME_EDITOR_EVENT = 'klpf-open-home-editor';
     const ROOT_ID = 'klpf-inline-settings-root';
     const THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-theme-menu-item';
     const THEME_ROOT_ID = 'klpf-site-theme-root';
     const THEME_STYLE_ID = 'klpf-site-theme-style';
     const THEME_COLORS_STORAGE_KEY = 'klpfSiteThemeColors';
     const LEGACY_THEME_COLOR_STORAGE_KEY = 'klpfSiteThemeColor';
+    const THEME_ELEMENT_RULES_STORAGE_KEY = 'klpfSiteThemeElementRules';
+    const THEME_RECENT_COLORS_STORAGE_KEY = 'klpfSiteThemeRecentColors';
+    const THEME_ALLOWED_PROPERTIES = ['color', 'background-color', 'border-color'];
     const THEME_COLOR_CONFIG = [
         {
             key: 'text',
@@ -25,7 +30,6 @@
             description: '科目名とお知らせリンクの文字色',
             property: 'color',
             selectors: ['.lms-card', '.lms-cardname', '.lms-cardname a', '.lms-cardname a:link', '.lms-cardname a:visited', '.lms-news-subO a', '.lms-news-subO a:link', '.lms-news-subO a:visited'],
-            sampleSelector: '.lms-cardname a, .lms-news-subO a, .lms-cardname, .lms-card',
             fallback: '#0068B7',
         },
         {
@@ -34,7 +38,6 @@
             description: '科目カードを囲む線の色',
             property: 'border-color',
             selectors: ['.lms-card'],
-            sampleSelector: '.lms-card',
             fallback: '#D6E2E8',
         },
         {
@@ -43,7 +46,6 @@
             description: 'courseCardInfoの背景色',
             property: 'background-color',
             selectors: ['.courseCardInfo'],
-            sampleSelector: '.courseCardInfo',
             fallback: '#F2F6F8',
         },
         {
@@ -52,7 +54,6 @@
             description: 'lms-news-blockの背景色',
             property: 'background-color',
             selectors: ['.lms-news-block'],
-            sampleSelector: '.lms-news-block',
             fallback: '#FFFFFF',
         },
     ];
@@ -68,15 +69,21 @@
     let themeRootElement = null;
     let themeShadowRoot = null;
     let persistedThemeColors = {};
-    let nativeThemeColors = {};
-    let draftThemeColors = {};
-    let draftThemeOverrides = {};
+    let persistedElementRules = [];
+    let draftElementRules = [];
+    let recentThemeColors = [];
+    let draftRecentColors = [];
+    let selectedThemeTarget = null;
+    let selectedThemeProperty = 'color';
+    let themeInspectMode = false;
+    let themeHoveredElement = null;
     let themeLastFocusedElement = null;
     let menuObserver = null;
     let isThemeOpen = false;
     let isOpen = false;
     let hasPendingReloadPrompt = false;
     let isReloadPromptOpen = false;
+    const activeScrollLocks = new Set();
     let state = {
         settings: {},
         allDisabled: false,
@@ -98,6 +105,24 @@
 
     function storageSet(area, values) {
         return chrome.storage[area].set(values);
+    }
+
+    function updatePageScrollLock(name, shouldLock) {
+        if (shouldLock) activeScrollLocks.add(name);
+        else activeScrollLocks.delete(name);
+
+        let style = document.getElementById('klpf-inline-scroll-lock-style');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'klpf-inline-scroll-lock-style';
+            style.textContent = `
+                html.klpf-inline-modal-open,
+                html.klpf-inline-modal-open body { overflow: hidden !important; overscroll-behavior: none !important; }
+                [data-klpf-theme-hover] { outline: 3px solid #18a8cc !important; outline-offset: 2px !important; cursor: crosshair !important; }
+            `;
+            (document.head || document.documentElement).appendChild(style);
+        }
+        document.documentElement.classList.toggle('klpf-inline-modal-open', activeScrollLocks.size > 0);
     }
 
     function normalizeHexColor(value) {
@@ -135,7 +160,37 @@
         }, {});
     }
 
-    function applyThemeColors(colors) {
+    function normalizeElementRules(value) {
+        if (!Array.isArray(value)) return [];
+        const seen = new Set();
+        return value.slice(0, 60).flatMap((rule) => {
+            const selector = typeof rule?.selector === 'string' ? rule.selector.trim() : '';
+            const property = THEME_ALLOWED_PROPERTIES.includes(rule?.property) ? rule.property : null;
+            const color = normalizeHexColor(rule?.color);
+            if (!selector || selector.length > 320 || /[{};]/.test(selector) || !property || !color) return [];
+            try {
+                document.querySelector(selector);
+            } catch {
+                return [];
+            }
+            const key = `${selector}\u0000${property}`;
+            if (seen.has(key)) return [];
+            seen.add(key);
+            return [{
+                selector,
+                property,
+                color,
+                label: typeof rule.label === 'string' ? rule.label.slice(0, 80) : selector.slice(0, 80),
+            }];
+        });
+    }
+
+    function normalizeRecentColors(value) {
+        if (!Array.isArray(value)) return [];
+        return [...new Set(value.map(normalizeHexColor).filter(Boolean))].slice(0, 5);
+    }
+
+    function applyThemeColors(colors, elementRules = persistedElementRules) {
         const normalizedColors = normalizeThemeColors(colors);
         const existingStyle = document.getElementById(THEME_STYLE_ID);
 
@@ -144,6 +199,9 @@
             if (!color) return [];
             return [`${config.selectors.join(',\n')} { ${config.property}: ${color} !important; }`];
         });
+        for (const rule of normalizeElementRules(elementRules)) {
+            rules.push(`${rule.selector} { ${rule.property}: ${rule.color} !important; }`);
+        }
 
         if (rules.length === 0) {
             existingStyle?.remove();
@@ -159,21 +217,6 @@
         }
     }
 
-    function readNativeThemeColors() {
-        const existingStyle = document.getElementById(THEME_STYLE_ID);
-        if (existingStyle) existingStyle.disabled = true;
-
-        const colors = THEME_COLOR_CONFIG.reduce((result, config) => {
-            const target = document.querySelector(config.sampleSelector);
-            const value = target ? getComputedStyle(target).getPropertyValue(config.property) : '';
-            result[config.key] = cssColorToHex(value) || config.fallback;
-            return result;
-        }, {});
-
-        if (existingStyle) existingStyle.disabled = false;
-        return colors;
-    }
-
     async function readStoredThemeColors() {
         const stored = await storageGet('local', [
             THEME_COLORS_STORAGE_KEY,
@@ -186,8 +229,20 @@
     }
 
     async function loadAndApplyThemeColors() {
-        persistedThemeColors = await readStoredThemeColors();
-        applyThemeColors(persistedThemeColors);
+        const [colors, stored] = await Promise.all([
+            readStoredThemeColors(),
+            storageGet('local', [THEME_ELEMENT_RULES_STORAGE_KEY, THEME_RECENT_COLORS_STORAGE_KEY]),
+        ]);
+        persistedThemeColors = colors;
+        persistedElementRules = normalizeElementRules(stored[THEME_ELEMENT_RULES_STORAGE_KEY]);
+        recentThemeColors = normalizeRecentColors(stored[THEME_RECENT_COLORS_STORAGE_KEY]);
+        if (recentThemeColors.length === 0) {
+            recentThemeColors = normalizeRecentColors([
+                ...Object.values(persistedThemeColors),
+                ...persistedElementRules.map(rule => rule.color),
+            ]);
+        }
+        applyThemeColors(persistedThemeColors, persistedElementRules);
     }
 
     function ensureThemeRoot() {
@@ -542,9 +597,112 @@
                 background: #064f84;
             }
 
+            .theme-workspace {
+                position: fixed;
+                inset: 0;
+                z-index: 2147483647;
+                pointer-events: none;
+            }
+
+            .theme-workspace .theme-panel {
+                position: fixed;
+                right: 18px;
+                bottom: 18px;
+                width: min(340px, calc(100vw - 24px));
+                max-height: min(610px, calc(100vh - 24px));
+                border: 1px solid #cbdde5;
+                border-radius: 16px;
+                overflow: auto;
+                pointer-events: auto;
+                box-shadow: 0 18px 54px rgba(8, 42, 61, 0.28);
+                animation: themePanelIn 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+            }
+
+            .theme-workspace .theme-header {
+                align-items: center;
+                padding: 13px 14px;
+                cursor: grab;
+                user-select: none;
+                touch-action: none;
+            }
+
+            .theme-workspace .theme-header:active { cursor: grabbing; }
+            .theme-workspace .theme-title { font-size: 16px; }
+            .theme-workspace .theme-subtitle { margin-top: 3px; font-size: 10px; }
+            .theme-workspace .theme-close { width: 30px; height: 30px; font-size: 18px; }
+            .theme-workspace .theme-body { padding: 14px; }
+
+            .theme-target-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 9px;
+                align-items: stretch;
+                margin-bottom: 12px;
+            }
+
+            .theme-target {
+                min-width: 0;
+                padding: 9px 10px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: #f7fafc;
+            }
+
+            .theme-target span { display: block; color: var(--muted); font-size: 9px; font-weight: 800; }
+            .theme-target strong { display: block; overflow: hidden; margin-top: 3px; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+            .theme-inspect {
+                border: 1px solid #0a78ad;
+                border-radius: 10px;
+                padding: 0 12px;
+                color: #0a6f9f;
+                background: #edf8fc;
+                cursor: pointer;
+                font-size: 11px;
+                font-weight: 800;
+            }
+
+            .theme-inspect.is-active { color: #fff; background: #0a78ad; }
+
+            .theme-property {
+                width: 100%;
+                height: 38px;
+                margin-bottom: 10px;
+                padding: 0 10px;
+                border: 1px solid var(--line);
+                border-radius: 9px;
+                color: var(--ink);
+                background: #fff;
+                font-size: 11px;
+                font-weight: 700;
+            }
+
+            .theme-workspace .theme-fields { grid-template-columns: 48px minmax(0, 1fr); }
+            .theme-workspace .theme-color-input { width: 48px; height: 40px; }
+            .theme-workspace .theme-input { height: 40px; font-size: 13px; }
+
+            .theme-recents-label { margin: 13px 0 7px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+            .theme-recents { display: flex; min-height: 30px; gap: 7px; }
+            .theme-recent-color {
+                width: 29px;
+                height: 29px;
+                padding: 0;
+                border: 2px solid #fff;
+                border-radius: 50%;
+                background: var(--recent-color);
+                box-shadow: 0 0 0 1px #c7d5dc;
+                cursor: pointer;
+            }
+            .theme-recents-empty { color: #8a99a5; font-size: 10px; }
+
+            .theme-workspace .theme-help { margin-top: 11px; }
+            .theme-workspace .theme-actions { padding: 11px 14px 13px; }
+            .theme-workspace .theme-button { min-height: 34px; padding: 6px 12px; font-size: 10px; }
+
+            :host-context(html.klpf-theme-inspecting) .theme-panel { box-shadow: 0 0 0 2px #16a2c7, 0 18px 54px rgba(8, 42, 61, 0.28); }
+
             @media (max-width: 520px) {
-                .theme-overlay { padding: 12px; }
-                .theme-panel { border-radius: 18px; }
+                .theme-workspace .theme-panel { right: 8px; bottom: 8px; width: calc(100vw - 16px); max-height: calc(100vh - 16px); border-radius: 14px; }
                 .theme-header, .theme-body { padding-left: 19px; padding-right: 19px; }
                 .theme-actions { flex-wrap: wrap; padding-left: 19px; padding-right: 19px; }
                 .theme-button.reset { width: 100%; margin: 0 0 3px; }
@@ -571,45 +729,39 @@
     }
 
     function getThemePanelMarkup() {
-        const fields = THEME_COLOR_CONFIG.map((config) => `
-            <section class="theme-field-row" data-theme-field="${config.key}">
-                <div class="theme-field-heading">
-                    <label class="theme-label" for="klpf-theme-${config.key}">${config.label}</label>
-                    <span class="theme-field-description">${config.description}</span>
-                </div>
-                <div class="theme-fields">
-                    <input class="theme-color-input" type="color" data-theme-color="${config.key}" aria-label="${config.label}のカラーピッカー">
-                    <input class="theme-input" id="klpf-theme-${config.key}" type="text" inputmode="text" maxlength="7" autocomplete="off" spellcheck="false" data-theme-hex="${config.key}" aria-describedby="klpf-theme-help klpf-theme-status">
-                    <button type="button" class="theme-field-reset" data-theme-field-reset="${config.key}">既定</button>
-                </div>
-            </section>
-        `).join('');
-
         return `
             <style>${getThemeStyles()}</style>
-            <div class="theme-overlay">
-                <form class="theme-panel" role="dialog" aria-modal="true" aria-labelledby="klpf-theme-title" novalidate>
-                    <header class="theme-header">
+            <div class="theme-workspace">
+                <form class="theme-panel" role="dialog" aria-labelledby="klpf-theme-title" novalidate>
+                    <header class="theme-header" data-theme-drag-handle>
                         <div>
-                            <p class="theme-eyebrow">KLPF APPEARANCE</p>
                             <h2 class="theme-title" id="klpf-theme-title">サイトテーマ色</h2>
-                            <p class="theme-subtitle">文字・枠線・背景色を場所ごとに変更します。</p>
+                            <p class="theme-subtitle">選択した要素の色を変更</p>
                         </div>
                         <button type="button" class="theme-close" aria-label="閉じる">×</button>
                     </header>
                     <div class="theme-body">
-                        <section class="theme-preview" aria-label="選択色のプレビュー">
-                            <p class="preview-caption">LIVE PREVIEW</p>
-                            <p class="preview-course">ソフトウェア工学 I</p>
-                            <p class="preview-info">月曜3限 · 新宿キャンパス</p>
-                            <span class="preview-news">授業からのお知らせ</span>
-                        </section>
-                        <div class="theme-field-list">${fields}</div>
-                        <p class="theme-help" id="klpf-theme-help">各色は3桁または6桁の16進数でも指定できます。変更はページ上ですぐ確認できます。</p>
+                        <div class="theme-target-row">
+                            <div class="theme-target"><span>選択中</span><strong data-theme-target-label>要素を選択してください</strong></div>
+                            <button type="button" class="theme-inspect" data-theme-inspect>要素を選択</button>
+                        </div>
+                        <label class="theme-label" for="klpf-theme-property">変更する色</label>
+                        <select class="theme-property" id="klpf-theme-property" data-theme-property>
+                            <option value="color">文字色</option>
+                            <option value="background-color">背景色</option>
+                            <option value="border-color">枠線色</option>
+                        </select>
+                        <div class="theme-fields">
+                            <input class="theme-color-input" type="color" data-theme-picker aria-label="カラーピッカー">
+                            <input class="theme-input" type="text" inputmode="text" maxlength="7" autocomplete="off" spellcheck="false" data-theme-hex aria-describedby="klpf-theme-help klpf-theme-status">
+                        </div>
+                        <p class="theme-recents-label">最近使った色</p>
+                        <div class="theme-recents" data-theme-recents></div>
+                        <p class="theme-help" id="klpf-theme-help">要素を選択して色を指定すると、サイト上へすぐ反映されます。</p>
                         <p class="theme-status" id="klpf-theme-status" aria-live="polite"></p>
                     </div>
                     <footer class="theme-actions">
-                        <button type="button" class="theme-button reset" data-theme-reset>すべて既定色に戻す</button>
+                        <button type="button" class="theme-button reset" data-theme-reset-selected>選択を戻す</button>
                         <button type="button" class="theme-button" data-theme-cancel>キャンセル</button>
                         <button type="submit" class="theme-button primary">保存</button>
                     </footer>
@@ -625,33 +777,207 @@
         status.classList.toggle('is-error', isError);
     }
 
-    function syncThemePanelColors(colors) {
-        const panel = themeShadowRoot?.querySelector('.theme-panel');
-        const variableNames = {
-            text: '--theme-text',
-            cardBorder: '--theme-card-border',
-            courseInfoBackground: '--theme-course-info',
-            newsBackground: '--theme-news',
-        };
+    function getThemeElementLabel(element) {
+        if (!(element instanceof Element)) return '要素を選択してください';
+        const className = [...element.classList].filter(name => !name.startsWith('klpf-')).slice(0, 2).join('.');
+        const identity = element.id ? `#${element.id}` : (className ? `.${className}` : '');
+        const text = element.textContent?.replace(/\s+/g, ' ').trim().slice(0, 28);
+        return `${element.tagName.toLowerCase()}${identity}${text ? ` · ${text}` : ''}`;
+    }
 
-        for (const config of THEME_COLOR_CONFIG) {
-            const color = normalizeHexColor(colors[config.key]) || config.fallback;
-            const colorInput = themeShadowRoot?.querySelector(`[data-theme-color="${config.key}"]`);
-            const hexInput = themeShadowRoot?.querySelector(`[data-theme-hex="${config.key}"]`);
-            panel?.style.setProperty(variableNames[config.key], color);
-            if (colorInput) colorInput.value = color;
-            if (hexInput) {
-                hexInput.value = color;
-                hexInput.setAttribute('aria-invalid', 'false');
-            }
+    function buildThemeSelector(element) {
+        if (!(element instanceof Element)) return null;
+        if (element.id && !element.id.startsWith('klpf-') && !element.id.startsWith('fc-dom-')) {
+            const selector = `#${CSS.escape(element.id)}`;
+            if (document.querySelectorAll(selector).length === 1) return selector;
         }
+
+        const classes = [...element.classList]
+            .filter(name => !name.startsWith('klpf-') && !/^is-|^active$|^hover$/.test(name))
+            .slice(0, 3);
+        if (classes.length > 0) {
+            const selector = `${element.tagName.toLowerCase()}${classes.map(name => `.${CSS.escape(name)}`).join('')}`;
+            if (document.querySelectorAll(selector).length === 1) return selector;
+        }
+
+        const parts = [];
+        let current = element;
+        while (current && current !== document.body && parts.length < 6) {
+            let part = current.tagName.toLowerCase();
+            if (current.id && !current.id.startsWith('fc-dom-')) {
+                part = `#${CSS.escape(current.id)}`;
+                parts.unshift(part);
+                return parts.join(' > ');
+            }
+            const siblings = current.parentElement
+                ? [...current.parentElement.children].filter(sibling => sibling.tagName === current.tagName)
+                : [];
+            if (siblings.length > 1) part += `:nth-of-type(${siblings.indexOf(current) + 1})`;
+            parts.unshift(part);
+            current = current.parentElement;
+        }
+        return parts.length > 0 ? `body > ${parts.join(' > ')}` : null;
+    }
+
+    function getSelectedThemeRule() {
+        if (!selectedThemeTarget) return null;
+        const selector = buildThemeSelector(selectedThemeTarget);
+        return draftElementRules.find(rule => rule.selector === selector && rule.property === selectedThemeProperty) || null;
+    }
+
+    function renderRecentThemeColors() {
+        const container = themeShadowRoot?.querySelector('[data-theme-recents]');
+        if (!container) return;
+        container.replaceChildren();
+        if (draftRecentColors.length === 0) {
+            const empty = document.createElement('span');
+            empty.className = 'theme-recents-empty';
+            empty.textContent = '保存した色はまだありません';
+            container.appendChild(empty);
+            return;
+        }
+        for (const color of draftRecentColors) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'theme-recent-color';
+            button.style.setProperty('--recent-color', color);
+            button.title = color;
+            button.setAttribute('aria-label', `最近使った色 ${color}`);
+            button.addEventListener('click', () => previewSelectedThemeColor(color));
+            container.appendChild(button);
+        }
+    }
+
+    function syncSelectedThemeControls() {
+        const label = themeShadowRoot?.querySelector('[data-theme-target-label]');
+        const picker = themeShadowRoot?.querySelector('[data-theme-picker]');
+        const hex = themeShadowRoot?.querySelector('[data-theme-hex]');
+        const property = themeShadowRoot?.querySelector('[data-theme-property]');
+        const reset = themeShadowRoot?.querySelector('[data-theme-reset-selected]');
+        if (label) label.textContent = getThemeElementLabel(selectedThemeTarget);
+        if (property) property.value = selectedThemeProperty;
+
+        const disabled = !selectedThemeTarget;
+        if (picker) picker.disabled = disabled;
+        if (hex) hex.disabled = disabled;
+        if (property) property.disabled = disabled;
+        if (reset) reset.disabled = disabled;
+        if (disabled) return;
+
+        const rule = getSelectedThemeRule();
+        const computed = getComputedStyle(selectedThemeTarget).getPropertyValue(selectedThemeProperty);
+        const color = rule?.color || cssColorToHex(computed) || FALLBACK_THEME_COLOR;
+        if (picker) picker.value = color;
+        if (hex) {
+            hex.value = color;
+            hex.setAttribute('aria-invalid', 'false');
+        }
+    }
+
+    function previewSelectedThemeColor(value) {
+        const color = normalizeHexColor(value);
+        if (!color || !selectedThemeTarget) return;
+        const selector = buildThemeSelector(selectedThemeTarget);
+        if (!selector) return;
+        const keyMatches = rule => rule.selector === selector && rule.property === selectedThemeProperty;
+        const rule = { selector, property: selectedThemeProperty, color, label: getThemeElementLabel(selectedThemeTarget) };
+        const index = draftElementRules.findIndex(keyMatches);
+        if (index >= 0) draftElementRules[index] = rule;
+        else draftElementRules.push(rule);
+        draftRecentColors = [color, ...draftRecentColors.filter(item => item !== color)].slice(0, 5);
+        applyThemeColors(persistedThemeColors, draftElementRules);
+        syncSelectedThemeControls();
+        renderRecentThemeColors();
+        setThemeStatus('プレビュー中です。保存すると次回も反映されます。');
+    }
+
+    function clearThemeHighlight() {
+        themeHoveredElement?.removeAttribute('data-klpf-theme-hover');
+        themeHoveredElement = null;
+        document.documentElement.classList.remove('klpf-theme-inspecting');
+    }
+
+    function stopThemeInspection() {
+        themeInspectMode = false;
+        clearThemeHighlight();
+        const button = themeShadowRoot?.querySelector('[data-theme-inspect]');
+        button?.classList.remove('is-active');
+        if (button) button.textContent = '要素を選択';
+        document.removeEventListener('mouseover', handleThemeInspectHover, true);
+        document.removeEventListener('click', handleThemeInspectClick, true);
+    }
+
+    function handleThemeInspectHover(event) {
+        const element = event.target instanceof Element ? event.target : null;
+        if (!element || element === themeRootElement || element.closest(`#${THEME_ROOT_ID}`)) return;
+        themeHoveredElement?.removeAttribute('data-klpf-theme-hover');
+        themeHoveredElement = element;
+        themeHoveredElement.setAttribute('data-klpf-theme-hover', '');
+    }
+
+    function handleThemeInspectClick(event) {
+        const element = event.target instanceof Element ? event.target : null;
+        if (!element || element === themeRootElement || element.closest(`#${THEME_ROOT_ID}`)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const backgroundTarget = element.closest('.courseCardInfo, .lms-news-block');
+        selectedThemeTarget = backgroundTarget || element;
+        selectedThemeProperty = backgroundTarget ? 'background-color' : 'color';
+        stopThemeInspection();
+        syncSelectedThemeControls();
+        setThemeStatus('要素を選択しました。');
+    }
+
+    function startThemeInspection() {
+        if (themeInspectMode) {
+            stopThemeInspection();
+            return;
+        }
+        themeInspectMode = true;
+        document.documentElement.classList.add('klpf-theme-inspecting');
+        const button = themeShadowRoot?.querySelector('[data-theme-inspect]');
+        button?.classList.add('is-active');
+        if (button) button.textContent = '選択中…';
+        document.addEventListener('mouseover', handleThemeInspectHover, true);
+        document.addEventListener('click', handleThemeInspectClick, true);
+        setThemeStatus('色を変えたい要素をクリックしてください。');
+    }
+
+    function addThemeDragging(panel) {
+        const handle = themeShadowRoot.querySelector('[data-theme-drag-handle]');
+        handle.addEventListener('pointerdown', (event) => {
+            if (event.target.closest('button')) return;
+            const rect = panel.getBoundingClientRect();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            handle.setPointerCapture(event.pointerId);
+            const move = (moveEvent) => {
+                const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, rect.left + moveEvent.clientX - startX));
+                const top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, rect.top + moveEvent.clientY - startY));
+                panel.style.right = 'auto';
+                panel.style.bottom = 'auto';
+                panel.style.left = `${left}px`;
+                panel.style.top = `${top}px`;
+            };
+            const end = () => {
+                handle.removeEventListener('pointermove', move);
+                handle.removeEventListener('pointerup', end);
+                handle.removeEventListener('pointercancel', end);
+            };
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', end);
+            handle.addEventListener('pointercancel', end);
+        });
     }
 
     function closeThemePanel({ restoreSavedColor = true } = {}) {
         if (!isThemeOpen) return;
-        if (restoreSavedColor) applyThemeColors(persistedThemeColors);
+        stopThemeInspection();
+        selectedThemeTarget = null;
+        if (restoreSavedColor) applyThemeColors(persistedThemeColors, persistedElementRules);
 
         isThemeOpen = false;
+        updatePageScrollLock('theme', false);
         themeRootElement?.remove();
         themeRootElement = null;
         themeShadowRoot = null;
@@ -665,120 +991,59 @@
     function handleThemeFocusTrap(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
-            closeThemePanel();
-            return;
-        }
-        if (event.key !== 'Tab') return;
-
-        const focusable = [...themeShadowRoot.querySelectorAll('button, input')]
-            .filter((element) => !element.disabled);
-        if (focusable.length === 0) return;
-
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && themeShadowRoot.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && themeShadowRoot.activeElement === last) {
-            event.preventDefault();
-            first.focus();
+            if (themeInspectMode) stopThemeInspection();
+            else closeThemePanel();
         }
     }
 
     function addThemePanelListeners() {
-        const overlay = themeShadowRoot.querySelector('.theme-overlay');
         const panel = themeShadowRoot.querySelector('.theme-panel');
+        const inspectButton = themeShadowRoot.querySelector('[data-theme-inspect]');
+        const picker = themeShadowRoot.querySelector('[data-theme-picker]');
+        const hexInput = themeShadowRoot.querySelector('[data-theme-hex]');
+        const property = themeShadowRoot.querySelector('[data-theme-property]');
         const closeButton = themeShadowRoot.querySelector('.theme-close');
         const cancelButton = themeShadowRoot.querySelector('[data-theme-cancel]');
-        const resetButton = themeShadowRoot.querySelector('[data-theme-reset]');
+        const resetButton = themeShadowRoot.querySelector('[data-theme-reset-selected]');
 
-        overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) closeThemePanel();
-        });
         themeShadowRoot.addEventListener('keydown', handleThemeFocusTrap);
         closeButton.addEventListener('click', () => closeThemePanel());
         cancelButton.addEventListener('click', () => closeThemePanel());
-
-        for (const config of THEME_COLOR_CONFIG) {
-            const colorInput = themeShadowRoot.querySelector(`[data-theme-color="${config.key}"]`);
-            const hexInput = themeShadowRoot.querySelector(`[data-theme-hex="${config.key}"]`);
-            const fieldReset = themeShadowRoot.querySelector(`[data-theme-field-reset="${config.key}"]`);
-
-            colorInput.addEventListener('input', () => {
-                const color = normalizeHexColor(colorInput.value) || config.fallback;
-                draftThemeColors[config.key] = color;
-                draftThemeOverrides[config.key] = color;
-                syncThemePanelColors(draftThemeColors);
-                applyThemeColors(draftThemeOverrides);
-                setThemeStatus('プレビュー中です。保存すると次回もこの配色を使用します。');
-            });
-
-            hexInput.addEventListener('input', () => {
-                const color = normalizeHexColor(hexInput.value);
-                if (!color) {
-                    hexInput.setAttribute('aria-invalid', 'true');
-                    return;
-                }
-                draftThemeColors[config.key] = color;
-                draftThemeOverrides[config.key] = color;
-                syncThemePanelColors(draftThemeColors);
-                applyThemeColors(draftThemeOverrides);
-                setThemeStatus('プレビュー中です。保存すると次回もこの配色を使用します。');
-            });
-
-            hexInput.addEventListener('change', () => {
-                if (normalizeHexColor(hexInput.value)) return;
+        inspectButton.addEventListener('click', startThemeInspection);
+        picker.addEventListener('input', () => previewSelectedThemeColor(picker.value));
+        hexInput.addEventListener('input', () => {
+            const color = normalizeHexColor(hexInput.value);
+            if (!color) {
                 hexInput.setAttribute('aria-invalid', 'true');
-                setThemeStatus('3桁または6桁の16進数で入力してください。', true);
-            });
-
-            fieldReset.addEventListener('click', () => {
-                delete draftThemeOverrides[config.key];
-                draftThemeColors[config.key] = nativeThemeColors[config.key] || config.fallback;
-                syncThemePanelColors(draftThemeColors);
-                applyThemeColors(draftThemeOverrides);
-                setThemeStatus(`${config.label}をサイト既定色でプレビューしています。`);
-            });
-        }
-
-        resetButton.addEventListener('click', async () => {
-            await chrome.storage.local.remove([
-                THEME_COLORS_STORAGE_KEY,
-                LEGACY_THEME_COLOR_STORAGE_KEY,
-            ]);
-            persistedThemeColors = {};
-            draftThemeOverrides = {};
-            applyThemeColors({});
-            nativeThemeColors = readNativeThemeColors();
-            draftThemeColors = { ...nativeThemeColors };
-            syncThemePanelColors(draftThemeColors);
-            setThemeStatus('すべての色をサイト既定色に戻しました。');
+                return;
+            }
+            previewSelectedThemeColor(color);
+        });
+        property.addEventListener('change', () => {
+            selectedThemeProperty = THEME_ALLOWED_PROPERTIES.includes(property.value) ? property.value : 'color';
+            syncSelectedThemeControls();
+        });
+        resetButton.addEventListener('click', () => {
+            if (!selectedThemeTarget) return;
+            const selector = buildThemeSelector(selectedThemeTarget);
+            draftElementRules = draftElementRules.filter(rule => !(rule.selector === selector && rule.property === selectedThemeProperty));
+            applyThemeColors(persistedThemeColors, draftElementRules);
+            syncSelectedThemeControls();
+            setThemeStatus('選択した色指定をサイト既定へ戻しました。');
         });
 
         panel.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const invalidInput = [...themeShadowRoot.querySelectorAll('[data-theme-hex]')]
-                .find((input) => !normalizeHexColor(input.value));
-            if (invalidInput) {
-                invalidInput.setAttribute('aria-invalid', 'true');
-                setThemeStatus('すべての色を3桁または6桁の16進数で入力してください。', true);
-                invalidInput.focus();
-                return;
-            }
-
-            persistedThemeColors = normalizeThemeColors(draftThemeOverrides);
-            if (Object.keys(persistedThemeColors).length === 0) {
-                await chrome.storage.local.remove([
-                    THEME_COLORS_STORAGE_KEY,
-                    LEGACY_THEME_COLOR_STORAGE_KEY,
-                ]);
-            } else {
-                await storageSet('local', { [THEME_COLORS_STORAGE_KEY]: persistedThemeColors });
-                await chrome.storage.local.remove(LEGACY_THEME_COLOR_STORAGE_KEY);
-            }
-            applyThemeColors(persistedThemeColors);
+            persistedElementRules = normalizeElementRules(draftElementRules);
+            recentThemeColors = normalizeRecentColors(draftRecentColors);
+            await storageSet('local', {
+                [THEME_ELEMENT_RULES_STORAGE_KEY]: persistedElementRules,
+                [THEME_RECENT_COLORS_STORAGE_KEY]: recentThemeColors,
+            });
+            applyThemeColors(persistedThemeColors, persistedElementRules);
             closeThemePanel({ restoreSavedColor: false });
         });
+        addThemeDragging(panel);
     }
 
     async function openThemePanel() {
@@ -788,18 +1053,19 @@
         }
 
         themeLastFocusedElement = document.activeElement;
-        persistedThemeColors = await readStoredThemeColors();
-        applyThemeColors(persistedThemeColors);
-        nativeThemeColors = readNativeThemeColors();
-        draftThemeOverrides = { ...persistedThemeColors };
-        draftThemeColors = { ...nativeThemeColors, ...persistedThemeColors };
+        await loadAndApplyThemeColors();
+        draftElementRules = persistedElementRules.map(rule => ({ ...rule }));
+        draftRecentColors = [...recentThemeColors];
+        selectedThemeTarget = null;
         isThemeOpen = true;
+        updatePageScrollLock('theme', true);
 
         ensureThemeRoot();
         themeShadowRoot.innerHTML = getThemePanelMarkup();
-        syncThemePanelColors(draftThemeColors);
+        syncSelectedThemeControls();
+        renderRecentThemeColors();
         addThemePanelListeners();
-        themeShadowRoot.querySelector('.theme-input')?.focus();
+        themeShadowRoot.querySelector('[data-theme-inspect]')?.focus();
     }
 
     function getFeatureValue(settings, feature) {
@@ -1240,6 +1506,7 @@
         hasPendingReloadPrompt = false;
         isReloadPromptOpen = false;
         isOpen = false;
+        updatePageScrollLock('settings', false);
         render();
     }
 
@@ -1258,6 +1525,7 @@
         hasPendingReloadPrompt = false;
         isReloadPromptOpen = false;
         isOpen = true;
+        updatePageScrollLock('settings', true);
         render();
     }
 
@@ -1404,6 +1672,24 @@
         return item;
     }
 
+    function buildHomeEditorMenuItem() {
+        const item = document.createElement('li');
+        item.setAttribute(HOME_EDITOR_MENU_ITEM_ATTRIBUTE, '');
+
+        const link = document.createElement('a');
+        link.href = '#';
+        const label = document.createElement('span');
+        label.textContent = 'ホームの表示を編集';
+        link.appendChild(label);
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            document.dispatchEvent(new CustomEvent(OPEN_HOME_EDITOR_EVENT));
+        });
+        item.appendChild(link);
+        return item;
+    }
+
     function getSettingsMenus() {
         return [...new Set([
             ...document.querySelectorAll('.selectBoxSettei.lms-user-menu .selectBox.lms-sp-user-menu'),
@@ -1416,7 +1702,7 @@
     function injectMenuItem() {
         const menus = getSettingsMenus();
         const menuSet = new Set(menus);
-        document.querySelectorAll(`#${MENU_ITEM_ID}, [${THEME_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
+        document.querySelectorAll(`#${MENU_ITEM_ID}, [${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}], [${THEME_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
             if (!menuSet.has(item.parentElement)) item.remove();
         });
 
@@ -1427,11 +1713,24 @@
                 menu.appendChild(settingsItem);
             }
 
+            const canEditHome = !!document.querySelector('div.lms-menu-column.lms-home');
+            let homeEditorItem = menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`);
+            if (canEditHome) {
+                if (!homeEditorItem) homeEditorItem = buildHomeEditorMenuItem();
+                if (settingsItem.nextElementSibling !== homeEditorItem) {
+                    settingsItem.insertAdjacentElement('afterend', homeEditorItem);
+                }
+            } else {
+                homeEditorItem?.remove();
+                homeEditorItem = null;
+            }
+
             let themeItem = menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`);
             if (!themeItem) themeItem = buildThemeMenuItem();
 
-            if (settingsItem.nextElementSibling !== themeItem) {
-                settingsItem.insertAdjacentElement('afterend', themeItem);
+            const themeAnchor = homeEditorItem || settingsItem;
+            if (themeAnchor.nextElementSibling !== themeItem) {
+                themeAnchor.insertAdjacentElement('afterend', themeItem);
             }
         }
     }
@@ -1470,11 +1769,15 @@
         }
 
         if (area === 'local'
-            && (changes[THEME_COLORS_STORAGE_KEY] || changes[LEGACY_THEME_COLOR_STORAGE_KEY])) {
-            readStoredThemeColors().then((colors) => {
-                persistedThemeColors = colors;
-                if (!isThemeOpen) applyThemeColors(persistedThemeColors);
-            });
+            && (changes[THEME_COLORS_STORAGE_KEY]
+                || changes[LEGACY_THEME_COLOR_STORAGE_KEY]
+                || changes[THEME_ELEMENT_RULES_STORAGE_KEY]
+                || changes[THEME_RECENT_COLORS_STORAGE_KEY])) {
+            if (!isThemeOpen) {
+                loadAndApplyThemeColors().catch((error) => {
+                    console.warn('[KLPF] サイトテーマ色の同期に失敗しました。', error);
+                });
+            }
         }
     });
 
