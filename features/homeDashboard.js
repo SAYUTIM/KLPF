@@ -361,6 +361,9 @@
                 ? { left: 'prev', center: 'title', right: 'next' }
                 : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
             buttonText: { today: '今日', month: '月', list: '一覧' },
+            allDayText: '期限',
+            listDayFormat: { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' },
+            listDaySideFormat: false,
             moreLinkContent(info) {
                 return `+${info.num}件`;
             },
@@ -388,6 +391,14 @@
                 const deadlineTime = info.event.extendedProps.deadlineTime || '';
                 const detail = [deadlineTime && `${deadlineTime}まで`, homeworkName].filter(Boolean).join(' · ');
                 info.el.title = detail ? `${info.event.title}：${detail}` : info.event.title;
+
+                if (info.view.type === 'listMonth') {
+                    const timeCell = info.el.querySelector('.fc-list-event-time');
+                    if (timeCell) {
+                        timeCell.textContent = deadlineTime || '期限日';
+                        timeCell.removeAttribute('aria-labelledby');
+                    }
+                }
             },
         };
     }
@@ -587,9 +598,7 @@
         const title = document.createElement('h2');
         title.id = 'klpf-dashboard-editor-title';
         title.textContent = 'ホームを編集';
-        const subtitle = document.createElement('p');
-        subtitle.textContent = '表示する情報と順序、非表示にした課題を管理できます。';
-        headingGroup.append(eyebrow, title, subtitle);
+        headingGroup.append(eyebrow, title);
         const close = createButton('×', 'klpf-dashboard-editor-close', '編集を終了');
         close.addEventListener('click', closeEditor);
         header.append(headingGroup, close);
@@ -619,9 +628,7 @@
         const previewTitle = document.createElement('div');
         const previewHeading = document.createElement('h3');
         previewHeading.textContent = '課題カレンダー';
-        const previewCopy = document.createElement('p');
-        previewCopy.textContent = '日付や科目名を選ぶと、その日の課題をまとめて確認できます。';
-        previewTitle.append(previewHeading, previewCopy);
+        previewTitle.append(previewHeading);
         editorCalendarElement = document.createElement('div');
         editorCalendarElement.id = 'klpf-dashboard-editor-calendar';
         editorDayDetailsElement = document.createElement('section');

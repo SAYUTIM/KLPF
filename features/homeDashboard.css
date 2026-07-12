@@ -250,7 +250,7 @@
     z-index: 2147483600;
     display: grid;
     place-items: center;
-    padding: 28px;
+    padding: 12px 28px;
     background: rgba(13, 17, 23, 0.68);
     backdrop-filter: blur(3px);
     animation: klpf-overlay-in 170ms ease both;
@@ -264,8 +264,10 @@
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     width: min(1040px, calc(100vw - 56px));
-    height: min(860px, calc(100vh - 40px));
-    max-height: calc(100vh - 40px);
+    height: min(900px, calc(100vh - 24px));
+    height: min(900px, calc(100dvh - 24px));
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
     overflow: hidden;
     color: var(--klpf-dashboard-ink);
     border: 1px solid rgba(255, 255, 255, 0.55);
@@ -455,7 +457,7 @@
 
 .klpf-dashboard-calendar-preview {
     display: grid;
-    grid-template-rows: auto minmax(410px, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     min-width: 0;
     min-height: 0;
     padding: 24px 28px 30px;
@@ -467,8 +469,25 @@
 }
 
 #klpf-dashboard-editor-calendar {
-    min-height: 410px;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
     font-size: 12px;
+}
+
+#klpf-dashboard-editor-calendar .fc,
+#klpf-dashboard-editor-calendar .fc-view-harness {
+    min-height: 0;
+}
+
+#klpf-dashboard-editor-calendar .fc-list {
+    overflow-y: auto;
+}
+
+#klpf-dashboard-editor-calendar .fc-list-event-time {
+    min-width: 64px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 #klpf-dashboard-editor-calendar .fc-button-primary {
@@ -619,6 +638,14 @@
     .klpf-dashboard-editor-body { grid-template-columns: 1fr; overflow-y: auto; }
     .klpf-dashboard-editor-controls { border-right: 0; border-bottom: 1px solid #e9e5e1; }
     .klpf-dashboard-calendar-preview { grid-template-rows: auto minmax(410px, 1fr) auto; overflow: visible; }
+}
+
+@media (max-height: 760px) and (min-width: 821px) {
+    .klpf-dashboard-editor-header { padding-top: 14px; padding-bottom: 14px; }
+    .klpf-dashboard-editor-controls,
+    .klpf-dashboard-calendar-preview { padding-top: 14px; padding-bottom: 14px; }
+    .klpf-calendar-day-details { max-height: 96px; margin-top: 8px; padding: 8px 10px; }
+    .klpf-dashboard-editor-footer { padding-top: 10px; padding-bottom: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

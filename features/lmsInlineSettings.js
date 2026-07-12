@@ -16,8 +16,47 @@
     const THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-theme-menu-item';
     const THEME_ROOT_ID = 'klpf-site-theme-root';
     const THEME_STYLE_ID = 'klpf-site-theme-style';
-    const THEME_COLOR_STORAGE_KEY = 'klpfSiteThemeColor';
-    const FALLBACK_THEME_COLOR = '#0068B7';
+    const THEME_COLORS_STORAGE_KEY = 'klpfSiteThemeColors';
+    const LEGACY_THEME_COLOR_STORAGE_KEY = 'klpfSiteThemeColor';
+    const THEME_COLOR_CONFIG = [
+        {
+            key: 'text',
+            label: '科目名・リンク',
+            description: '科目名とお知らせリンクの文字色',
+            property: 'color',
+            selectors: ['.lms-card', '.lms-cardname', '.lms-cardname a', '.lms-cardname a:link', '.lms-cardname a:visited', '.lms-news-subO a', '.lms-news-subO a:link', '.lms-news-subO a:visited'],
+            sampleSelector: '.lms-cardname a, .lms-news-subO a, .lms-cardname, .lms-card',
+            fallback: '#0068B7',
+        },
+        {
+            key: 'cardBorder',
+            label: '科目カードの枠線',
+            description: '科目カードを囲む線の色',
+            property: 'border-color',
+            selectors: ['.lms-card'],
+            sampleSelector: '.lms-card',
+            fallback: '#D6E2E8',
+        },
+        {
+            key: 'courseInfoBackground',
+            label: '科目情報の背景',
+            description: 'courseCardInfoの背景色',
+            property: 'background-color',
+            selectors: ['.courseCardInfo'],
+            sampleSelector: '.courseCardInfo',
+            fallback: '#F2F6F8',
+        },
+        {
+            key: 'newsBackground',
+            label: 'お知らせの背景',
+            description: 'lms-news-blockの背景色',
+            property: 'background-color',
+            selectors: ['.lms-news-block'],
+            sampleSelector: '.lms-news-block',
+            fallback: '#FFFFFF',
+        },
+    ];
+    const FALLBACK_THEME_COLOR = THEME_COLOR_CONFIG[0].fallback;
     const ALL_DISABLED_KEY = 'klpfInlineAllFeaturesDisabled';
     const PREVIOUS_SETTINGS_KEY = 'klpfInlinePreviousFeatureSettings';
 
@@ -28,9 +67,10 @@
     let shadowRoot = null;
     let themeRootElement = null;
     let themeShadowRoot = null;
-    let persistedThemeColor = null;
-    let draftThemeColor = FALLBACK_THEME_COLOR;
-    let draftThemeUsesDefault = true;
+    let persistedThemeColors = {};
+    let nativeThemeColors = {};
+    let draftThemeColors = {};
+    let draftThemeOverrides = {};
     let themeLastFocusedElement = null;
     let menuObserver = null;
     let isThemeOpen = false;
@@ -86,46 +126,68 @@
         }).join('').toUpperCase()}`;
     }
 
-    function applyThemeColor(color) {
-        const normalizedColor = normalizeHexColor(color);
+    function normalizeThemeColors(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+        return THEME_COLOR_CONFIG.reduce((colors, config) => {
+            const color = normalizeHexColor(value[config.key]);
+            if (color) colors[config.key] = color;
+            return colors;
+        }, {});
+    }
+
+    function applyThemeColors(colors) {
+        const normalizedColors = normalizeThemeColors(colors);
         const existingStyle = document.getElementById(THEME_STYLE_ID);
 
-        if (!normalizedColor) {
+        const rules = THEME_COLOR_CONFIG.flatMap((config) => {
+            const color = normalizedColors[config.key];
+            if (!color) return [];
+            return [`${config.selectors.join(',\n')} { ${config.property}: ${color} !important; }`];
+        });
+
+        if (rules.length === 0) {
             existingStyle?.remove();
             return;
         }
 
         const style = existingStyle || document.createElement('style');
         style.id = THEME_STYLE_ID;
-        style.textContent = `
-            .lms-card,
-            .lms-cardname,
-            .lms-cardname a,
-            .lms-cardname a:link,
-            .lms-cardname a:visited,
-            .lms-news-subO a,
-            .lms-news-subO a:link,
-            .lms-news-subO a:visited {
-                color: ${normalizedColor} !important;
-            }
-        `;
+        style.textContent = rules.join('\n');
 
         if (!existingStyle) {
             (document.head || document.documentElement).appendChild(style);
         }
     }
 
-    function readNativeThemeColor() {
-        const target = document.querySelector(
-            '.lms-cardname a, .lms-news-subO a, .lms-cardname, .lms-card',
-        );
-        return cssColorToHex(target ? getComputedStyle(target).color : '') || FALLBACK_THEME_COLOR;
+    function readNativeThemeColors() {
+        const existingStyle = document.getElementById(THEME_STYLE_ID);
+        if (existingStyle) existingStyle.disabled = true;
+
+        const colors = THEME_COLOR_CONFIG.reduce((result, config) => {
+            const target = document.querySelector(config.sampleSelector);
+            const value = target ? getComputedStyle(target).getPropertyValue(config.property) : '';
+            result[config.key] = cssColorToHex(value) || config.fallback;
+            return result;
+        }, {});
+
+        if (existingStyle) existingStyle.disabled = false;
+        return colors;
     }
 
-    async function loadAndApplyThemeColor() {
-        const stored = await storageGet('local', [THEME_COLOR_STORAGE_KEY]);
-        persistedThemeColor = normalizeHexColor(stored[THEME_COLOR_STORAGE_KEY]);
-        applyThemeColor(persistedThemeColor);
+    async function readStoredThemeColors() {
+        const stored = await storageGet('local', [
+            THEME_COLORS_STORAGE_KEY,
+            LEGACY_THEME_COLOR_STORAGE_KEY,
+        ]);
+        const colors = normalizeThemeColors(stored[THEME_COLORS_STORAGE_KEY]);
+        const legacyTextColor = normalizeHexColor(stored[LEGACY_THEME_COLOR_STORAGE_KEY]);
+        if (!colors.text && legacyTextColor) colors.text = legacyTextColor;
+        return colors;
+    }
+
+    async function loadAndApplyThemeColors() {
+        persistedThemeColors = await readStoredThemeColors();
+        applyThemeColors(persistedThemeColors);
     }
 
     function ensureThemeRoot() {
@@ -146,7 +208,10 @@
         return `
             :host {
                 all: initial;
-                --theme-color: ${FALLBACK_THEME_COLOR};
+                --theme-text: ${FALLBACK_THEME_COLOR};
+                --theme-card-border: #D6E2E8;
+                --theme-course-info: #F2F6F8;
+                --theme-news: #FFFFFF;
                 --ink: #152536;
                 --muted: #66788a;
                 --line: #d9e3ec;
@@ -253,7 +318,7 @@
                 overflow: hidden;
                 margin-bottom: 21px;
                 padding: 17px 18px 16px;
-                border: 1px solid var(--line);
+                border: 2px solid var(--theme-card-border);
                 border-radius: 15px;
                 background: #f8fbfd;
             }
@@ -263,7 +328,7 @@
                 position: absolute;
                 inset: 0 auto 0 0;
                 width: 4px;
-                background: var(--theme-color);
+                background: var(--theme-text);
             }
 
             .preview-caption {
@@ -276,7 +341,7 @@
 
             .preview-course,
             .preview-news {
-                color: var(--theme-color);
+                color: var(--theme-text);
             }
 
             .preview-course {
@@ -285,10 +350,22 @@
                 font-weight: 800;
             }
 
+            .preview-info {
+                margin: 0 0 10px;
+                padding: 7px 9px;
+                border-radius: 7px;
+                color: #536575;
+                background: var(--theme-course-info);
+                font-size: 11px;
+            }
+
             .preview-news {
                 display: inline-flex;
                 align-items: center;
                 gap: 7px;
+                padding: 8px 10px;
+                border-radius: 7px;
+                background: var(--theme-news);
                 font-size: 12px;
                 font-weight: 700;
             }
@@ -309,10 +386,54 @@
                 font-weight: 800;
             }
 
+            .theme-field-list {
+                display: grid;
+                gap: 15px;
+            }
+
+            .theme-field-row {
+                padding-bottom: 15px;
+                border-bottom: 1px solid #edf1f5;
+            }
+
+            .theme-field-row:last-child {
+                padding-bottom: 0;
+                border-bottom: 0;
+            }
+
+            .theme-field-heading {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 8px;
+            }
+
+            .theme-field-heading .theme-label {
+                margin: 0;
+            }
+
+            .theme-field-description {
+                color: var(--muted);
+                font-size: 10px;
+            }
+
             .theme-fields {
                 display: grid;
-                grid-template-columns: 54px 1fr;
+                grid-template-columns: 54px minmax(0, 1fr) auto;
                 gap: 10px;
+            }
+
+            .theme-field-reset {
+                min-width: 48px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 0 9px;
+                color: #52687a;
+                background: #f7f9fb;
+                cursor: pointer;
+                font-size: 10px;
+                font-weight: 800;
             }
 
             .theme-color-input {
@@ -450,6 +571,20 @@
     }
 
     function getThemePanelMarkup() {
+        const fields = THEME_COLOR_CONFIG.map((config) => `
+            <section class="theme-field-row" data-theme-field="${config.key}">
+                <div class="theme-field-heading">
+                    <label class="theme-label" for="klpf-theme-${config.key}">${config.label}</label>
+                    <span class="theme-field-description">${config.description}</span>
+                </div>
+                <div class="theme-fields">
+                    <input class="theme-color-input" type="color" data-theme-color="${config.key}" aria-label="${config.label}のカラーピッカー">
+                    <input class="theme-input" id="klpf-theme-${config.key}" type="text" inputmode="text" maxlength="7" autocomplete="off" spellcheck="false" data-theme-hex="${config.key}" aria-describedby="klpf-theme-help klpf-theme-status">
+                    <button type="button" class="theme-field-reset" data-theme-field-reset="${config.key}">既定</button>
+                </div>
+            </section>
+        `).join('');
+
         return `
             <style>${getThemeStyles()}</style>
             <div class="theme-overlay">
@@ -458,7 +593,7 @@
                         <div>
                             <p class="theme-eyebrow">KLPF APPEARANCE</p>
                             <h2 class="theme-title" id="klpf-theme-title">サイトテーマ色</h2>
-                            <p class="theme-subtitle">科目名とお知らせリンクの色を変更します。</p>
+                            <p class="theme-subtitle">文字・枠線・背景色を場所ごとに変更します。</p>
                         </div>
                         <button type="button" class="theme-close" aria-label="閉じる">×</button>
                     </header>
@@ -466,18 +601,15 @@
                         <section class="theme-preview" aria-label="選択色のプレビュー">
                             <p class="preview-caption">LIVE PREVIEW</p>
                             <p class="preview-course">ソフトウェア工学 I</p>
+                            <p class="preview-info">月曜3限 · 新宿キャンパス</p>
                             <span class="preview-news">授業からのお知らせ</span>
                         </section>
-                        <label class="theme-label" for="klpf-theme-hex">テーマ色</label>
-                        <div class="theme-fields">
-                            <input class="theme-color-input" type="color" aria-label="カラーピッカー">
-                            <input class="theme-input" id="klpf-theme-hex" type="text" inputmode="text" maxlength="7" autocomplete="off" spellcheck="false" aria-describedby="klpf-theme-help klpf-theme-status">
-                        </div>
-                        <p class="theme-help" id="klpf-theme-help">3桁または6桁の16進数で指定できます（例：#0068B7）。変更はページ上ですぐ確認できます。</p>
+                        <div class="theme-field-list">${fields}</div>
+                        <p class="theme-help" id="klpf-theme-help">各色は3桁または6桁の16進数でも指定できます。変更はページ上ですぐ確認できます。</p>
                         <p class="theme-status" id="klpf-theme-status" aria-live="polite"></p>
                     </div>
                     <footer class="theme-actions">
-                        <button type="button" class="theme-button reset" data-theme-reset>サイト既定色に戻す</button>
+                        <button type="button" class="theme-button reset" data-theme-reset>すべて既定色に戻す</button>
                         <button type="button" class="theme-button" data-theme-cancel>キャンセル</button>
                         <button type="submit" class="theme-button primary">保存</button>
                     </footer>
@@ -493,23 +625,31 @@
         status.classList.toggle('is-error', isError);
     }
 
-    function syncThemePanelColor(color) {
-        const normalizedColor = normalizeHexColor(color) || FALLBACK_THEME_COLOR;
+    function syncThemePanelColors(colors) {
         const panel = themeShadowRoot?.querySelector('.theme-panel');
-        const colorInput = themeShadowRoot?.querySelector('.theme-color-input');
-        const hexInput = themeShadowRoot?.querySelector('.theme-input');
+        const variableNames = {
+            text: '--theme-text',
+            cardBorder: '--theme-card-border',
+            courseInfoBackground: '--theme-course-info',
+            newsBackground: '--theme-news',
+        };
 
-        panel?.style.setProperty('--theme-color', normalizedColor);
-        if (colorInput) colorInput.value = normalizedColor;
-        if (hexInput) {
-            hexInput.value = normalizedColor;
-            hexInput.setAttribute('aria-invalid', 'false');
+        for (const config of THEME_COLOR_CONFIG) {
+            const color = normalizeHexColor(colors[config.key]) || config.fallback;
+            const colorInput = themeShadowRoot?.querySelector(`[data-theme-color="${config.key}"]`);
+            const hexInput = themeShadowRoot?.querySelector(`[data-theme-hex="${config.key}"]`);
+            panel?.style.setProperty(variableNames[config.key], color);
+            if (colorInput) colorInput.value = color;
+            if (hexInput) {
+                hexInput.value = color;
+                hexInput.setAttribute('aria-invalid', 'false');
+            }
         }
     }
 
     function closeThemePanel({ restoreSavedColor = true } = {}) {
         if (!isThemeOpen) return;
-        if (restoreSavedColor) applyThemeColor(persistedThemeColor);
+        if (restoreSavedColor) applyThemeColors(persistedThemeColors);
 
         isThemeOpen = false;
         themeRootElement?.remove();
@@ -548,8 +688,6 @@
     function addThemePanelListeners() {
         const overlay = themeShadowRoot.querySelector('.theme-overlay');
         const panel = themeShadowRoot.querySelector('.theme-panel');
-        const colorInput = themeShadowRoot.querySelector('.theme-color-input');
-        const hexInput = themeShadowRoot.querySelector('.theme-input');
         const closeButton = themeShadowRoot.querySelector('.theme-close');
         const cancelButton = themeShadowRoot.querySelector('[data-theme-cancel]');
         const resetButton = themeShadowRoot.querySelector('[data-theme-reset]');
@@ -561,72 +699,84 @@
         closeButton.addEventListener('click', () => closeThemePanel());
         cancelButton.addEventListener('click', () => closeThemePanel());
 
-        colorInput.addEventListener('input', () => {
-            draftThemeColor = normalizeHexColor(colorInput.value) || FALLBACK_THEME_COLOR;
-            draftThemeUsesDefault = false;
-            syncThemePanelColor(draftThemeColor);
-            applyThemeColor(draftThemeColor);
-            setThemeStatus('プレビュー中です。保存すると次回もこの色を使用します。');
-        });
+        for (const config of THEME_COLOR_CONFIG) {
+            const colorInput = themeShadowRoot.querySelector(`[data-theme-color="${config.key}"]`);
+            const hexInput = themeShadowRoot.querySelector(`[data-theme-hex="${config.key}"]`);
+            const fieldReset = themeShadowRoot.querySelector(`[data-theme-field-reset="${config.key}"]`);
 
-        hexInput.addEventListener('input', () => {
-            const normalizedColor = normalizeHexColor(hexInput.value);
-            if (!normalizedColor) {
-                hexInput.setAttribute('aria-invalid', 'true');
-                return;
-            }
+            colorInput.addEventListener('input', () => {
+                const color = normalizeHexColor(colorInput.value) || config.fallback;
+                draftThemeColors[config.key] = color;
+                draftThemeOverrides[config.key] = color;
+                syncThemePanelColors(draftThemeColors);
+                applyThemeColors(draftThemeOverrides);
+                setThemeStatus('プレビュー中です。保存すると次回もこの配色を使用します。');
+            });
 
-            draftThemeColor = normalizedColor;
-            draftThemeUsesDefault = false;
-            hexInput.setAttribute('aria-invalid', 'false');
-            colorInput.value = normalizedColor;
-            panel.style.setProperty('--theme-color', normalizedColor);
-            applyThemeColor(normalizedColor);
-            setThemeStatus('プレビュー中です。保存すると次回もこの色を使用します。');
-        });
+            hexInput.addEventListener('input', () => {
+                const color = normalizeHexColor(hexInput.value);
+                if (!color) {
+                    hexInput.setAttribute('aria-invalid', 'true');
+                    return;
+                }
+                draftThemeColors[config.key] = color;
+                draftThemeOverrides[config.key] = color;
+                syncThemePanelColors(draftThemeColors);
+                applyThemeColors(draftThemeOverrides);
+                setThemeStatus('プレビュー中です。保存すると次回もこの配色を使用します。');
+            });
 
-        hexInput.addEventListener('change', () => {
-            const normalizedColor = normalizeHexColor(hexInput.value);
-            if (!normalizedColor) {
+            hexInput.addEventListener('change', () => {
+                if (normalizeHexColor(hexInput.value)) return;
                 hexInput.setAttribute('aria-invalid', 'true');
                 setThemeStatus('3桁または6桁の16進数で入力してください。', true);
-                return;
-            }
-            syncThemePanelColor(normalizedColor);
-        });
+            });
+
+            fieldReset.addEventListener('click', () => {
+                delete draftThemeOverrides[config.key];
+                draftThemeColors[config.key] = nativeThemeColors[config.key] || config.fallback;
+                syncThemePanelColors(draftThemeColors);
+                applyThemeColors(draftThemeOverrides);
+                setThemeStatus(`${config.label}をサイト既定色でプレビューしています。`);
+            });
+        }
 
         resetButton.addEventListener('click', async () => {
-            await chrome.storage.local.remove(THEME_COLOR_STORAGE_KEY);
-            persistedThemeColor = null;
-            applyThemeColor(null);
-            draftThemeColor = readNativeThemeColor();
-            draftThemeUsesDefault = true;
-            syncThemePanelColor(draftThemeColor);
-            setThemeStatus('サイト既定色に戻しました。');
+            await chrome.storage.local.remove([
+                THEME_COLORS_STORAGE_KEY,
+                LEGACY_THEME_COLOR_STORAGE_KEY,
+            ]);
+            persistedThemeColors = {};
+            draftThemeOverrides = {};
+            applyThemeColors({});
+            nativeThemeColors = readNativeThemeColors();
+            draftThemeColors = { ...nativeThemeColors };
+            syncThemePanelColors(draftThemeColors);
+            setThemeStatus('すべての色をサイト既定色に戻しました。');
         });
 
         panel.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const normalizedColor = normalizeHexColor(hexInput.value);
-            if (!normalizedColor) {
-                hexInput.setAttribute('aria-invalid', 'true');
-                setThemeStatus('3桁または6桁の16進数で入力してください。', true);
-                hexInput.focus();
+            const invalidInput = [...themeShadowRoot.querySelectorAll('[data-theme-hex]')]
+                .find((input) => !normalizeHexColor(input.value));
+            if (invalidInput) {
+                invalidInput.setAttribute('aria-invalid', 'true');
+                setThemeStatus('すべての色を3桁または6桁の16進数で入力してください。', true);
+                invalidInput.focus();
                 return;
             }
 
-            if (draftThemeUsesDefault) {
-                await chrome.storage.local.remove(THEME_COLOR_STORAGE_KEY);
-                persistedThemeColor = null;
-                applyThemeColor(null);
-                closeThemePanel({ restoreSavedColor: false });
-                return;
+            persistedThemeColors = normalizeThemeColors(draftThemeOverrides);
+            if (Object.keys(persistedThemeColors).length === 0) {
+                await chrome.storage.local.remove([
+                    THEME_COLORS_STORAGE_KEY,
+                    LEGACY_THEME_COLOR_STORAGE_KEY,
+                ]);
+            } else {
+                await storageSet('local', { [THEME_COLORS_STORAGE_KEY]: persistedThemeColors });
+                await chrome.storage.local.remove(LEGACY_THEME_COLOR_STORAGE_KEY);
             }
-
-            persistedThemeColor = normalizedColor;
-            draftThemeColor = normalizedColor;
-            await storageSet('local', { [THEME_COLOR_STORAGE_KEY]: normalizedColor });
-            applyThemeColor(normalizedColor);
+            applyThemeColors(persistedThemeColors);
             closeThemePanel({ restoreSavedColor: false });
         });
     }
@@ -638,16 +788,16 @@
         }
 
         themeLastFocusedElement = document.activeElement;
-        const stored = await storageGet('local', [THEME_COLOR_STORAGE_KEY]);
-        persistedThemeColor = normalizeHexColor(stored[THEME_COLOR_STORAGE_KEY]);
-        applyThemeColor(persistedThemeColor);
-        draftThemeColor = persistedThemeColor || readNativeThemeColor();
-        draftThemeUsesDefault = !persistedThemeColor;
+        persistedThemeColors = await readStoredThemeColors();
+        applyThemeColors(persistedThemeColors);
+        nativeThemeColors = readNativeThemeColors();
+        draftThemeOverrides = { ...persistedThemeColors };
+        draftThemeColors = { ...nativeThemeColors, ...persistedThemeColors };
         isThemeOpen = true;
 
         ensureThemeRoot();
         themeShadowRoot.innerHTML = getThemePanelMarkup();
-        syncThemePanelColor(draftThemeColor);
+        syncThemePanelColors(draftThemeColors);
         addThemePanelListeners();
         themeShadowRoot.querySelector('.theme-input')?.focus();
     }
@@ -1256,14 +1406,21 @@
 
     function getSettingsMenus() {
         return [...new Set([
-            ...document.querySelectorAll('.selectBoxSettei.lms-user-menu'),
+            ...document.querySelectorAll('.selectBoxSettei.lms-user-menu .selectBox.lms-sp-user-menu'),
             document.getElementById('addKojinComment'),
             document.getElementById('addKojinCommentSp'),
-        ].filter(Boolean))];
+        ].filter((element) => element instanceof HTMLElement
+            && (element.matches('ul, ol') || element.classList.contains('selectBox'))))];
     }
 
     function injectMenuItem() {
-        for (const menu of getSettingsMenus()) {
+        const menus = getSettingsMenus();
+        const menuSet = new Set(menus);
+        document.querySelectorAll(`#${MENU_ITEM_ID}, [${THEME_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
+            if (!menuSet.has(item.parentElement)) item.remove();
+        });
+
+        for (const menu of menus) {
             let settingsItem = menu.querySelector(`#${MENU_ITEM_ID}`);
             if (!settingsItem) {
                 settingsItem = buildMenuItem();
@@ -1312,23 +1469,26 @@
             loadState().then(applyStateToControls);
         }
 
-        if (area === 'local' && changes[THEME_COLOR_STORAGE_KEY]) {
-            persistedThemeColor = normalizeHexColor(changes[THEME_COLOR_STORAGE_KEY].newValue);
-            if (!isThemeOpen) applyThemeColor(persistedThemeColor);
+        if (area === 'local'
+            && (changes[THEME_COLORS_STORAGE_KEY] || changes[LEGACY_THEME_COLOR_STORAGE_KEY])) {
+            readStoredThemeColors().then((colors) => {
+                persistedThemeColors = colors;
+                if (!isThemeOpen) applyThemeColors(persistedThemeColors);
+            });
         }
     });
 
     loadFeatureDefinitions().then(loadState).catch((error) => {
         console.warn('[KLPF] KU-LMS内設定の初期状態読み込みに失敗しました。', error);
     });
-    loadAndApplyThemeColor().catch((error) => {
+    loadAndApplyThemeColors().catch((error) => {
         console.warn('[KLPF] サイトテーマ色を読み込めませんでした。', error);
     });
 
     globalThis[INSTANCE_KEY] = {
         refresh() {
             injectMenuItem();
-            loadAndApplyThemeColor().catch((error) => {
+            loadAndApplyThemeColors().catch((error) => {
                 console.warn('[KLPF] サイトテーマ色を再適用できませんでした。', error);
             });
         },
