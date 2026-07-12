@@ -3,6 +3,29 @@
 
 import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
 
+const SUBJECT_FILTER_STORAGE_KEY = 'klpf-course-filter-settings';
+
+async function enableAutomaticSubjectFilter() {
+    const result = await chrome.storage.local.get(SUBJECT_FILTER_STORAGE_KEY);
+    let settings = {};
+
+    try {
+        const parsed = result[SUBJECT_FILTER_STORAGE_KEY]
+            ? JSON.parse(result[SUBJECT_FILTER_STORAGE_KEY])
+            : {};
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            settings = parsed;
+        }
+    } catch (error) {
+        console.warn('[KLPF] 既存の講義フィルター設定を読み込めなかったため初期化します。', error);
+    }
+
+    settings.isAutoActive = true;
+    await chrome.storage.local.set({
+        [SUBJECT_FILTER_STORAGE_KEY]: JSON.stringify(settings),
+    });
+}
+
 function isAllowedGasWebhookUrl(value) {
     if (typeof value !== 'string') return false;
 
@@ -130,6 +153,10 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
         if (!config) continue;
 
         if (newValue) {
+            if (key === 'searchSubject') {
+                await enableAutomaticSubjectFilter();
+            }
+
             // 重複エラーを防ぐため、登録前に必ず解除する
             await unregisterContentScript(config.id);
             await registerContentScript(config);

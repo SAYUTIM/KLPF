@@ -241,6 +241,7 @@
         const savedSettings = await loadSettings();
         const autoCheckbox = form.querySelector('#autoFilterCheckbox');
         if (Object.keys(savedSettings).length > 0) {
+            if (autoCheckbox) autoCheckbox.checked = savedSettings.isAutoActive === true;
             form.querySelector('select[name="yobi"]').value = savedSettings.yobi || 'all';
             form.querySelector('select[name="jigen"]').value = savedSettings.jigen || 'all';
             form.querySelector('input[name="kougiName"]').value = savedSettings.kougiName || '';
@@ -251,15 +252,7 @@
             });
         }
 
-        if (autoCheckbox) {
-            autoCheckbox.checked = true;
-            safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => {
-                cb.disabled = true;
-            });
-        }
-
         applyClientSideFilter(form);
-        saveSettings(form);
         setupEventListeners(form);
         highlightCurrentClass();
         setInterval(highlightCurrentClass, 60000);
