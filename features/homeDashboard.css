@@ -10,7 +10,7 @@
     position: relative;
     display: flex !important;
     flex-direction: column;
-    gap: 10px;
+    gap: 0;
     padding-top: 42px !important;
 }
 
@@ -29,30 +29,48 @@
     top: 8px;
     right: 8px;
     z-index: 8;
-    width: 30px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: auto;
     height: 30px;
-    padding: 0;
-    border: 1px solid rgba(180, 63, 70, 0.28);
-    border-radius: 50%;
-    color: var(--klpf-dashboard-accent);
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 5px 16px rgba(33, 24, 24, 0.12);
+    padding: 0 10px 0 8px;
+    border: 1px solid rgba(47, 56, 66, 0.16);
+    border-radius: 999px;
+    color: #4f5964;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 3px 10px rgba(33, 40, 48, 0.08);
     cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
     transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
+.klpf-dashboard-edit-button svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .klpf-dashboard-edit-button:hover {
-    transform: translateY(-1px) rotate(-5deg);
-    background: #fff8f7;
-    box-shadow: 0 8px 20px rgba(33, 24, 24, 0.17);
+    transform: translateY(-1px);
+    color: var(--klpf-dashboard-accent);
+    border-color: rgba(180, 63, 70, 0.3);
+    background: #fff;
+    box-shadow: 0 6px 16px rgba(33, 40, 48, 0.12);
 }
 
 .klpf-home-calendar-module {
-    padding: 10px 8px 8px;
-    border: 1px solid rgba(32, 36, 42, 0.1);
-    border-radius: 10px;
-    background: #fff;
-    box-shadow: 0 4px 14px rgba(32, 36, 42, 0.06);
+    margin-top: 10px;
+    padding: 12px 9px 10px;
+    border-top: 1px solid rgba(32, 36, 42, 0.1);
+    border-bottom: 1px solid rgba(32, 36, 42, 0.1);
+    background: rgba(255, 255, 255, 0.78);
 }
 
 .klpf-home-calendar-header {
@@ -86,7 +104,7 @@
 }
 
 #klpf-home-calendar-body {
-    font-size: 9px;
+    font-size: 8px;
 }
 
 #klpf-home-calendar-body .fc-toolbar.fc-header-toolbar {
@@ -94,16 +112,37 @@
 }
 
 #klpf-home-calendar-body .fc-toolbar-title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
+    color: #3d4650;
 }
 
 #klpf-home-calendar-body .fc-button {
-    padding: 2px 5px;
+    padding: 2px 6px;
     border: 0;
-    color: #575d66;
-    background: #f0eeeb;
+    color: #6a737d;
+    background: transparent;
     box-shadow: none;
+}
+
+#klpf-home-calendar-body .fc-button:hover {
+    color: var(--klpf-dashboard-accent);
+    background: #f7efed;
+}
+
+#klpf-home-calendar-body .fc-scrollgrid,
+#klpf-home-calendar-body th,
+#klpf-home-calendar-body td {
+    border-color: rgba(60, 69, 78, 0.07);
+}
+
+#klpf-home-calendar-body .fc-scrollgrid {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#klpf-home-calendar-body .fc-col-header-cell {
+    background: #f7f6f4;
 }
 
 #klpf-home-calendar-body .fc-col-header-cell-cushion,
@@ -113,8 +152,77 @@
     font-size: 8px;
 }
 
+#klpf-home-calendar-body .fc-day-today {
+    background: #fff5ef;
+}
+
+#klpf-home-calendar-body .fc-daygrid-event {
+    margin: 0 2px;
+}
+
+#klpf-home-calendar-body .fc-daygrid-event-dot {
+    width: 5px;
+    height: 5px;
+    margin: 0 auto;
+    border: 0;
+    border-radius: 50%;
+    background: var(--klpf-dashboard-accent);
+}
+
+#klpf-home-calendar-body .fc-event-time,
 #klpf-home-calendar-body .fc-event-title {
-    font-size: 8px;
+    display: none;
+}
+
+.klpf-calendar-upcoming {
+    display: grid;
+    gap: 2px;
+    margin-top: 8px;
+}
+
+.klpf-calendar-upcoming-row {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 7px;
+    align-items: center;
+    padding: 6px 4px;
+    border-top: 1px solid rgba(45, 53, 61, 0.07);
+}
+
+.klpf-calendar-upcoming-row time {
+    color: var(--klpf-dashboard-accent);
+    font-size: 10px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.klpf-calendar-upcoming-row > div {
+    display: grid;
+    min-width: 0;
+}
+
+.klpf-calendar-upcoming-row strong,
+.klpf-calendar-upcoming-row span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.klpf-calendar-upcoming-row strong {
+    color: #39424c;
+    font-size: 10px;
+}
+
+.klpf-calendar-upcoming-row span {
+    margin-top: 1px;
+    color: #7a828c;
+    font-size: 9px;
+}
+
+.klpf-calendar-upcoming-empty {
+    margin: 8px 2px 0;
+    color: #7a828c;
+    font-size: 10px;
 }
 
 .homeworkItem {
@@ -416,4 +524,3 @@
     .klpf-dashboard-edit-button,
     .klpf-homework-remove { animation: none; transition: none; }
 }
-

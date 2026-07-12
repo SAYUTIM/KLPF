@@ -26,6 +26,7 @@
     let moduleList = null;
     let restoredList = null;
     let calendarElement = null;
+    let calendarUpcomingElement = null;
     let editorCalendarElement = null;
     let compactCalendar = null;
     let editorCalendar = null;
@@ -233,6 +234,7 @@
             firstDay: 1,
             height: 'auto',
             dayMaxEvents: compact ? 1 : 3,
+            eventDisplay: compact ? 'list-item' : 'block',
             fixedWeekCount: false,
             headerToolbar: compact
                 ? { left: 'prev', center: 'title', right: 'next' }
@@ -251,6 +253,7 @@
         compactCalendar?.destroy();
         compactCalendar = new FullCalendar.Calendar(calendarElement, calendarOptions(true));
         compactCalendar.render();
+        renderUpcomingHomework();
     }
 
     function renderEditorCalendar() {
@@ -267,11 +270,55 @@
             calendar.removeAllEvents();
             calendar.addEventSource(events);
         }
+        renderUpcomingHomework();
+    }
+
+    function renderUpcomingHomework() {
+        if (!calendarUpcomingElement) return;
+        calendarUpcomingElement.replaceChildren();
+
+        const upcoming = collectCalendarEvents()
+            .map(event => ({ ...event, date: new Date(event.start) }))
+            .filter(event => !Number.isNaN(event.date.getTime()) && event.date.getTime() >= Date.now() - 86400000)
+            .sort((a, b) => a.date - b.date)
+            .slice(0, 4);
+
+        if (upcoming.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'klpf-calendar-upcoming-empty';
+            empty.textContent = '予定されている提出はありません';
+            calendarUpcomingElement.appendChild(empty);
+            return;
+        }
+
+        for (const event of upcoming) {
+            const row = document.createElement('div');
+            row.className = 'klpf-calendar-upcoming-row';
+            const date = document.createElement('time');
+            date.dateTime = event.start;
+            date.textContent = `${event.date.getMonth() + 1}/${event.date.getDate()}`;
+            const copy = document.createElement('div');
+            const lesson = document.createElement('strong');
+            lesson.textContent = event.title;
+            const homework = document.createElement('span');
+            homework.textContent = event.extendedProps.homeworkName || '課題';
+            copy.append(lesson, homework);
+            row.append(date, copy);
+            calendarUpcomingElement.appendChild(row);
+        }
     }
 
     function createCalendarModule() {
-        if (column.querySelector('#klpf-home-calendar')) {
-            calendarElement = column.querySelector('#klpf-home-calendar-body');
+        const existingModule = column.querySelector('#klpf-home-calendar');
+        if (existingModule) {
+            calendarElement = existingModule.querySelector('#klpf-home-calendar-body');
+            calendarUpcomingElement = existingModule.querySelector('.klpf-calendar-upcoming');
+            if (!calendarUpcomingElement) {
+                calendarUpcomingElement = document.createElement('div');
+                calendarUpcomingElement.className = 'klpf-calendar-upcoming';
+                existingModule.appendChild(calendarUpcomingElement);
+            }
+            renderUpcomingHomework();
             return;
         }
 
@@ -289,7 +336,9 @@
 
         calendarElement = document.createElement('div');
         calendarElement.id = 'klpf-home-calendar-body';
-        module.append(header, calendarElement);
+        calendarUpcomingElement = document.createElement('div');
+        calendarUpcomingElement.className = 'klpf-calendar-upcoming';
+        module.append(header, calendarElement, calendarUpcomingElement);
         column.appendChild(module);
         renderCompactCalendar();
     }
@@ -481,11 +530,26 @@
     }
 
     function createEditButton() {
-        if (column.querySelector('#klpf-dashboard-edit-button')) return;
-        editButton = createButton('🖋', 'klpf-dashboard-edit-button', 'ホームの表示を編集');
+        const existingButton = column.querySelector('#klpf-dashboard-edit-button');
+        editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'klpf-dashboard-edit-button';
+        editButton.setAttribute('aria-label', 'ホームの表示を編集');
+        editButton.title = 'ホームの表示を編集';
         editButton.id = 'klpf-dashboard-edit-button';
+
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('aria-hidden', 'true');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4');
+        icon.appendChild(path);
+        const label = document.createElement('span');
+        label.textContent = '編集';
+        editButton.append(icon, label);
         editButton.addEventListener('click', openEditor);
-        column.appendChild(editButton);
+        if (existingButton) existingButton.replaceWith(editButton);
+        else column.appendChild(editButton);
     }
 
     function scheduleApply() {
@@ -519,6 +583,7 @@
         await loadState();
         createCalendarModule();
         createEditButton();
+        document.querySelectorAll('#klpf-dashboard-editor-overlay').forEach(element => element.remove());
         createEditor();
         applyLayout();
         applyHomeworkVisibility();
