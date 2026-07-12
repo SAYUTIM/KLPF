@@ -28,6 +28,7 @@
     let restoredList = null;
     let calendarElement = null;
     let editorCalendarElement = null;
+    let editorDayDetailsElement = null;
     let compactCalendar = null;
     let editorCalendar = null;
     let observer = null;
@@ -35,6 +36,7 @@
     let layoutState = { order: [...DEFAULT_ORDER], hidden: [] };
     let hiddenHomeworkItems = [];
     let deletedHomeworkKeys = [];
+    let selectedEditorDate = null;
 
     function normalizeLayout(value) {
         const order = Array.isArray(value?.order)
@@ -204,7 +206,7 @@
     }
 
     function parseDeadline(value) {
-        const match = value.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})(?:[^\d]+(\d{1,2}):(\d{2}))?/);
+        const match = value.match(/(\d{4})\s*[\/年.-]\s*(\d{1,2})\s*[\/月.-]\s*(\d{1,2})(?:\s*日)?(?:[^\d]+(\d{1,2}):(\d{2}))?/);
         if (!match) return null;
 
         const year = Number(match[1]);
@@ -212,14 +214,21 @@
         const day = Number(match[3]);
         const hasTime = match[4] !== undefined;
         const rawHour = hasTime ? Number(match[4]) : 0;
-        const hour = rawHour === 24 ? 23 : rawHour;
-        const minute = rawHour === 24 ? 59 : (hasTime ? Number(match[5]) : 0);
-        const date = new Date(year, month - 1, day, hour, minute);
-        if (Number.isNaN(date.getTime())) return null;
+        const minute = hasTime ? Number(match[5]) : 0;
+        const date = new Date(year, month - 1, day);
+        const isValidDate = date.getFullYear() === year
+            && date.getMonth() === month - 1
+            && date.getDate() === day;
+        const isValidTime = !hasTime
+            || (rawHour >= 0 && rawHour <= 23 && minute >= 0 && minute <= 59)
+            || (rawHour === 24 && minute === 0);
+        if (!isValidDate || !isValidTime) return null;
 
         const pad = number => String(number).padStart(2, '0');
-        const datePart = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-        return hasTime ? `${datePart}T${pad(date.getHours())}:${pad(date.getMinutes())}:00` : datePart;
+        return {
+            date: `${year}-${pad(month)}-${pad(day)}`,
+            time: hasTime ? `${pad(rawHour)}:${pad(minute)}` : '',
+        };
     }
 
     function collectCalendarEvents() {
@@ -230,19 +239,112 @@
             .filter(item => !isHomeworkHidden(getHomeworkKey(item)))
             .map(item => {
                 const metadata = readHomeworkMetadata(item);
-                const start = parseDeadline(metadata.deadline);
-                if (!start) return null;
+                const deadline = parseDeadline(metadata.deadline);
+                if (!deadline) return null;
                 return {
                     id: metadata.key,
                     title: metadata.lessonName || metadata.homeworkName || '課題',
-                    start,
-                    allDay: !start.includes('T'),
+                    // カレンダーではLMSに記載された提出日をそのまま使う。
+                    // 24:00をDateへ渡すと翌日00:00へ正規化されるため、時刻は表示情報として保持する。
+                    start: deadline.date,
+                    allDay: true,
                     backgroundColor: '#c44d4d',
                     borderColor: '#a83c3c',
-                    extendedProps: { homeworkName: metadata.homeworkName },
+                    extendedProps: {
+                        homeworkName: metadata.homeworkName,
+                        deadlineTime: deadline.time,
+                    },
                 };
             })
             .filter(Boolean);
+    }
+
+    function formatCalendarDate(dateKey) {
+        const [, month, day] = dateKey.split('-').map(Number);
+        return `${month}月${day}日`;
+    }
+
+    function dateToCalendarKey(date) {
+        const pad = number => String(number).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    function renderCompactMarkers() {
+        if (!calendarElement) return;
+        calendarElement.querySelectorAll('.klpf-compact-event-summary').forEach(element => element.remove());
+
+        const eventsByDate = new Map();
+        for (const event of collectCalendarEvents()) {
+            if (!eventsByDate.has(event.start)) eventsByDate.set(event.start, []);
+            eventsByDate.get(event.start).push(event);
+        }
+
+        for (const [dateKey, events] of eventsByDate) {
+            const dayFrame = calendarElement.querySelector(`.fc-daygrid-day[data-date="${dateKey}"] .fc-daygrid-day-frame`);
+            if (!dayFrame) continue;
+
+            const summary = document.createElement('div');
+            summary.className = 'klpf-compact-event-summary';
+            const names = events.map(event => event.title).join('、');
+            summary.setAttribute('aria-label', `${formatCalendarDate(dateKey)}の課題${events.length}件：${names}`);
+            summary.title = `${events.length}件：${names}`;
+
+            for (let index = 0; index < Math.min(events.length, 3); index += 1) {
+                const dot = document.createElement('span');
+                dot.className = 'klpf-compact-event-dot';
+                dot.setAttribute('aria-hidden', 'true');
+                summary.appendChild(dot);
+            }
+
+            if (events.length > 3) {
+                const remainder = document.createElement('span');
+                remainder.className = 'klpf-compact-event-remainder';
+                remainder.textContent = `+${events.length - 3}`;
+                remainder.setAttribute('aria-hidden', 'true');
+                summary.appendChild(remainder);
+            }
+            dayFrame.appendChild(summary);
+        }
+    }
+
+    function scheduleCompactMarkers() {
+        window.requestAnimationFrame(renderCompactMarkers);
+    }
+
+    function renderEditorDayDetails(dateKey) {
+        if (!editorDayDetailsElement) return;
+        selectedEditorDate = dateKey;
+        const events = collectCalendarEvents().filter(event => event.start === dateKey);
+        editorDayDetailsElement.replaceChildren();
+
+        const heading = document.createElement('h4');
+        heading.textContent = `${formatCalendarDate(dateKey)}の課題（${events.length}件）`;
+        editorDayDetailsElement.appendChild(heading);
+
+        if (events.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'klpf-calendar-day-empty';
+            empty.textContent = 'この日に提出する課題はありません。';
+            editorDayDetailsElement.appendChild(empty);
+        } else {
+            const list = document.createElement('div');
+            list.className = 'klpf-calendar-day-list';
+            for (const event of events) {
+                const row = document.createElement('div');
+                row.className = 'klpf-calendar-day-row';
+                const lesson = document.createElement('strong');
+                lesson.textContent = event.title;
+                const detail = document.createElement('span');
+                const time = event.extendedProps.deadlineTime;
+                detail.textContent = [time && `${time}まで`, event.extendedProps.homeworkName]
+                    .filter(Boolean)
+                    .join(' · ');
+                row.append(lesson, detail);
+                list.appendChild(row);
+            }
+            editorDayDetailsElement.appendChild(list);
+        }
+        editorDayDetailsElement.hidden = false;
     }
 
     function calendarOptions(compact) {
@@ -250,21 +352,42 @@
             initialView: 'dayGridMonth',
             locale: 'ja',
             firstDay: 0,
-            height: 'auto',
-            dayMaxEvents: compact ? 1 : 3,
-            eventDisplay: compact ? 'list-item' : 'block',
-            fixedWeekCount: false,
+            height: compact ? 'auto' : '100%',
+            expandRows: !compact,
+            dayMaxEvents: compact ? false : 3,
+            eventDisplay: compact ? 'none' : 'block',
+            fixedWeekCount: !compact,
             headerToolbar: compact
                 ? { left: 'prev', center: 'title', right: 'next' }
                 : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
             buttonText: { today: '今日', month: '月', list: '一覧' },
+            moreLinkContent(info) {
+                return `+${info.num}件`;
+            },
+            moreLinkClick(info) {
+                const dateKey = info.date ? dateToCalendarKey(info.date) : null;
+                if (!compact && dateKey) renderEditorDayDetails(dateKey);
+                return 'popover';
+            },
             dayCellContent(info) {
                 return String(info.date.getDate());
             },
             events: collectCalendarEvents(),
+            datesSet() {
+                if (compact) scheduleCompactMarkers();
+            },
+            dateClick(info) {
+                if (!compact) renderEditorDayDetails(info.dateStr.slice(0, 10));
+            },
+            eventClick(info) {
+                info.jsEvent.preventDefault();
+                if (!compact) renderEditorDayDetails(info.event.startStr.slice(0, 10));
+            },
             eventDidMount(info) {
                 const homeworkName = info.event.extendedProps.homeworkName || '';
-                info.el.title = homeworkName ? `${info.event.title}：${homeworkName}` : info.event.title;
+                const deadlineTime = info.event.extendedProps.deadlineTime || '';
+                const detail = [deadlineTime && `${deadlineTime}まで`, homeworkName].filter(Boolean).join(' · ');
+                info.el.title = detail ? `${info.event.title}：${detail}` : info.event.title;
             },
         };
     }
@@ -274,6 +397,7 @@
         compactCalendar?.destroy();
         compactCalendar = new FullCalendar.Calendar(calendarElement, calendarOptions(true));
         compactCalendar.render();
+        scheduleCompactMarkers();
     }
 
     function renderEditorCalendar() {
@@ -281,15 +405,21 @@
         editorCalendar?.destroy();
         editorCalendar = new FullCalendar.Calendar(editorCalendarElement, calendarOptions(false));
         editorCalendar.render();
+        if (selectedEditorDate) renderEditorDayDetails(selectedEditorDate);
     }
 
     function refreshCalendars() {
         const events = collectCalendarEvents();
-        for (const calendar of [compactCalendar, editorCalendar]) {
-            if (!calendar) continue;
-            calendar.removeAllEvents();
-            calendar.addEventSource(events);
+        if (compactCalendar) {
+            compactCalendar.removeAllEvents();
+            compactCalendar.addEventSource(events);
+            scheduleCompactMarkers();
         }
+        if (editorCalendar) {
+            editorCalendar.removeAllEvents();
+            editorCalendar.addEventSource(events);
+        }
+        if (selectedEditorDate) renderEditorDayDetails(selectedEditorDate);
     }
 
     function createCalendarActions() {
@@ -490,11 +620,15 @@
         const previewHeading = document.createElement('h3');
         previewHeading.textContent = '課題カレンダー';
         const previewCopy = document.createElement('p');
-        previewCopy.textContent = '提出日には授業科目名を表示します。';
+        previewCopy.textContent = '日付や科目名を選ぶと、その日の課題をまとめて確認できます。';
         previewTitle.append(previewHeading, previewCopy);
         editorCalendarElement = document.createElement('div');
         editorCalendarElement.id = 'klpf-dashboard-editor-calendar';
-        preview.append(previewTitle, editorCalendarElement);
+        editorDayDetailsElement = document.createElement('section');
+        editorDayDetailsElement.className = 'klpf-calendar-day-details';
+        editorDayDetailsElement.hidden = true;
+        editorDayDetailsElement.setAttribute('aria-live', 'polite');
+        preview.append(previewTitle, editorCalendarElement, editorDayDetailsElement);
         body.append(controls, preview);
 
         const footer = document.createElement('div');
@@ -522,7 +656,7 @@
     }
 
     function createEditButton() {
-        const existingButton = column.querySelector('#klpf-dashboard-edit-button');
+        document.querySelectorAll('#klpf-dashboard-edit-button').forEach(button => button.remove());
         editButton = document.createElement('button');
         editButton.type = 'button';
         editButton.className = 'klpf-dashboard-edit-button';
@@ -540,8 +674,8 @@
         label.textContent = '編集';
         editButton.append(icon, label);
         editButton.addEventListener('click', openEditor);
-        if (existingButton) existingButton.replaceWith(editButton);
-        else column.appendChild(editButton);
+        const sideMenu = document.querySelector('#lms-side-menu, .lms-side-menu');
+        (sideMenu || column).appendChild(editButton);
     }
 
     function scheduleApply() {

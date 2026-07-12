@@ -25,23 +25,22 @@
 }
 
 .klpf-dashboard-edit-button {
-    position: absolute;
-    top: 7px;
-    right: 8px;
-    z-index: 8;
-    display: inline-flex;
+    position: static;
+    display: flex;
     align-items: center;
+    justify-content: center;
     gap: 5px;
-    width: auto;
-    height: 30px;
-    padding: 0 10px 0 8px;
-    border: 1px solid rgba(47, 56, 66, 0.16);
-    border-radius: 999px;
+    width: calc(100% - 16px);
+    height: 36px;
+    margin: 12px 8px 8px;
+    padding: 0 12px;
+    border: 1px solid rgba(18, 111, 137, 0.2);
+    border-radius: 8px;
     color: #126f89;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 2px 7px rgba(20, 93, 112, 0.16);
+    background: rgba(240, 250, 252, 0.86);
+    box-shadow: none;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.02em;
     transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
@@ -62,11 +61,11 @@
     color: var(--klpf-dashboard-accent);
     border-color: rgba(180, 63, 70, 0.3);
     background: #fff;
-    box-shadow: 0 6px 16px rgba(33, 40, 48, 0.12);
+    box-shadow: 0 4px 12px rgba(33, 40, 48, 0.1);
 }
 
 .klpf-home-calendar-module {
-    margin-top: 10px;
+    margin-top: 0;
     padding: 12px 9px 10px;
     border-top: 1px solid rgba(32, 36, 42, 0.1);
     border-bottom: 1px solid rgba(32, 36, 42, 0.1);
@@ -89,7 +88,7 @@
     color: #69737d;
     background: transparent;
     cursor: pointer;
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
 }
 
@@ -159,6 +158,11 @@
     cursor: default;
 }
 
+#klpf-home-calendar-body .fc-daygrid-day-events,
+#klpf-home-calendar-body .fc-daygrid-day-bottom {
+    display: none;
+}
+
 #klpf-home-calendar-body .fc-daygrid-day,
 #klpf-home-calendar-body .fc-daygrid-day-events,
 #klpf-home-calendar-body .fc-daygrid-day-bottom {
@@ -169,22 +173,45 @@
     background: #fff5ef;
 }
 
-#klpf-home-calendar-body .fc-daygrid-event {
-    margin: 0 2px;
+.klpf-compact-event-summary {
+    position: absolute;
+    right: 2px;
+    bottom: 3px;
+    left: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 7px;
+    cursor: default;
 }
 
-#klpf-home-calendar-body .fc-daygrid-event-dot {
+.klpf-compact-event-dot {
+    flex: 0 0 auto;
     width: 5px;
     height: 5px;
-    margin: 0 auto;
-    border: 0;
     border-radius: 50%;
     background: var(--klpf-dashboard-accent);
 }
 
-#klpf-home-calendar-body .fc-event-time,
-#klpf-home-calendar-body .fc-event-title {
-    display: none;
+.klpf-compact-event-remainder {
+    color: var(--klpf-dashboard-accent);
+    font-size: 7px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.klpf-dashboard-column #homework {
+    margin-top: 0 !important;
+}
+
+#homework > #updatingNotice {
+    margin: 0 0 9px !important;
+    padding: 7px 9px;
+    color: #166f88;
+    border-radius: 6px;
+    background: #edf8fb;
+    font-size: 11px;
 }
 
 .homeworkItem {
@@ -237,7 +264,8 @@
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     width: min(1040px, calc(100vw - 56px));
-    max-height: min(780px, calc(100vh - 56px));
+    height: min(860px, calc(100vh - 40px));
+    max-height: calc(100vh - 40px);
     overflow: hidden;
     color: var(--klpf-dashboard-ink);
     border: 1px solid rgba(255, 255, 255, 0.55);
@@ -293,7 +321,7 @@
     display: grid;
     grid-template-columns: minmax(300px, 0.8fr) minmax(420px, 1.2fr);
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
 }
 
 .klpf-dashboard-editor-controls {
@@ -303,6 +331,7 @@
     padding: 24px 26px 30px;
     background: #faf9f7;
     border-right: 1px solid #e9e5e1;
+    overflow-y: auto;
 }
 
 .klpf-dashboard-editor h3 {
@@ -425,8 +454,12 @@
 }
 
 .klpf-dashboard-calendar-preview {
+    display: grid;
+    grid-template-rows: auto minmax(410px, 1fr) auto;
     min-width: 0;
+    min-height: 0;
     padding: 24px 28px 30px;
+    overflow: hidden;
 }
 
 .klpf-dashboard-calendar-preview > div:first-child {
@@ -434,6 +467,7 @@
 }
 
 #klpf-dashboard-editor-calendar {
+    min-height: 410px;
     font-size: 12px;
 }
 
@@ -452,7 +486,87 @@
 }
 
 #klpf-dashboard-editor-calendar .fc-event {
-    cursor: default;
+    cursor: pointer;
+}
+
+#klpf-dashboard-editor-calendar .fc-daygrid-day,
+#klpf-dashboard-editor-calendar .fc-daygrid-day-number {
+    cursor: pointer;
+}
+
+#klpf-dashboard-editor-calendar .fc-daygrid-day:hover {
+    background: rgba(42, 167, 199, 0.055);
+}
+
+#klpf-dashboard-editor-calendar .fc-daygrid-more-link {
+    color: #167b95;
+    font-weight: 700;
+}
+
+#klpf-dashboard-editor-calendar .fc-popover {
+    z-index: 4;
+    max-width: min(360px, calc(100vw - 80px));
+    border-color: #d9e4e7;
+    border-radius: 9px;
+    box-shadow: 0 12px 30px rgba(26, 45, 52, 0.18);
+}
+
+.klpf-calendar-day-details {
+    max-height: 142px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid #dce7e9;
+    border-radius: 10px;
+    background: #f7fbfc;
+    overflow-y: auto;
+}
+
+.klpf-calendar-day-details[hidden] {
+    display: none;
+}
+
+.klpf-calendar-day-details h4 {
+    margin: 0 0 8px;
+    color: #2e3b40;
+    font-size: 12px;
+}
+
+.klpf-calendar-day-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+}
+
+.klpf-calendar-day-row {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 7px 9px;
+    border-left: 3px solid var(--klpf-dashboard-accent);
+    border-radius: 4px;
+    background: #fff;
+}
+
+.klpf-calendar-day-row strong,
+.klpf-calendar-day-row span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.klpf-calendar-day-row strong {
+    color: #303a40;
+    font-size: 11px;
+}
+
+.klpf-calendar-day-row span,
+.klpf-calendar-day-empty {
+    color: var(--klpf-dashboard-muted);
+    font-size: 10px;
+}
+
+.klpf-calendar-day-empty {
+    margin: 0;
 }
 
 .klpf-dashboard-editor-footer {
@@ -499,10 +613,12 @@
     .klpf-dashboard-editor-overlay { padding: 12px; }
     .klpf-dashboard-editor {
         width: calc(100vw - 24px);
+        height: calc(100vh - 24px);
         max-height: calc(100vh - 24px);
     }
-    .klpf-dashboard-editor-body { grid-template-columns: 1fr; }
+    .klpf-dashboard-editor-body { grid-template-columns: 1fr; overflow-y: auto; }
     .klpf-dashboard-editor-controls { border-right: 0; border-bottom: 1px solid #e9e5e1; }
+    .klpf-dashboard-calendar-preview { grid-template-rows: auto minmax(410px, 1fr) auto; overflow: visible; }
 }
 
 @media (prefers-reduced-motion: reduce) {

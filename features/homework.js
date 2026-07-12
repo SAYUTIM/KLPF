@@ -283,7 +283,7 @@ function renderHomework(homeworkData) {
     const container = document.createElement('div');
     container.id = HOMEWORK_CONTAINER_ID;
 
-    Object.assign(container.style, { border: "1px solid #ccc", padding: "10px", marginTop: "10px", backgroundColor: "#f9f9f9", fontFamily: "sans-serif" });
+    applyHomeworkContainerStyles(container);
 
     if (homeworkData.length === 0) {
         container.textContent = "提出期限が設定されている課題はありませんでした。";
@@ -322,6 +322,16 @@ function renderHomework(homeworkData) {
     return container;
 }
 
+function applyHomeworkContainerStyles(container) {
+    Object.assign(container.style, {
+        border: "1px solid #ccc",
+        padding: "10px",
+        marginTop: "0",
+        backgroundColor: "#f9f9f9",
+        fontFamily: "sans-serif",
+    });
+}
+
 /**
  * ローディング表示を管理する。
  * @param {boolean} show - 表示するかどうか。
@@ -336,8 +346,19 @@ function manageLoadingIndicator(show) {
     const notice = document.createElement("div");
     notice.id = HOMEWORK_UPDATING_NOTICE_ID;
     notice.style.fontWeight = "bold";
-    notice.style.margin = "10px 0 10px 12px";
-    document.querySelector('form#homehomlInfo[name="homeHomlActionForm"]')?.insertAdjacentElement("afterend", notice);
+    notice.style.margin = "0 0 10px";
+
+    let homeworkContainer = document.getElementById(HOMEWORK_CONTAINER_ID);
+    const createdPlaceholder = !homeworkContainer;
+    if (!homeworkContainer) {
+        homeworkContainer = document.createElement('div');
+        homeworkContainer.id = HOMEWORK_CONTAINER_ID;
+        applyHomeworkContainerStyles(homeworkContainer);
+        document.querySelector('form#homehomlInfo[name="homeHomlActionForm"]')
+            ?.insertAdjacentElement("afterend", homeworkContainer);
+    }
+    const firstHomeworkItem = homeworkContainer?.querySelector(`.${HOMEWORK_ITEM_CLASS}`);
+    homeworkContainer?.insertBefore(notice, firstHomeworkItem || null);
 
     const phases = ["更新中", "更新中.", "更新中..", "更新中..."];
     let phaseIndex = 0;
@@ -351,6 +372,12 @@ function manageLoadingIndicator(show) {
     return () => {
         clearInterval(intervalId);
         notice.remove();
+        if (createdPlaceholder
+            && homeworkContainer?.isConnected
+            && !homeworkContainer.querySelector(`.${HOMEWORK_ITEM_CLASS}`)
+            && homeworkContainer.textContent.trim() === '') {
+            homeworkContainer.remove();
+        }
     };
 }
 
