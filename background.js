@@ -45,12 +45,17 @@ function isAllowedGasWebhookUrl(value) {
  */
 async function registerContentScript(config) {
     try {
-        await chrome.scripting.registerContentScripts([{
+        const registration = {
             id: config.id,
             js: config.js,
             matches: config.matches,
             runAt: config.runAt,
-        }]);
+        };
+        if (Array.isArray(config.css) && config.css.length > 0) {
+            registration.css = config.css;
+        }
+
+        await chrome.scripting.registerContentScripts([registration]);
         console.log(`[KLPF] スクリプト登録: ${config.id}`);
     } catch (error) {
         console.error(`[KLPF] スクリプト登録失敗: ${config.id}`, error);

@@ -41,6 +41,7 @@ const URLS = {
  * @property {string} id - スクリプトの一意なID。
  * @property {string} storageKey - この機能の有効/無効を保存するchrome.storage.syncのキー。
  * @property {string[]} js - 注入するJavaScriptファイルのパスの配列。
+ * @property {string[]} [css] - 注入するCSSファイルのパスの配列。
  * @property {string[]} matches - スクリプトを注入するURLパターン。
  * @property {chrome.scripting.RunAt} runAt - スクリプトを注入するタイミング。
  * @property {boolean} [enabledByDefault=false] - デフォルトで有効にするか。
@@ -127,7 +128,14 @@ export const CONTENT_SCRIPTS_CONFIG = [
         storageKey: 'homework',
         displayName: '課題リストアップ',
         displayOrder: 30,
-        js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}homework.js`],
+        js: [
+            MODULES.CONSTANTS,
+            MODULES.DOM_UTILS,
+            'vendor/fullcalendar/index.global.min.js',
+            `${PATHS.FEATURES}homework.js`,
+            `${PATHS.FEATURES}homeDashboard.js`,
+        ],
+        css: [`${PATHS.FEATURES}homeDashboard.css`],
         matches: [URLS.KOGAKUIN_LMS_HOME],
         runAt: 'document_end',
         enabledByDefault: true,
