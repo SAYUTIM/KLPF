@@ -28,7 +28,8 @@
         "https://study.ns.kogakuin.ac.jp/lms/*"
       ],
       "js": [
-        "features/lmsInlineSettings.js"
+        "features/lmsInlineSettings.js",
+        "features/customImageTheme.js"
       ],
       "run_at": "document_idle"
     }

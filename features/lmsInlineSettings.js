@@ -16,6 +16,8 @@
     const OPEN_HOME_EDITOR_EVENT = 'klpf-open-home-editor';
     const ROOT_ID = 'klpf-inline-settings-root';
     const THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-theme-menu-item';
+    const CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-custom-image-theme-menu-item';
+    const OPEN_CUSTOM_IMAGE_THEME_EVENT = 'klpf-open-custom-image-theme';
     const THEME_ROOT_ID = 'klpf-site-theme-root';
     const THEME_STYLE_ID = 'klpf-site-theme-style';
     const THEME_COLORS_STORAGE_KEY = 'klpfSiteThemeColors';
@@ -1970,6 +1972,26 @@
         return item;
     }
 
+    function buildCustomImageThemeMenuItem() {
+        const item = document.createElement('li');
+        item.setAttribute(CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE, '');
+
+        const link = document.createElement('a');
+        link.href = '#';
+
+        const label = document.createElement('span');
+        label.textContent = 'カスタム画像テーマ';
+
+        link.appendChild(label);
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            document.dispatchEvent(new CustomEvent(OPEN_CUSTOM_IMAGE_THEME_EVENT));
+        });
+        item.appendChild(link);
+        return item;
+    }
+
     function getSettingsMenus() {
         return [...new Set([
             ...document.querySelectorAll('.selectBoxSettei.lms-user-menu .selectBox.lms-sp-user-menu'),
@@ -1982,7 +2004,7 @@
     function injectMenuItem() {
         const menus = getSettingsMenus();
         const menuSet = new Set(menus);
-        document.querySelectorAll(`#${MENU_ITEM_ID}, [${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}], [${THEME_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
+        document.querySelectorAll(`#${MENU_ITEM_ID}, [${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}], [${THEME_MENU_ITEM_ATTRIBUTE}], [${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
             if (!menuSet.has(item.parentElement)) item.remove();
         });
 
@@ -2011,6 +2033,12 @@
             const themeAnchor = homeEditorItem || settingsItem;
             if (themeAnchor.nextElementSibling !== themeItem) {
                 themeAnchor.insertAdjacentElement('afterend', themeItem);
+            }
+
+            let customImageThemeItem = menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`);
+            if (!customImageThemeItem) customImageThemeItem = buildCustomImageThemeMenuItem();
+            if (menu.lastElementChild !== customImageThemeItem) {
+                menu.appendChild(customImageThemeItem);
             }
         }
     }
