@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 SAYU
+// Copyright (c) 2024-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
 import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
