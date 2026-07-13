@@ -614,6 +614,20 @@ select:hover {
     color: #ff6e6e;
 }
 
+.totp-help-link {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    margin-top: 2px;
+    color: rgb(220, 220, 220);
+    font-size: 14px;
+    text-underline-offset: 3px;
+}
+
+.totp-help-link:hover {
+    color: #ffffff;
+}
+
 .options-container .inline-container {
     display: flex;
     gap: 10px;
