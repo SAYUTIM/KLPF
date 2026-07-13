@@ -28,8 +28,16 @@
         "https://study.ns.kogakuin.ac.jp/lms/*"
       ],
       "js": [
-        "features/lmsInlineSettings.js",
         "features/customImageTheme.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://study.ns.kogakuin.ac.jp/lms/*"
+      ],
+      "js": [
+        "features/lmsInlineSettings.js"
       ],
       "run_at": "document_idle"
     }

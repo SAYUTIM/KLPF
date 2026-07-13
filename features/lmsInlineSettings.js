@@ -24,6 +24,7 @@
     const LEGACY_THEME_COLOR_STORAGE_KEY = 'klpfSiteThemeColor';
     const THEME_ELEMENT_RULES_STORAGE_KEY = 'klpfSiteThemeElementRules';
     const THEME_RECENT_COLORS_STORAGE_KEY = 'klpfSiteThemeRecentColors';
+    const THEME_PRESET_STORAGE_KEY = 'klpfSiteThemePreset';
     const THEME_ALLOWED_PROPERTIES = ['color', 'background-color', 'border-color'];
     const THEME_COLOR_CONFIG = [
         {
@@ -195,6 +196,15 @@
     function normalizeRecentColors(value) {
         if (!Array.isArray(value)) return [];
         return [...new Set(value.map(normalizeHexColor).filter(Boolean))].slice(0, 5);
+    }
+
+    function normalizeThemePreset(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+        return {
+            colors: normalizeThemeColors(value.colors),
+            elementRules: normalizeElementRules(value.elementRules),
+            savedAt: typeof value.savedAt === 'string' ? value.savedAt : '',
+        };
     }
 
     function applyThemeColors(colors, elementRules = persistedElementRules) {
@@ -816,11 +826,13 @@
             }
 
             .theme-utility-actions {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 7px;
                 margin-top: 12px;
             }
 
             .theme-utility-button {
-                width: 100%;
                 min-height: 32px;
                 border: 1px solid #d9e3e8;
                 border-radius: 8px;
@@ -830,6 +842,8 @@
                 font-size: 10px;
                 font-weight: 800;
             }
+
+            .theme-utility-button.wide { grid-column: 1 / -1; }
 
             .theme-workspace .theme-help { margin-top: 11px; }
             .theme-workspace .theme-actions { padding: 11px 14px 13px; }
@@ -893,8 +907,11 @@
                         <p class="theme-recents-label">最近使った色</p>
                         <div class="theme-recents" data-theme-recents></div>
                         <div class="theme-utility-actions">
-                            <button type="button" class="theme-utility-button" data-theme-reset-selected>規定色に戻す</button>
+                            <button type="button" class="theme-utility-button" data-theme-preset-save>プリセット保存</button>
+                            <button type="button" class="theme-utility-button" data-theme-preset-restore>プリセット復元</button>
+                            <button type="button" class="theme-utility-button wide" data-theme-reset-selected>規定色に戻す</button>
                         </div>
+                        <p class="theme-status" data-theme-status aria-live="polite"></p>
                     </div>
                     <footer class="theme-actions">
                         <button type="button" class="theme-button reset" data-theme-reset-all>すべて規定色に戻す</button>
@@ -1243,6 +1260,8 @@
         const cancelButton = themeShadowRoot.querySelector('[data-theme-cancel]');
         const resetButton = themeShadowRoot.querySelector('[data-theme-reset-selected]');
         const resetAllButton = themeShadowRoot.querySelector('[data-theme-reset-all]');
+        const presetSaveButton = themeShadowRoot.querySelector('[data-theme-preset-save]');
+        const presetRestoreButton = themeShadowRoot.querySelector('[data-theme-preset-restore]');
 
         themeShadowRoot.addEventListener('keydown', handleThemeFocusTrap);
         closeButton.addEventListener('click', () => closeThemePanel());
@@ -1306,6 +1325,40 @@
             draftColorSelections.clear();
             applyThemeColors({}, []);
             syncSelectedThemeControls();
+            setThemeStatus('すべての色指定をサイト既定へ戻しました。');
+        });
+        presetSaveButton.addEventListener('click', async () => {
+            const preset = {
+                colors: normalizeThemeColors(draftThemeBaseColors),
+                elementRules: normalizeElementRules(draftElementRules),
+                savedAt: new Date().toISOString(),
+            };
+            try {
+                await storageSet('local', { [THEME_PRESET_STORAGE_KEY]: preset });
+                setThemeStatus('現在の配色をプリセットに保存しました。');
+            } catch (error) {
+                setThemeStatus('プリセットを保存できませんでした。', true);
+                console.warn('[KLPF] テーマカラープリセットを保存できませんでした。', error);
+            }
+        });
+        presetRestoreButton.addEventListener('click', async () => {
+            try {
+                const stored = await storageGet('local', THEME_PRESET_STORAGE_KEY);
+                const preset = normalizeThemePreset(stored[THEME_PRESET_STORAGE_KEY]);
+                if (!preset) {
+                    setThemeStatus('保存済みのプリセットがありません。', true);
+                    return;
+                }
+                draftThemeBaseColors = { ...preset.colors };
+                draftElementRules = preset.elementRules.map(rule => ({ ...rule }));
+                draftColorSelections.clear();
+                applyThemeColors(draftThemeBaseColors, draftElementRules);
+                syncSelectedThemeControls();
+                setThemeStatus('プリセットを復元しました。「保存」で確定します。');
+            } catch (error) {
+                setThemeStatus('プリセットを復元できませんでした。', true);
+                console.warn('[KLPF] テーマカラープリセットを復元できませんでした。', error);
+            }
         });
 
         panel.addEventListener('submit', async (event) => {
