@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 SAYU
+// Copyright (c) 2024-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
 (() => {
@@ -86,6 +86,7 @@
     let draftColorSelections = new Map();
     let themeLastFocusedElement = null;
     let menuObserver = null;
+    let hasLoadedState = false;
     let isThemeOpen = false;
     let isOpen = false;
     let hasPendingReloadPrompt = false;
@@ -273,7 +274,11 @@
     async function loadAndApplyThemeColors() {
         const [colors, stored] = await Promise.all([
             readStoredThemeColors(),
-            storageGet('local', [THEME_ELEMENT_RULES_STORAGE_KEY, THEME_RECENT_COLORS_STORAGE_KEY]),
+            storageGet('local', [
+                THEME_ELEMENT_RULES_STORAGE_KEY,
+                THEME_RECENT_COLORS_STORAGE_KEY,
+                ALL_DISABLED_KEY,
+            ]),
         ]);
         persistedThemeColors = colors;
         persistedElementRules = normalizeElementRules(stored[THEME_ELEMENT_RULES_STORAGE_KEY]);
@@ -284,7 +289,8 @@
                 ...persistedElementRules.map(rule => rule.color),
             ]);
         }
-        applyThemeColors(persistedThemeColors, persistedElementRules);
+        if (stored[ALL_DISABLED_KEY]) applyThemeColors({}, []);
+        else applyThemeColors(persistedThemeColors, persistedElementRules);
     }
 
     function ensureThemeRoot() {
@@ -1384,6 +1390,8 @@
             return;
         }
 
+        await loadState();
+        if (state.allDisabled) return;
         themeLastFocusedElement = document.activeElement;
         await loadAndApplyThemeColors();
         draftThemeBaseColors = { ...persistedThemeColors };
@@ -1428,6 +1436,7 @@
             settings: syncSettings,
             allDisabled: !!localSettings[ALL_DISABLED_KEY],
         };
+        hasLoadedState = true;
     }
 
     function ensureRoot() {
@@ -1893,6 +1902,7 @@
             await storageSet('sync', disabledSettings);
             state.allDisabled = true;
             state.settings = disabledSettings;
+            syncOptionalCustomizationState();
             markSettingsChanged();
             render();
             showStatus('すべての機能をOFFにしました');
@@ -1916,6 +1926,7 @@
             [PREVIOUS_SETTINGS_KEY]: restoredSettings,
         });
         state.settings = restoredSettings;
+        syncOptionalCustomizationState();
         markSettingsChanged();
         render();
         showStatus('停止前の設定を復元しました');
@@ -2068,6 +2079,13 @@
                 menu.appendChild(settingsItem);
             }
 
+            if (!hasLoadedState || state.allDisabled) {
+                menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+                menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+                menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+                continue;
+            }
+
             const canEditHome = !!document.querySelector('div.lms-menu-column.lms-home');
             let homeEditorItem = menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`);
             if (canEditHome) {
@@ -2094,6 +2112,19 @@
                 menu.appendChild(customImageThemeItem);
             }
         }
+    }
+
+    function syncOptionalCustomizationState() {
+        injectMenuItem();
+        if (state.allDisabled) {
+            closeThemePanel({ restoreSavedColor: false });
+            applyThemeColors({}, []);
+            return;
+        }
+
+        loadAndApplyThemeColors().catch((error) => {
+            console.warn('[KLPF] サイトテーマ色を復元できませんでした。', error);
+        });
     }
 
     function observeMenu() {
@@ -2125,6 +2156,8 @@
 
         if (area === 'local' && changes[ALL_DISABLED_KEY]) {
             state.allDisabled = !!changes[ALL_DISABLED_KEY].newValue;
+            hasLoadedState = true;
+            syncOptionalCustomizationState();
             if (!isOpen) return;
             loadState().then(applyStateToControls);
         }
@@ -2142,19 +2175,23 @@
         }
     });
 
-    loadFeatureDefinitions().then(loadState).catch((error) => {
-        console.warn('[KLPF] KU-LMS内設定の初期状態読み込みに失敗しました。', error);
-    });
+    loadFeatureDefinitions()
+        .then(loadState)
+        .then(injectMenuItem)
+        .catch((error) => {
+            console.warn('[KLPF] KU-LMS内設定の初期状態読み込みに失敗しました。', error);
+        });
     loadAndApplyThemeColors().catch((error) => {
         console.warn('[KLPF] サイトテーマ色を読み込めませんでした。', error);
     });
 
     globalThis[INSTANCE_KEY] = {
         refresh() {
-            injectMenuItem();
-            loadAndApplyThemeColors().catch((error) => {
-                console.warn('[KLPF] サイトテーマ色を再適用できませんでした。', error);
-            });
+            loadState()
+                .then(syncOptionalCustomizationState)
+                .catch((error) => {
+                    console.warn('[KLPF] サイトテーマ色を再適用できませんでした。', error);
+                });
         },
     };
 

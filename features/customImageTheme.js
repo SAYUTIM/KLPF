@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 SAYU
+// Copyright (c) 2024-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
 (() => {
@@ -16,6 +16,7 @@
     const STYLE_ID = 'klpf-custom-image-theme-style';
     const SCROLL_LOCK_STYLE_ID = 'klpf-custom-image-theme-scroll-lock';
     const STORAGE_KEY = 'klpfCustomImageTheme';
+    const ALL_DISABLED_KEY = 'klpfInlineAllFeaturesDisabled';
     const ACTIVE_ATTRIBUTE = 'data-klpf-custom-image-theme-active';
     const BACKGROUND_ATTRIBUTE = 'data-klpf-custom-image-theme-background';
     const BACKGROUND_PROPERTY = '--klpf-custom-image-theme-background';
@@ -48,6 +49,7 @@
     let recalculateTimer = null;
     let lastFocusedElement = null;
     let currentImageDimensions = null;
+    let isAllFeaturesDisabled = false;
 
     function normalizePercentage(value, fallback, maximum = 100) {
         const number = Number(value);
@@ -283,6 +285,18 @@
     async function loadStoredTheme() {
         const stored = await chrome.storage.local.get(STORAGE_KEY);
         return normalizeStoredTheme(stored[STORAGE_KEY]);
+    }
+
+    async function syncThemeAvailability(disabled) {
+        isAllFeaturesDisabled = disabled === true;
+        if (isAllFeaturesDisabled) {
+            closePanel();
+            currentTheme = null;
+            removeAppliedTheme();
+            return;
+        }
+
+        applyTheme(await loadStoredTheme());
     }
 
     function ensureScrollLockStyle() {
@@ -1118,6 +1132,11 @@
     }
 
     async function openPanel() {
+        const disabledState = await chrome.storage.local.get(ALL_DISABLED_KEY);
+        if (disabledState[ALL_DISABLED_KEY]) {
+            await syncThemeAvailability(true);
+            return;
+        }
         if (rootElement?.isConnected) {
             shadowRoot?.querySelector('[data-file-input]')?.focus();
             return;
@@ -1149,8 +1168,16 @@
     });
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== 'local' || !changes[STORAGE_KEY]) return;
-        applyTheme(changes[STORAGE_KEY].newValue);
+        if (areaName !== 'local') return;
+        if (changes[ALL_DISABLED_KEY]) {
+            syncThemeAvailability(changes[ALL_DISABLED_KEY].newValue === true).catch((error) => {
+                console.warn('[KLPF] カスタム画像テーマの停止状態を反映できませんでした。', error);
+            });
+            return;
+        }
+        if (changes[STORAGE_KEY] && !isAllFeaturesDisabled) {
+            applyTheme(changes[STORAGE_KEY].newValue);
+        }
     });
 
     window.addEventListener('resize', () => {
@@ -1159,13 +1186,22 @@
     }, { passive: true });
     window.addEventListener('scroll', scheduleGeometryUpdate, { passive: true });
 
-    loadStoredTheme().then(applyTheme).catch((error) => {
+    Promise.all([
+        loadStoredTheme(),
+        chrome.storage.local.get(ALL_DISABLED_KEY),
+    ]).then(([theme, disabledState]) => {
+        isAllFeaturesDisabled = disabledState[ALL_DISABLED_KEY] === true;
+        if (isAllFeaturesDisabled) removeAppliedTheme();
+        else applyTheme(theme);
+    }).catch((error) => {
         console.warn('[KLPF] カスタム画像テーマを読み込めませんでした。', error);
     });
 
     globalThis[INSTANCE_KEY] = {
         refresh() {
-            loadStoredTheme().then(applyTheme).catch((error) => {
+            chrome.storage.local.get(ALL_DISABLED_KEY).then((disabledState) => {
+                return syncThemeAvailability(disabledState[ALL_DISABLED_KEY] === true);
+            }).catch((error) => {
                 console.warn('[KLPF] カスタム画像テーマを再適用できませんでした。', error);
             });
         },
