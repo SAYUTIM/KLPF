@@ -126,27 +126,6 @@
                 html.klpf-inline-modal-open body { overflow: hidden !important; overscroll-behavior: none !important; }
                 [data-klpf-theme-hover] { outline: 3px solid #18a8cc !important; outline-offset: 2px !important; cursor: crosshair !important; }
                 [data-klpf-theme-selected] { outline: 2px dashed #168eb5 !important; outline-offset: 2px !important; }
-                html.klpf-theme-random-mode body * { animation: klpf-random-theme-a 7s ease-in-out infinite alternate !important; }
-                html.klpf-theme-random-mode body *:nth-child(3n + 2) { animation-name: klpf-random-theme-b !important; animation-delay: -2.3s !important; }
-                html.klpf-theme-random-mode body *:nth-child(3n) { animation-name: klpf-random-theme-c !important; animation-delay: -4.6s !important; }
-                @keyframes klpf-random-theme-a {
-                    0% { color: #ff4d8d; background-color: #27104d; border-color: #ffd166; }
-                    35% { color: #06d6a0; background-color: #073b4c; border-color: #ef476f; }
-                    70% { color: #f8f9fa; background-color: #7b2cbf; border-color: #4cc9f0; }
-                    100% { color: #ffe66d; background-color: #1a535c; border-color: #ff6b6b; }
-                }
-                @keyframes klpf-random-theme-b {
-                    0% { color: #4cc9f0; background-color: #3a0ca3; border-color: #f72585; }
-                    40% { color: #ffbe0b; background-color: #8338ec; border-color: #3a86ff; }
-                    75% { color: #f1faee; background-color: #e63946; border-color: #a8dadc; }
-                    100% { color: #80ffdb; background-color: #7400b8; border-color: #64dfdf; }
-                }
-                @keyframes klpf-random-theme-c {
-                    0% { color: #ffd6ff; background-color: #390099; border-color: #ffbd00; }
-                    30% { color: #caffbf; background-color: #ff006e; border-color: #9bf6ff; }
-                    65% { color: #ffffff; background-color: #0081a7; border-color: #f07167; }
-                    100% { color: #ffc6ff; background-color: #006466; border-color: #ff9f1c; }
-                }
             `;
         document.documentElement.classList.toggle('klpf-inline-modal-open', activeScrollLocks.size > 0);
     }
@@ -225,7 +204,24 @@
             if (!color) return [];
             return [`${config.selectors.join(',\n')} { ${config.property}: ${color} !important; }`];
         });
-        for (const rule of normalizeElementRules(elementRules)) {
+        const orderedElementRules = normalizeElementRules(elementRules)
+            .map((rule, index) => {
+                let depth = 0;
+                try {
+                    let element = document.querySelector(rule.selector);
+                    while (element?.parentElement) {
+                        depth += 1;
+                        element = element.parentElement;
+                    }
+                } catch (_error) {
+                    // Keep an unreadable selector at its original relative position.
+                }
+                return { rule, index, depth };
+            })
+            .sort((left, right) => left.depth - right.depth || left.index - right.index)
+            .map(({ rule }) => rule);
+
+        for (const rule of orderedElementRules) {
             const selectors = rule.selector.split(',').map(selector => selector.trim()).filter(Boolean);
             if (rule.property === 'color') {
                 const colorSelectors = selectors.flatMap(selector => [selector, `${selector} *`]);
@@ -818,13 +814,11 @@
             }
 
             .theme-utility-actions {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 7px;
                 margin-top: 12px;
             }
 
             .theme-utility-button {
+                width: 100%;
                 min-height: 32px;
                 border: 1px solid #d9e3e8;
                 border-radius: 8px;
@@ -833,12 +827,6 @@
                 cursor: pointer;
                 font-size: 10px;
                 font-weight: 800;
-            }
-
-            .theme-utility-button.is-active {
-                border-color: #8e5bd9;
-                color: #fff;
-                background: #8e5bd9;
             }
 
             .theme-workspace .theme-help { margin-top: 11px; }
@@ -904,7 +892,6 @@
                         <div class="theme-recents" data-theme-recents></div>
                         <div class="theme-utility-actions">
                             <button type="button" class="theme-utility-button" data-theme-reset-selected>規定色に戻す</button>
-                            <button type="button" class="theme-utility-button" data-theme-random>ランダムカラー</button>
                         </div>
                     </div>
                     <footer class="theme-actions">
@@ -1254,22 +1241,11 @@
         const cancelButton = themeShadowRoot.querySelector('[data-theme-cancel]');
         const resetButton = themeShadowRoot.querySelector('[data-theme-reset-selected]');
         const resetAllButton = themeShadowRoot.querySelector('[data-theme-reset-all]');
-        const randomButton = themeShadowRoot.querySelector('[data-theme-random]');
 
         themeShadowRoot.addEventListener('keydown', handleThemeFocusTrap);
         closeButton.addEventListener('click', () => closeThemePanel());
         cancelButton.addEventListener('click', () => closeThemePanel());
         inspectButton.addEventListener('click', startThemeInspection);
-        const syncRandomButton = () => {
-            const isActive = document.documentElement.classList.contains('klpf-theme-random-mode');
-            randomButton.classList.toggle('is-active', isActive);
-            randomButton.setAttribute('aria-pressed', String(isActive));
-        };
-        randomButton.addEventListener('click', () => {
-            document.documentElement.classList.toggle('klpf-theme-random-mode');
-            syncRandomButton();
-        });
-        syncRandomButton();
         picker.addEventListener('input', () => previewSelectedThemeColor(picker.value));
         picker.addEventListener('change', () => {
             recordRecentThemeColor(picker.value).catch((error) => {
@@ -1326,8 +1302,6 @@
             draftThemeBaseColors = {};
             draftElementRules = [];
             draftColorSelections.clear();
-            document.documentElement.classList.remove('klpf-theme-random-mode');
-            syncRandomButton();
             applyThemeColors({}, []);
             syncSelectedThemeControls();
         });
