@@ -1,6 +1,8 @@
 (() => {
     'use strict';
 
+    document.documentElement.classList.add('has-reveal');
+
     const progress = document.querySelector('.reading-progress');
     const sections = Array.from(document.querySelectorAll('main section[id]'));
     const navLinks = Array.from(document.querySelectorAll('nav a[href^="#"], .toc a[href^="#"]'));
@@ -10,7 +12,7 @@
         const ratio = available > 0 ? Math.min(1, window.scrollY / available) : 0;
         progress.style.width = `${ratio * 100}%`;
         document.querySelectorAll('.observe:not(.is-visible)').forEach((element) => {
-            if (element.getBoundingClientRect().top < window.innerHeight * .92) {
+            if (element.getBoundingClientRect().top < window.innerHeight * .82) {
                 element.classList.add('is-visible');
             }
         });
@@ -22,7 +24,7 @@
             entry.target.classList.add('is-visible');
             revealObserver.unobserve(entry.target);
         });
-    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    }, { rootMargin: '0px 0px -18% 0px', threshold: 0.08 });
 
     document.querySelectorAll('.observe').forEach((element) => revealObserver.observe(element));
 
@@ -36,6 +38,8 @@
     }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, .2, .6] });
 
     sections.forEach((section) => sectionObserver.observe(section));
+
+    requestAnimationFrame(() => document.documentElement.classList.add('reveal-ready'));
 
     const countdown = document.querySelector('[data-countdown]');
     const deadline = new Date('2026-09-29T19:30:00+09:00');
