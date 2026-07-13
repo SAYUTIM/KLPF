@@ -119,14 +119,35 @@
         if (!style) {
             style = document.createElement('style');
             style.id = 'klpf-inline-scroll-lock-style';
-            style.textContent = `
+            (document.head || document.documentElement).appendChild(style);
+        }
+        style.textContent = `
                 html.klpf-inline-modal-open,
                 html.klpf-inline-modal-open body { overflow: hidden !important; overscroll-behavior: none !important; }
                 [data-klpf-theme-hover] { outline: 3px solid #18a8cc !important; outline-offset: 2px !important; cursor: crosshair !important; }
                 [data-klpf-theme-selected] { outline: 2px dashed #168eb5 !important; outline-offset: 2px !important; }
+                html.klpf-theme-random-mode body * { animation: klpf-random-theme-a 7s ease-in-out infinite alternate !important; }
+                html.klpf-theme-random-mode body *:nth-child(3n + 2) { animation-name: klpf-random-theme-b !important; animation-delay: -2.3s !important; }
+                html.klpf-theme-random-mode body *:nth-child(3n) { animation-name: klpf-random-theme-c !important; animation-delay: -4.6s !important; }
+                @keyframes klpf-random-theme-a {
+                    0% { color: #ff4d8d; background-color: #27104d; border-color: #ffd166; }
+                    35% { color: #06d6a0; background-color: #073b4c; border-color: #ef476f; }
+                    70% { color: #f8f9fa; background-color: #7b2cbf; border-color: #4cc9f0; }
+                    100% { color: #ffe66d; background-color: #1a535c; border-color: #ff6b6b; }
+                }
+                @keyframes klpf-random-theme-b {
+                    0% { color: #4cc9f0; background-color: #3a0ca3; border-color: #f72585; }
+                    40% { color: #ffbe0b; background-color: #8338ec; border-color: #3a86ff; }
+                    75% { color: #f1faee; background-color: #e63946; border-color: #a8dadc; }
+                    100% { color: #80ffdb; background-color: #7400b8; border-color: #64dfdf; }
+                }
+                @keyframes klpf-random-theme-c {
+                    0% { color: #ffd6ff; background-color: #390099; border-color: #ffbd00; }
+                    30% { color: #caffbf; background-color: #ff006e; border-color: #9bf6ff; }
+                    65% { color: #ffffff; background-color: #0081a7; border-color: #f07167; }
+                    100% { color: #ffc6ff; background-color: #006466; border-color: #ff9f1c; }
+                }
             `;
-            (document.head || document.documentElement).appendChild(style);
-        }
         document.documentElement.classList.toggle('klpf-inline-modal-open', activeScrollLocks.size > 0);
     }
 
@@ -205,7 +226,15 @@
             return [`${config.selectors.join(',\n')} { ${config.property}: ${color} !important; }`];
         });
         for (const rule of normalizeElementRules(elementRules)) {
-            rules.push(`${rule.selector} { ${rule.property}: ${rule.color} !important; }`);
+            const selectors = rule.selector.split(',').map(selector => selector.trim()).filter(Boolean);
+            if (rule.property === 'color') {
+                const colorSelectors = selectors.flatMap(selector => [selector, `${selector} *`]);
+                rules.push(`${colorSelectors.join(', ')} { color: ${rule.color} !important; }`);
+            } else if (rule.property === 'border-color') {
+                rules.push(`${selectors.join(', ')} { border-color: ${rule.color} !important; border-style: solid !important; border-width: 1px !important; }`);
+            } else {
+                rules.push(`${selectors.join(', ')} { ${rule.property}: ${rule.color} !important; }`);
+            }
         }
 
         if (rules.length === 0) {
@@ -748,6 +777,7 @@
             .theme-recents-label { margin: 13px 0 7px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
             .theme-recents { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-height: 34px; gap: 7px; }
             .theme-recent-color {
+                position: relative;
                 width: 100%;
                 height: 34px;
                 padding: 0;
@@ -757,6 +787,29 @@
                 box-shadow: 0 0 0 1px #c7d5dc;
                 cursor: pointer;
             }
+
+            .theme-recent-color::after {
+                content: attr(data-color);
+                position: absolute;
+                bottom: calc(100% + 6px);
+                left: 50%;
+                z-index: 3;
+                padding: 4px 6px;
+                border-radius: 5px;
+                color: #fff;
+                background: #263640;
+                font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+                opacity: 0;
+                pointer-events: none;
+                transform: translate(-50%, 3px);
+                transition: opacity 120ms ease, transform 120ms ease;
+            }
+
+            .theme-recent-color:hover::after,
+            .theme-recent-color:focus-visible::after {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
             .theme-recent-placeholder {
                 height: 34px;
                 border: 1px dashed #cfdae0;
@@ -764,10 +817,15 @@
                 background: #f7fafb;
             }
 
-            .theme-reset-all {
-                width: 100%;
-                min-height: 32px;
+            .theme-utility-actions {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 7px;
                 margin-top: 12px;
+            }
+
+            .theme-utility-button {
+                min-height: 32px;
                 border: 1px solid #d9e3e8;
                 border-radius: 8px;
                 color: #647682;
@@ -775,6 +833,12 @@
                 cursor: pointer;
                 font-size: 10px;
                 font-weight: 800;
+            }
+
+            .theme-utility-button.is-active {
+                border-color: #8e5bd9;
+                color: #fff;
+                background: #8e5bd9;
             }
 
             .theme-workspace .theme-help { margin-top: 11px; }
@@ -838,10 +902,13 @@
                         </div>
                         <p class="theme-recents-label">最近使った色</p>
                         <div class="theme-recents" data-theme-recents></div>
-                        <button type="button" class="theme-reset-all" data-theme-reset-all>すべて既定値に戻す</button>
+                        <div class="theme-utility-actions">
+                            <button type="button" class="theme-utility-button" data-theme-reset-selected>規定色に戻す</button>
+                            <button type="button" class="theme-utility-button" data-theme-random>ランダムカラー</button>
+                        </div>
                     </div>
                     <footer class="theme-actions">
-                        <button type="button" class="theme-button reset" data-theme-reset-selected>既定色に戻す</button>
+                        <button type="button" class="theme-button reset" data-theme-reset-all>すべて規定色に戻す</button>
                         <button type="button" class="theme-button" data-theme-cancel>キャンセル</button>
                         <button type="submit" class="theme-button primary">保存</button>
                     </footer>
@@ -906,7 +973,19 @@
             .slice(0, 3);
         if (classes.length > 0) {
             const selector = `${element.tagName.toLowerCase()}${classes.map(name => `.${CSS.escape(name)}`).join('')}`;
-            if (document.querySelectorAll(selector).length === 1) return selector;
+            return selector;
+        }
+
+        let classAncestor = element.parentElement;
+        while (classAncestor && classAncestor !== document.body) {
+            const ancestorClasses = [...classAncestor.classList]
+                .filter(name => !name.startsWith('klpf-') && !/^is-|^active$|^hover$/.test(name))
+                .slice(0, 2);
+            if (ancestorClasses.length > 0) {
+                const ancestorSelector = `${classAncestor.tagName.toLowerCase()}${ancestorClasses.map(name => `.${CSS.escape(name)}`).join('')}`;
+                return `${ancestorSelector} > ${element.tagName.toLowerCase()}`;
+            }
+            classAncestor = classAncestor.parentElement;
         }
 
         const parts = [];
@@ -952,10 +1031,20 @@
             button.className = 'theme-recent-color';
             button.style.setProperty('--recent-color', color);
             button.title = color;
+            button.dataset.color = color;
             button.setAttribute('aria-label', `最近使った色 ${color}`);
             button.addEventListener('click', () => previewSelectedThemeColor(color));
             container.appendChild(button);
         }
+    }
+
+    async function recordRecentThemeColor(value) {
+        const color = normalizeHexColor(value);
+        if (!color) return;
+        recentThemeColors = normalizeRecentColors([color, ...recentThemeColors]);
+        draftRecentColors = [...recentThemeColors];
+        renderRecentThemeColors();
+        await storageSet('local', { [THEME_RECENT_COLORS_STORAGE_KEY]: recentThemeColors });
     }
 
     function syncSelectedThemeControls() {
@@ -1165,12 +1254,28 @@
         const cancelButton = themeShadowRoot.querySelector('[data-theme-cancel]');
         const resetButton = themeShadowRoot.querySelector('[data-theme-reset-selected]');
         const resetAllButton = themeShadowRoot.querySelector('[data-theme-reset-all]');
+        const randomButton = themeShadowRoot.querySelector('[data-theme-random]');
 
         themeShadowRoot.addEventListener('keydown', handleThemeFocusTrap);
         closeButton.addEventListener('click', () => closeThemePanel());
         cancelButton.addEventListener('click', () => closeThemePanel());
         inspectButton.addEventListener('click', startThemeInspection);
+        const syncRandomButton = () => {
+            const isActive = document.documentElement.classList.contains('klpf-theme-random-mode');
+            randomButton.classList.toggle('is-active', isActive);
+            randomButton.setAttribute('aria-pressed', String(isActive));
+        };
+        randomButton.addEventListener('click', () => {
+            document.documentElement.classList.toggle('klpf-theme-random-mode');
+            syncRandomButton();
+        });
+        syncRandomButton();
         picker.addEventListener('input', () => previewSelectedThemeColor(picker.value));
+        picker.addEventListener('change', () => {
+            recordRecentThemeColor(picker.value).catch((error) => {
+                console.warn('[KLPF] 最近使った色を保存できませんでした。', error);
+            });
+        });
         hexInput.addEventListener('input', () => {
             const color = normalizeHexColor(hexInput.value);
             if (!color) {
@@ -1178,6 +1283,11 @@
                 return;
             }
             previewSelectedThemeColor(color);
+        });
+        hexInput.addEventListener('change', () => {
+            recordRecentThemeColor(hexInput.value).catch((error) => {
+                console.warn('[KLPF] 最近使った色を保存できませんでした。', error);
+            });
         });
         for (const propertyButton of propertyButtons) {
             propertyButton.addEventListener('click', () => {
@@ -1215,10 +1325,10 @@
         resetAllButton.addEventListener('click', () => {
             draftThemeBaseColors = {};
             draftElementRules = [];
-            draftRecentColors = [];
             draftColorSelections.clear();
+            document.documentElement.classList.remove('klpf-theme-random-mode');
+            syncRandomButton();
             applyThemeColors({}, []);
-            renderRecentThemeColors();
             syncSelectedThemeControls();
         });
 
@@ -1226,8 +1336,7 @@
             event.preventDefault();
             persistedThemeColors = normalizeThemeColors(draftThemeBaseColors);
             persistedElementRules = normalizeElementRules(draftElementRules);
-            const confirmedColors = [...draftColorSelections.values()].reverse();
-            recentThemeColors = normalizeRecentColors([...confirmedColors, ...draftRecentColors]);
+            recentThemeColors = normalizeRecentColors(draftRecentColors);
             await storageSet('local', {
                 [THEME_COLORS_STORAGE_KEY]: persistedThemeColors,
                 [THEME_ELEMENT_RULES_STORAGE_KEY]: persistedElementRules,
