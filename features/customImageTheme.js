@@ -21,9 +21,6 @@
     const BACKGROUND_PROPERTY = '--klpf-custom-image-theme-background';
     const WRAP_TOP_PROPERTY = '--klpf-custom-image-theme-wrap-top';
     const BACKGROUND_SIZE_PROPERTY = '--klpf-custom-image-theme-size';
-    const BACKGROUND_TOP_PROPERTY = '--klpf-custom-image-theme-top';
-    const BACKGROUND_LEFT_PROPERTY = '--klpf-custom-image-theme-left';
-    const BACKGROUND_RIGHT_PROPERTY = '--klpf-custom-image-theme-right';
     const DEFAULT_POSITION = 50;
     const DEFAULT_TRANSPARENCY = 28;
     const DEFAULT_ZOOM = 100;
@@ -123,14 +120,10 @@
         document.documentElement.style.setProperty(WRAP_TOP_PROPERTY, `${top}px`);
         const backgroundArea = document.querySelector('.lms-contents-main') || contents;
         const areaRect = backgroundArea.getBoundingClientRect();
-        const visibleTop = Math.max(0, areaRect.top);
-        const visibleHeight = Math.max(1, window.innerHeight - visibleTop);
-        document.documentElement.style.setProperty(BACKGROUND_TOP_PROPERTY, `${visibleTop}px`);
-        document.documentElement.style.setProperty(BACKGROUND_LEFT_PROPERTY, `${Math.max(0, areaRect.left)}px`);
-        document.documentElement.style.setProperty(BACKGROUND_RIGHT_PROPERTY, `${Math.max(0, window.innerWidth - areaRect.right)}px`);
-        if (currentImageDimensions?.width && currentImageDimensions?.height && areaRect.width && visibleHeight) {
+        const visibleHeight = Math.max(1, window.innerHeight - Math.max(0, areaRect.top));
+        if (currentImageDimensions?.width && currentImageDimensions?.height && window.innerWidth && visibleHeight) {
             const coverScale = Math.max(
-                areaRect.width / currentImageDimensions.width,
+                window.innerWidth / currentImageDimensions.width,
                 visibleHeight / currentImageDimensions.height,
             ) * ((currentTheme?.zoom || DEFAULT_ZOOM) / 100);
             document.documentElement.style.setProperty(
@@ -226,33 +219,20 @@
         }
         style.textContent = `
             html[${ACTIVE_ATTRIBUTE}] .lms-contents-main {
-                position: relative !important;
                 min-height: 100vh !important;
-                isolation: isolate !important;
                 background-color: transparent !important;
-            }
-            html[${ACTIVE_ATTRIBUTE}] .lms-contents-main::before {
-                content: "" !important;
-                position: fixed !important;
-                top: var(${BACKGROUND_TOP_PROPERTY}, 0px) !important;
-                right: var(${BACKGROUND_RIGHT_PROPERTY}, 0px) !important;
-                bottom: 0 !important;
-                left: var(${BACKGROUND_LEFT_PROPERTY}, 0px) !important;
-                z-index: -1 !important;
                 background-image: url("${theme.dataUrl}") !important;
                 background-position: ${theme.positionX}% ${theme.positionY}% !important;
                 background-repeat: no-repeat !important;
                 background-size: var(${BACKGROUND_SIZE_PROPERTY}, cover) !important;
-                pointer-events: none !important;
+                background-attachment: fixed !important;
             }
             html[${ACTIVE_ATTRIBUTE}] .lms-contents-wrap {
                 min-height: calc(100vh - var(${WRAP_TOP_PROPERTY}, 0px)) !important;
                 background-color: transparent !important;
                 background-image: none !important;
             }
-            html[${ACTIVE_ATTRIBUTE}] .lms-wrap,
-            html[${ACTIVE_ATTRIBUTE}] .lms-contents-main,
-            html[${ACTIVE_ATTRIBUTE}] .lms-contents-main-menu {
+            html[${ACTIVE_ATTRIBUTE}] .lms-wrap {
                 background-color: transparent !important;
                 background-image: none !important;
             }
@@ -267,9 +247,6 @@
         document.documentElement.removeAttribute(ACTIVE_ATTRIBUTE);
         document.documentElement.style.removeProperty(WRAP_TOP_PROPERTY);
         document.documentElement.style.removeProperty(BACKGROUND_SIZE_PROPERTY);
-        document.documentElement.style.removeProperty(BACKGROUND_TOP_PROPERTY);
-        document.documentElement.style.removeProperty(BACKGROUND_LEFT_PROPERTY);
-        document.documentElement.style.removeProperty(BACKGROUND_RIGHT_PROPERTY);
         currentImageDimensions = null;
         document.getElementById(STYLE_ID)?.remove();
         clearElementTransparency();
