@@ -18,9 +18,9 @@
         <div class="header-inner">
             <a class="brand" href="../" aria-label="KLPF ホームへ">KLPF</a>
             <nav aria-label="ページ内ナビゲーション">
-                <a href="#deadline">重要日程</a>
-                <a href="#setup">設定手順</a>
-                <a href="#klpf">KLPFへ設定</a>
+                <a href="#deadline">最終期限</a>
+                <a href="#setup">TOTPの設定方法</a>
+                <a href="#klpf">KLPFへの設定</a>
             </nav>
         </div>
     </header>
@@ -44,13 +44,13 @@
             <aside class="toc" aria-label="目次">
                 <p>目次</p>
                 <ol>
-                    <li><a href="#overview">何が変わるか</a></li>
-                    <li><a href="#prepare">用意するもの</a></li>
-                    <li><a href="#setup">大学側の設定</a></li>
-                    <li><a href="#register">スマホへ登録</a></li>
-                    <li><a href="#klpf">KLPFへ取り込む</a></li>
-                    <li><a href="#security">秘密鍵の注意点</a></li>
-                    <li><a href="#trouble">困ったとき</a></li>
+                    <li><a href="#overview">TOTPと運用変更</a></li>
+                    <li><a href="#prepare">認証アプリの準備</a></li>
+                    <li><a href="#setup">TOTP利用の有効化</a></li>
+                    <li><a href="#register">認証アプリへの登録</a></li>
+                    <li><a href="#klpf">KLPFへの秘密鍵登録</a></li>
+                    <li><a href="#security">秘密鍵の取り扱い</a></li>
+                    <li><a href="#trouble">設定の相談先</a></li>
                 </ol>
             </aside>
 
@@ -99,11 +99,16 @@
                 <section id="setup" class="article-section observe">
                     <p class="section-number">03</p>
                     <p class="section-kicker">大学側の設定</p>
+                    <div class="official-manual">
+                        <h3>大学の正式手順書</h3>
+                        <a href="https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7" target="_blank" rel="noopener noreferrer">https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7</a>
+                        <p>閲覧には、学内Wi-Fiからのアクセスまたは大学VPNへの接続が必要です。</p>
+                    </div>
                     <h2>認証ポータルでQRコードを表示します。</h2>
                     <ol class="steps">
                         <li>
                             <span>1</span>
-                            <div><h3>必要ならTOTP利用を有効化</h3><p>2026年8月25日より前は、学内ネットワークまたはSSL-VPNから<a href="https://user.ccs.kogakuin.ac.jp/" target="_blank" rel="noopener noreferrer">利用者ポータル</a>へ入り、「プロフィールの変更」でTOTPフラグを「1.利用する」にします。反映状況が「正常終了」になるまで確認します。</p></div>
+                            <div><h3>TOTP利用を有効化</h3><p>学内ネットワークまたはSSL-VPNから<a href="https://user.ccs.kogakuin.ac.jp/" target="_blank" rel="noopener noreferrer">利用者ポータル</a>へ入り、「プロフィールの変更」でTOTPフラグを「1.利用する」にします。反映状況が「正常終了」になるまで確認します。</p></div>
                         </li>
                         <li>
                             <span>2</span>
@@ -114,17 +119,12 @@
                             <div><h3>ワンタイムパスワードの設定を開く</h3><p>画面右上のメニューから「ワンタイムパスワードの設定」を選びます。ログイン済みなら<a href="https://slink.secioss.com/user/index.php?app=qrsecret&amp;st=ga" target="_blank" rel="noopener noreferrer">設定画面を直接開く</a>こともできます。QRコードが表示されたら、この画面を閉じずに次へ進みます。</p></div>
                         </li>
                     </ol>
-                    <div class="official-manual">
-                        <h3>大学の正式手順書</h3>
-                        <a href="https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7" target="_blank" rel="noopener noreferrer">https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7</a>
-                        <p>閲覧には、学内Wi-Fiからのアクセスまたは大学VPNへの接続が必要です。</p>
-                    </div>
                 </section>
 
                 <section id="register" class="article-section observe">
                     <p class="section-number">04</p>
                     <p class="section-kicker">スマホへ登録</p>
-                    <h2>QRを読んだだけでは、設定は完了しません。</h2>
+                    <h2>認証アプリに大学アカウントを登録します。</h2>
                     <ol class="steps compact">
                         <li><span>1</span><div><h3>認証アプリでQRコードを読み取る</h3><p>認証アプリの「QRコードをスキャン」などを選び、PCに表示されたQRコードを読み取ります。</p></div></li>
                         <li><span>2</span><div><h3>大学画面で「次へ」</h3><p>QR画面を閉じず「次へ」を押します。リセット用メールアドレスを確認してください。</p></div></li>

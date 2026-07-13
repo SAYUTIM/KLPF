@@ -30,7 +30,7 @@ body {
     overflow-x: hidden;
     min-height: 100vh;
 }
-main, footer { position: relative; z-index: 1; }
+main, footer { position: relative; z-index: 2; }
 a { color: var(--cyan-dark); }
 .nowrap { white-space: nowrap; }
 .reading-progress { position: fixed; inset: 0 auto auto 0; z-index: 1001; width: 0; height: 3px; background: linear-gradient(90deg, var(--cyan), var(--pink)); transition: width .1s ease-out; }
@@ -108,7 +108,7 @@ nav a:hover, nav a.is-active { color: #fff; background: linear-gradient(45deg, r
 .steps p { margin: 0; color: var(--muted); }
 .steps.compact li { padding-bottom: 25px; }
 code { padding: 2px 6px; border-radius: 4px; background: #e7f3f6; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
-.official-manual { margin-top: 28px; padding: 22px 24px; border-left: 4px solid var(--cyan); background: #f5f7fa; }
+.official-manual { margin: 28px 0 36px; padding: 22px 24px; border-left: 4px solid var(--cyan); background: #f5f7fa; }
 .official-manual h3 { margin: 0 0 8px; font-size: 17px; }
 .official-manual a { overflow-wrap: anywhere; }
 .official-manual p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
@@ -122,8 +122,7 @@ code { padding: 2px 6px; border-radius: 4px; background: #e7f3f6; font-family: u
 .import-demo b { color: #fff; background: linear-gradient(45deg, var(--cyan), var(--pink)); }
 .import-demo i { color: var(--muted); background: #f2f6f7; }
 
-.security-list li { padding: 14px 5px 14px 32px; border-bottom: 1px solid var(--line); position: relative; }
-.security-list li::before { content: "✓"; position: absolute; left: 5px; color: var(--cyan-dark); font-weight: 900; }
+.security-list li { padding: 14px 5px; border-bottom: 1px solid var(--line); }
 .support-section dl { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: 30px 0; background: var(--line); }
 .support-section dl div { padding: 20px; background: #fff; }
 .support-section dt { color: var(--muted); font-size: 12px; font-weight: 800; }
@@ -143,7 +142,7 @@ footer { display: flex; align-items: center; gap: 25px; padding: 40px max(24px, 
 footer p { margin-right: auto; color: var(--muted); font-size: 13px; }
 footer > a:last-child { color: var(--muted); font-size: 13px; }
 
-.bg-effects { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.bg-effects { position: fixed; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
 .floating-shapes { position: absolute; inset: 0; }
 .shape { position: absolute; bottom: -160px; border-radius: 50%; background: rgba(255,255,255,.065); animation: float 20s infinite linear; }
 .shape:nth-child(1) { left: 8%; width: 90px; height: 90px; animation-delay: 0s; }

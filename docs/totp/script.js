@@ -7,6 +7,20 @@
     const sections = Array.from(document.querySelectorAll('main section[id]'));
     const navLinks = Array.from(document.querySelectorAll('nav a[href^="#"], .toc a[href^="#"]'));
 
+    navLinks.forEach((link) => {
+        link.addEventListener('click', (event) => {
+            const targetId = link.getAttribute('href').slice(1);
+            const target = document.getElementById(targetId);
+            if (!target) return;
+
+            event.preventDefault();
+            target.scrollIntoView({
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                block: 'start'
+            });
+        });
+    });
+
     function updateProgress() {
         const available = document.documentElement.scrollHeight - window.innerHeight;
         const ratio = available > 0 ? Math.min(1, window.scrollY / available) : 0;
