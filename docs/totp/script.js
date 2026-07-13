@@ -9,6 +9,7 @@
         const available = document.documentElement.scrollHeight - window.innerHeight;
         const ratio = available > 0 ? Math.min(1, window.scrollY / available) : 0;
         progress.style.width = `${ratio * 100}%`;
+        document.querySelector('.site-header')?.classList.toggle('is-scrolled', window.scrollY > 50);
     }
 
     const revealObserver = new IntersectionObserver((entries) => {
