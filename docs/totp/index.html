@@ -9,6 +9,11 @@
 </head>
 <body>
     <div class="reading-progress" aria-hidden="true"></div>
+    <div class="bg-effects" aria-hidden="true">
+        <div class="floating-shapes">
+            <i class="shape"></i><i class="shape"></i><i class="shape"></i><i class="shape"></i>
+        </div>
+    </div>
     <header class="site-header">
         <div class="header-inner">
             <a class="brand" href="../" aria-label="KLPF ホームへ">KLPF</a>
@@ -21,33 +26,16 @@
     </header>
 
     <main>
-        <section class="hero" aria-labelledby="page-title">
-            <div class="hero-inner">
-                <p class="eyebrow">TOTP SETUP GUIDE · 2026</p>
-                <h1 id="page-title">学外ログインに、<br>TOTPを準備<br class="mobile-break">してください。</h1>
-                <p class="hero-copy">2026年9月29日の運用変更までに、スマホの認証アプリと大学アカウントの設定を完了します。</p>
-                <div class="hero-actions">
-                    <a class="button primary" href="#setup">設定を始める</a>
-                    <a class="button secondary" href="https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7" target="_blank" rel="noopener noreferrer">大学の正式手順書</a>
-                </div>
-                <div class="article-meta" aria-label="記事情報">
-                    <span>設定ガイド</span>
-                    <time datetime="2026-07-13">2026年7月13日 更新</time>
-                    <span>読了目安 8分</span>
-                </div>
-            </div>
-        </section>
-
-        <section id="deadline" class="deadline-section observe">
+        <section id="deadline" class="deadline-section" aria-labelledby="page-title">
             <div class="deadline-date">
-                <span>最終変更</span>
+                <span>最終期限</span>
                 <strong>2026.09.29</strong>
                 <b>17:30–19:30</b>
             </div>
             <div class="deadline-message">
-                <p class="section-kicker">重要</p>
-                <h2>未設定のまま運用変更を迎えると、学外からログインできません。</h2>
-                <p>第2段階の変更後、TOTPの初期設定は学内ネットワークからのみ可能になります。自宅などの学外から、Ku-Port、Ku-LMS、Active!Mail、SSL-VPNなどへ入れなくなる前に設定してください。</p>
+                <time class="updated" datetime="2026-07-13">2026年7月13日 更新</time>
+                <h1 id="page-title">設定を変更しないと、学外から<span class="nowrap">Ku-LMS</span>や<span class="nowrap">Ku-Port</span>などにログインできなくなります。</h1>
+                <p>第2段階の変更後、TOTPの初期設定は学内ネットワークからのみ可能になります。自宅などの学外から利用できなくなる前に、設定を済ませてください。</p>
                 <p class="countdown" data-countdown>期限までの日数を計算しています</p>
             </div>
         </section>
@@ -70,28 +58,35 @@
                 <section id="overview" class="article-section observe">
                     <p class="section-number">01</p>
                     <p class="section-kicker">運用変更の要点</p>
-                    <h2>学外ログインではTOTPが必須になります。</h2>
-                    <p>TOTPは、認証アプリに30秒ごとに表示される6桁のワンタイムパスワードです。IDとパスワードに加えて入力することで、アカウントの乗っ取りを防ぎます。</p>
-                    <div class="timeline">
-                        <div>
-                            <time datetime="2026-08-25">8月25日 15:00–17:00</time>
-                            <h3>第1段階</h3>
-                            <p>学外からのID・パスワード認証でTOTPが必須になります。初期設定は学内・学外のどちらからでも可能です。</p>
-                        </div>
-                        <div class="critical">
-                            <time datetime="2026-09-29">9月29日 17:30–19:30</time>
-                            <h3>第2段階</h3>
-                            <p>初期設定が学内からのみ可能になります。未設定の利用者は、学外から統合認証システムへログインできません。</p>
-                        </div>
+                    <h2>TOTPとは何か、何が変わるのか</h2>
+                    <p>TOTP（Time-based One-Time Password）とは、現在時刻と秘密鍵を基に、30〜60秒ごとに変化する使い捨てのパスワードを生成する認証方式です。IDとパスワードに加えて確認コードを入力するため、アカウントのセキュリティを大幅に強化できます。多要素認証（MFA）の方式として広く利用されています。</p>
+                    <p>工学院大学の統合認証では、学外からログインするときのTOTP認証が次のように変更されます。</p>
+                    <div class="operation-change">
+                        <section>
+                            <h3>現在の運用</h3>
+                            <p>学外からIDとパスワードでログインした場合、TOTP認証を行うかどうかは利用者が選択できます。</p>
+                        </section>
+                        <section>
+                            <h3>変更後の運用</h3>
+                            <p>学外からIDとパスワードでログインした場合、TOTP認証が必須になります。</p>
+                            <ul>
+                                <li><strong>第1段階（8月25日 15:00–17:00）</strong><br>TOTP認証の初期設定は、学内・学外のどちらからでも行えます。</li>
+                                <li><strong>第2段階（9月29日 17:30–19:30）</strong><br>TOTP認証の初期設定は、学内からのみ行えます。</li>
+                            </ul>
+                        </section>
                     </div>
+                    <p>設定しないまま第2段階を迎えると、自宅などの学外からKu-LMS、Ku-Port、Active!Mail、SSL-VPNなどへログインできなくなります。その場合は、大学の学内ネットワークへ接続して初期設定を行う必要があります。</p>
                     <p class="note">学内ネットワークからログインする場合、TOTPは要求されません。FIDO認証を使う場合もTOTP入力は不要ですが、大学はTOTPも設定しておくよう案内しています。</p>
+                    <p class="notice">運用日時や対象サービスなどの情報は変更される可能性があります。最新の案内はKu-Portの掲示板で確認してください。</p>
                 </section>
 
                 <section id="prepare" class="article-section observe">
                     <p class="section-number">02</p>
-                    <p class="section-kicker">準備</p>
-                    <h2>スマホに認証アプリを入れます。</h2>
-                    <p>QRコードを読み取り、ワンタイムパスワードを表示するアプリが必要です。大学手順書では次のアプリが案内されています。</p>
+                    <p class="section-kicker">設定前の準備</p>
+                    <h2>確認コードを表示する認証アプリが必要です</h2>
+                    <p>今後、学外からログインするときは、IDとパスワードを入力した後に、6桁の確認コードも入力します。このコードはSMSで届くものではなく、スマホの認証アプリに表示されます。</p>
+                    <p>最初の設定では、大学の認証画面に表示されるQRコードをスマホで読み取ります。読み取り後は、通信環境がない場合でもアプリが30〜60秒ごとに新しいコードを生成します。</p>
+                    <p>まだ認証アプリを利用していない場合は、設定を始める前にスマホへインストールしてください。大学手順書では次のアプリが案内されています。</p>
                     <ul class="app-list">
                         <li><strong>Microsoft Authenticator</strong><span>iPhone / Android・大学手順書のおすすめ</span></li>
                         <li><strong>Google Authenticator</strong><span>iPhone</span></li>
@@ -119,11 +114,11 @@
                             <div><h3>ワンタイムパスワードの設定を開く</h3><p>画面右上のメニューから「ワンタイムパスワードの設定」を選びます。ログイン済みなら<a href="https://slink.secioss.com/user/index.php?app=qrsecret&amp;st=ga" target="_blank" rel="noopener noreferrer">設定画面を直接開く</a>こともできます。QRコードが表示されたら、この画面を閉じずに次へ進みます。</p></div>
                         </li>
                     </ol>
-                    <a class="manual-link" href="https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7" target="_blank" rel="noopener noreferrer">
-                        <span>大学公式</span>
-                        <strong>2要素認証利用手順を開く</strong>
-                        <small>学内Wi-Fiまたは大学のVPN接続が必要です</small>
-                    </a>
+                    <div class="official-manual">
+                        <h3>大学の正式手順書</h3>
+                        <a href="https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7" target="_blank" rel="noopener noreferrer">https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7</a>
+                        <p>閲覧には、学内Wi-Fiからのアクセスまたは大学VPNへの接続が必要です。</p>
+                    </div>
                 </section>
 
                 <section id="register" class="article-section observe">
@@ -145,18 +140,19 @@
                     <div class="import-demo" aria-hidden="true">
                         <p>KLPF · AUTO LOGIN</p>
                         <strong>このQRコードから<br>秘密鍵を設定しますか？</strong>
-                        <span>秘密鍵は表示せず、この端末のKLPFにのみ保存します。</span>
                         <div><b>設定する</b><i>今はしない</i></div>
                     </div>
                     <ol class="steps compact">
                         <li><span>1</span><div><h3>スマホでQRコードを読み取る</h3><p>先に認証アプリへ登録します。KLPFだけへ保存しても、大学側のTOTP設定は完了しません。</p></div></li>
-                        <li><span>2</span><div><h3>「設定する」を押す</h3><p>QRコードの生成データから秘密鍵を取り出し、Chrome拡張機能のローカル保存領域へ保存します。秘密鍵は画面に表示しません。</p></div></li>
+                        <li><span>2</span><div><h3>「設定する」を押す</h3><p>QRコードの生成データから秘密鍵を取り出し、Chrome拡張機能のローカル保存領域へ保存します。</p></div></li>
                         <li><span>3</span><div><h3>大学側の登録を最後まで完了</h3><p>「次へ」以降へ進み、6桁コードを登録します。KLPF設定の「TOTP 秘密鍵」に「有効な鍵です」と表示されれば取込完了です。</p></div></li>
                     </ol>
                 </section>
+            </article>
+        </div>
 
-                <section id="security" class="article-section observe">
-                    <p class="section-number">06</p>
+        <div class="closing-cards">
+                <section id="security" class="closing-card observe">
                     <p class="section-kicker">セキュリティ</p>
                     <h2>QRコードと秘密鍵は、パスワードと同様に扱ってください。</h2>
                     <p>QRコードには、ワンタイムパスワードを生成できる秘密鍵が含まれています。スクリーンショットを共有したり、第三者へ送ったりしないでください。</p>
@@ -168,8 +164,7 @@
                     </ul>
                 </section>
 
-                <section id="trouble" class="article-section support-section observe">
-                    <p class="section-number">07</p>
+                <section id="trouble" class="closing-card support-section observe">
                     <p class="section-kicker">サポート</p>
                     <h2>設定できないときは、早めに学術情報センターへ。</h2>
                     <p>スマホとPCを持参すると、対面で設定のサポートを受けられます。</p>
@@ -179,7 +174,6 @@
                     </dl>
                     <p class="fine-print">KLPFは工学院大学が公式に提供するものではない、有志開発の非公式ツールです。大学アカウントやTOTPそのものの設定は、大学の正式手順書を優先してください。</p>
                 </section>
-            </article>
         </div>
     </main>
 

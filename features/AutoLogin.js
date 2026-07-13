@@ -176,7 +176,6 @@ function createTotpImportPanel(secret, alreadyConfigured) {
                 background: rgba(255, 255, 255, .97);
                 box-shadow: 0 18px 55px rgba(7, 49, 67, .22);
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
-                animation: enter .32s cubic-bezier(.2, .8, .2, 1) both;
             }
             .accent { height: 4px; background: linear-gradient(90deg, #16a7cf, #55d0e5); }
             .body { padding: 21px 22px 19px; }
@@ -199,16 +198,14 @@ function createTotpImportPanel(secret, alreadyConfigured) {
             button.secondary { border: 1px solid #d7e4e9; color: #607780; background: #f7fafb; }
             a { display: grid; place-items: center; margin-top: 9px; color: #168eb5; }
             .success { color: #147b57; }
-            @keyframes enter { from { opacity: 0; transform: translateY(14px) scale(.98); } }
             @media (max-width: 520px) { .panel { right: 14px; bottom: 14px; } }
-            @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
         </style>
         <section class="panel" role="dialog" aria-labelledby="klpf-totp-title">
             <div class="accent"></div>
             <div class="body">
                 <p class="eyebrow">KLPF · AUTO LOGIN</p>
                 <h2 id="klpf-totp-title">${alreadyConfigured ? 'KLPFの秘密鍵を更新しますか？' : 'このQRコードから秘密鍵を設定しますか？'}</h2>
-                <p data-message>秘密鍵は表示せず、この端末のKLPFにのみ保存します。大学側の設定も最後まで完了してください。</p>
+                <p data-message hidden></p>
                 <div class="actions">
                     <button type="button" data-save>${alreadyConfigured ? '更新する' : '設定する'}</button>
                     <button type="button" class="secondary" data-close>今はしない</button>
@@ -222,15 +219,19 @@ function createTotpImportPanel(secret, alreadyConfigured) {
     shadow.querySelector('[data-save]').addEventListener('click', async () => {
         const saveButton = shadow.querySelector('[data-save]');
         const message = shadow.querySelector('[data-message]');
+        const closeButton = shadow.querySelector('[data-close]');
+        const title = shadow.querySelector('#klpf-totp-title');
         saveButton.disabled = true;
         try {
             await chrome.storage.local.set({ totpSecret: secret });
-            message.textContent = 'KLPFに保存しました。スマホへの登録と大学画面の「次へ」以降も必ず完了してください。';
-            message.classList.add('success');
-            saveButton.textContent = '設定しました';
-            shadow.querySelector('[data-close]').textContent = '閉じる';
+            title.textContent = 'KLPFに設定しました。';
+            message.hidden = true;
+            saveButton.remove();
+            closeButton.textContent = '閉じる';
+            closeButton.classList.remove('secondary');
         } catch (_error) {
             message.textContent = '保存できませんでした。拡張機能を再読み込みして、もう一度お試しください。';
+            message.hidden = false;
             saveButton.disabled = false;
         }
     });

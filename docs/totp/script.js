@@ -5,17 +5,15 @@
     const sections = Array.from(document.querySelectorAll('main section[id]'));
     const navLinks = Array.from(document.querySelectorAll('nav a[href^="#"], .toc a[href^="#"]'));
 
-    const bgEffects = document.createElement('div');
-    bgEffects.className = 'bg-effects';
-    bgEffects.setAttribute('aria-hidden', 'true');
-    bgEffects.innerHTML = '<div class="floating-shapes"><i class="shape"></i><i class="shape"></i><i class="shape"></i><i class="shape"></i></div>';
-    document.body.appendChild(bgEffects);
-
     function updateProgress() {
         const available = document.documentElement.scrollHeight - window.innerHeight;
         const ratio = available > 0 ? Math.min(1, window.scrollY / available) : 0;
         progress.style.width = `${ratio * 100}%`;
-        document.querySelector('.site-header')?.classList.toggle('is-scrolled', window.scrollY > 50);
+        document.querySelectorAll('.observe:not(.is-visible)').forEach((element) => {
+            if (element.getBoundingClientRect().top < window.innerHeight * .92) {
+                element.classList.add('is-visible');
+            }
+        });
     }
 
     const revealObserver = new IntersectionObserver((entries) => {
