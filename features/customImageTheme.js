@@ -54,6 +54,13 @@
         return Number.isFinite(number) ? Math.max(0, Math.min(maximum, Math.round(number))) : fallback;
     }
 
+    function normalizePosition(value, fallback = DEFAULT_POSITION) {
+        const number = Number(value);
+        return Number.isFinite(number)
+            ? Math.max(0, Math.min(100, Math.round(number * 10) / 10))
+            : fallback;
+    }
+
     function normalizeStoredTheme(value) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
         const dataUrl = typeof value.dataUrl === 'string' ? value.dataUrl : '';
@@ -62,8 +69,8 @@
             dataUrl,
             fileName: typeof value.fileName === 'string' ? value.fileName.slice(0, 160) : '',
             updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
-            positionX: normalizePercentage(value.positionX, DEFAULT_POSITION),
-            positionY: normalizePercentage(value.positionY, DEFAULT_POSITION),
+            positionX: normalizePosition(value.positionX),
+            positionY: normalizePosition(value.positionY),
             contentTransparency: normalizePercentage(value.contentTransparency, DEFAULT_TRANSPARENCY, 80),
             zoom: Math.max(100, Math.min(250, Math.round(Number(value.zoom) || DEFAULT_ZOOM))),
             imageWidth: Math.max(0, Math.round(Number(value.imageWidth) || 0)),
@@ -318,31 +325,34 @@
                 z-index: 2147483646;
                 display: grid;
                 place-items: center;
-                padding: 24px;
-                background: rgba(8, 34, 45, .54);
-                backdrop-filter: blur(5px);
+                padding: 22px;
+                background: rgba(7, 29, 38, .58);
+                backdrop-filter: blur(7px);
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
             }
             .panel {
-                width: min(640px, 100%);
-                max-height: min(780px, calc(100vh - 48px));
-                overflow: auto;
-                border: 1px solid rgba(20, 122, 157, .22);
-                border-radius: 22px;
+                display: grid;
+                grid-template-rows: auto minmax(0, 1fr) auto;
+                width: min(1040px, 100%);
+                max-height: min(820px, calc(100vh - 44px));
+                overflow: hidden;
+                border: 1px solid rgba(150, 198, 212, .42);
+                border-radius: 20px;
                 color: #153743;
-                background: #fff;
-                box-shadow: 0 28px 80px rgba(5, 42, 56, .28);
+                background: #f7fafb;
+                box-shadow: 0 30px 90px rgba(3, 31, 42, .36);
             }
             .header {
                 display: flex;
-                align-items: flex-start;
+                align-items: center;
                 justify-content: space-between;
                 gap: 20px;
-                padding: 25px 26px 20px;
+                padding: 18px 22px;
                 border-bottom: 1px solid #dce8ec;
+                background: rgba(255, 255, 255, .92);
             }
-            .eyebrow { margin: 0 0 5px; color: #168fb6; font-size: 11px; font-weight: 800; letter-spacing: .13em; }
-            h2 { margin: 0; font-size: 22px; line-height: 1.4; }
+            .eyebrow { margin: 0 0 3px; color: #168fb6; font-size: 10px; font-weight: 800; letter-spacing: .15em; }
+            h2 { margin: 0; font-size: 20px; line-height: 1.35; }
             .close {
                 display: grid;
                 place-items: center;
@@ -357,8 +367,42 @@
                 font-size: 21px;
                 cursor: pointer;
             }
-            .body { padding: 24px 26px 8px; }
-            .description { margin: 0 0 20px; color: #58717a; font-size: 14px; line-height: 1.75; }
+            .close:hover { border-color: #b9d5de; color: #245a6c; background: #eef7f9; }
+            .body { min-height: 0; overflow: auto; padding: 20px 22px; }
+            .description { margin: 0 0 15px; color: #647b84; font-size: 13px; line-height: 1.65; }
+            .editor {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) 280px;
+                gap: 20px;
+                align-items: start;
+            }
+            .canvas-column { min-width: 0; }
+            .preview-shell {
+                overflow: hidden;
+                border: 1px solid #bcd1d8;
+                border-radius: 15px;
+                background: #102d38;
+                box-shadow: 0 12px 28px rgba(12, 52, 66, .16);
+            }
+            .preview-bar {
+                display: flex;
+                align-items: center;
+                gap: 9px;
+                height: 35px;
+                padding: 0 12px;
+                color: #c8dde4;
+                background: #173944;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: .02em;
+            }
+            .window-dots { display: flex; gap: 5px; margin-right: 3px; }
+            .window-dots i { width: 7px; height: 7px; border-radius: 50%; background: #6f929d; }
+            .window-dots i:first-child { background: #ec7c78; }
+            .window-dots i:nth-child(2) { background: #e3bd68; }
+            .window-dots i:last-child { background: #65bd91; }
+            .preview-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .preview-ratio { margin-left: auto; color: #8eb1bd; font-variant-numeric: tabular-nums; white-space: nowrap; }
             .preview {
                 position: relative;
                 display: grid;
@@ -366,16 +410,20 @@
                 width: 100%;
                 aspect-ratio: 16 / 9;
                 overflow: hidden;
-                border: 1px solid #cfdee3;
-                border-radius: 16px;
-                background: linear-gradient(135deg, #edf6f8, #f8fbfc);
-                background-position: center;
-                background-repeat: no-repeat;
-                background-size: cover;
+                background-color: #edf4f6;
+                background-image:
+                    linear-gradient(45deg, rgba(137, 164, 173, .11) 25%, transparent 25%),
+                    linear-gradient(-45deg, rgba(137, 164, 173, .11) 25%, transparent 25%),
+                    linear-gradient(45deg, transparent 75%, rgba(137, 164, 173, .11) 75%),
+                    linear-gradient(-45deg, transparent 75%, rgba(137, 164, 173, .11) 75%);
+                background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+                background-size: 16px 16px;
                 cursor: grab;
                 touch-action: none;
+                outline: none;
             }
             .preview.is-dragging { cursor: grabbing; }
+            .preview:focus-visible { box-shadow: inset 0 0 0 3px rgba(50, 181, 218, .72); }
             .preview-image {
                 position: absolute;
                 inset: 0;
@@ -388,24 +436,50 @@
                 transform-origin: center;
                 user-select: none;
             }
-            .preview-empty { position: relative; z-index: 4; color: #70868e; font-size: 13px; font-weight: 700; }
+            .preview-empty {
+                position: relative;
+                z-index: 4;
+                display: grid;
+                justify-items: center;
+                gap: 8px;
+                padding: 20px;
+                color: #55717b;
+                text-align: center;
+            }
+            .preview-empty[hidden] { display: none; }
+            .empty-icon {
+                display: grid;
+                place-items: center;
+                width: 48px;
+                height: 48px;
+                border: 1px solid #bfd6dd;
+                border-radius: 14px;
+                color: #168fb6;
+                background: rgba(255, 255, 255, .82);
+                font-size: 25px;
+                font-weight: 400;
+                box-shadow: 0 8px 22px rgba(27, 86, 104, .1);
+            }
+            .empty-title { font-size: 14px; font-weight: 800; }
+            .empty-subtitle { color: #7c9199; font-size: 11px; font-weight: 600; }
             .ratio-guide {
                 position: absolute;
                 z-index: 2;
-                border: 1px dashed rgba(255, 255, 255, .9);
-                border-radius: 8px;
-                box-shadow: 0 0 0 1px rgba(13, 67, 84, .24);
+                border: 1px solid rgba(255, 255, 255, .58);
+                border-radius: 5px;
+                box-shadow: 0 0 0 1px rgba(10, 49, 63, .13);
                 pointer-events: none;
             }
+            .ratio-guide[hidden] { display: none; }
             .ratio-guide span {
                 position: absolute;
-                top: 7px;
-                right: 8px;
-                padding: 3px 6px;
-                border-radius: 5px;
+                top: 6px;
+                right: 6px;
+                padding: 2px 5px;
+                border-radius: 4px;
                 color: #fff;
-                background: rgba(10, 53, 68, .68);
-                font-size: 10px;
+                background: rgba(10, 43, 55, .56);
+                font-size: 9px;
                 font-weight: 800;
             }
             .site-preview {
@@ -413,9 +487,10 @@
                 inset: 0;
                 z-index: 1;
                 display: grid;
-                grid-template: 13% 1fr / 18% 1fr;
+                grid-template: 12% 1fr / 20% 1fr;
                 pointer-events: none;
             }
+            .site-preview[hidden] { display: none; }
             .site-preview-header {
                 grid-column: 1 / -1;
                 border-bottom: 1px solid rgba(93, 122, 132, .28);
@@ -425,118 +500,179 @@
                 border-right: 1px solid rgba(93, 122, 132, .28);
                 background: rgba(255, 255, 255, var(--preview-content-alpha, .72));
             }
-            .site-preview-content {
-                align-self: start;
-                height: 68%;
+            .site-preview-main {
+                display: grid;
+                grid-template-rows: 32% 1fr;
+                gap: 5%;
+                align-self: stretch;
                 margin: 4%;
-                border: 1px solid rgba(121, 143, 151, .3);
+            }
+            .site-preview-news,
+            .site-preview-course {
+                border: 1px solid rgba(91, 128, 140, .25);
                 border-radius: 5px;
                 background: rgba(255, 255, 255, var(--preview-content-alpha, .72));
             }
-            .site-preview-content::before,
-            .site-preview-content::after {
+            .site-preview-news::before {
                 content: '';
                 display: block;
+                width: 44%;
                 height: 12%;
-                margin: 8% 7% 0;
+                margin: 7% 6%;
                 border-radius: 999px;
-                background: rgba(43, 91, 107, .28);
+                background: rgba(34, 108, 132, .32);
             }
-            .site-preview-content::after {
-                width: 62%;
-                margin-top: 5%;
+            .site-preview-courses { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4%; }
+            .site-preview-course { min-width: 0; }
+            .site-preview-course::before,
+            .site-preview-course::after {
+                content: '';
+                display: block;
+                height: 7%;
+                margin: 16% 12% 0;
+                border-radius: 999px;
+                background: rgba(41, 91, 108, .29);
             }
-            .preview-ratio {
-                position: absolute;
-                z-index: 3;
-                bottom: 9px;
-                left: 10px;
-                padding: 4px 7px;
-                border-radius: 6px;
-                color: #fff;
-                background: rgba(10, 53, 68, .72);
-                font-size: 10px;
-                font-weight: 800;
-                pointer-events: none;
-            }
+            .site-preview-course::after { width: 58%; margin-top: 10%; opacity: .7; }
             .preview-instruction {
                 position: absolute;
-                z-index: 3;
-                right: 10px;
-                bottom: 9px;
-                padding: 4px 7px;
-                border-radius: 6px;
+                z-index: 4;
+                top: 10px;
+                left: 10px;
+                padding: 5px 8px;
+                border: 1px solid rgba(255, 255, 255, .2);
+                border-radius: 7px;
                 color: #fff;
-                background: rgba(10, 53, 68, .72);
+                background: rgba(9, 38, 49, .68);
+                backdrop-filter: blur(5px);
                 font-size: 10px;
-                font-weight: 800;
+                font-weight: 700;
                 pointer-events: none;
             }
-            .file-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+            .preview-toolbar {
+                position: absolute;
+                z-index: 5;
+                left: 50%;
+                bottom: 11px;
+                display: flex;
+                align-items: center;
+                gap: 3px;
+                min-height: 35px;
+                padding: 4px;
+                border: 1px solid rgba(255, 255, 255, .22);
+                border-radius: 10px;
+                color: #fff;
+                background: rgba(8, 35, 45, .78);
+                box-shadow: 0 7px 20px rgba(4, 27, 35, .2);
+                backdrop-filter: blur(7px);
+                transform: translateX(-50%);
+            }
+            .preview-toolbar[hidden] { display: none; }
+            .tool-button {
+                display: grid;
+                place-items: center;
+                min-width: 28px;
+                height: 27px;
+                padding: 0 7px;
+                border: 0;
+                border-radius: 7px;
+                color: #fff;
+                background: transparent;
+                font: inherit;
+                font-size: 15px;
+                font-weight: 800;
+                cursor: pointer;
+            }
+            .tool-button:hover { background: rgba(255, 255, 255, .14); }
+            .tool-button.reset-view { min-width: auto; padding: 0 9px; font-size: 10px; }
+            .tool-value { min-width: 43px; color: #d7edf3; font-size: 10px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+            .tool-divider { width: 1px; height: 17px; margin: 0 2px; background: rgba(255, 255, 255, .2); }
+            .inspector {
+                min-width: 0;
+                padding-left: 20px;
+                border-left: 1px solid #dce7ea;
+            }
+            .inspector-section + .inspector-section {
+                margin-top: 20px;
+                padding-top: 19px;
+                border-top: 1px solid #e0eaed;
+            }
+            .section-label { display: block; margin: 0 0 9px; color: #365762; font-size: 12px; font-weight: 800; }
+            .file-row { display: grid; gap: 9px; }
             .file-button {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                min-height: 42px;
-                padding: 0 17px;
-                border: 1px solid #9fcdd9;
-                border-radius: 11px;
+                width: 100%;
+                min-height: 40px;
+                padding: 0 14px;
+                border: 1px solid #91c5d5;
+                border-radius: 9px;
                 color: #117d9f;
-                background: #f0fafc;
-                font-size: 13px;
+                background: #edf9fc;
+                font-size: 12px;
                 font-weight: 800;
                 cursor: pointer;
             }
-            .file-name { min-width: 0; overflow: hidden; color: #607780; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+            .file-button:hover { border-color: #55abc4; background: #e3f5fa; }
+            .file-name { min-width: 0; overflow: hidden; color: #6d828a; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
             input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
-            .hint { margin: 10px 0 0; color: #82959c; font-size: 12px; }
-            .controls { display: grid; gap: 14px; margin-top: 18px; }
-            .control-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
-            .control-heading label { color: #45616b; font-size: 12px; font-weight: 800; }
-            .control-value { color: #168fb6; font-size: 12px; font-weight: 800; }
-            .center-button {
-                min-height: 29px;
-                padding: 0 10px;
-                border: 1px solid #d5e2e6;
-                border-radius: 8px;
-                color: #57717a;
-                background: #f7fafb;
-                font-size: 11px;
-                font-weight: 800;
+            .hint { margin: 7px 0 0; color: #87989e; font-size: 10px; line-height: 1.55; }
+            .controls { display: grid; gap: 18px; }
+            .control-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+            .control-heading label { color: #45616b; font-size: 11px; font-weight: 800; }
+            .control-value { color: #168fb6; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+            input[type="range"] {
+                width: 100%;
+                height: 5px;
+                margin: 4px 0;
+                border-radius: 999px;
+                accent-color: #168fb6;
                 cursor: pointer;
             }
-            input[type="range"] { width: 100%; accent-color: #168fb6; cursor: pointer; }
-            .status { min-height: 22px; margin: 14px 0 0; color: #147b57; font-size: 13px; font-weight: 700; }
+            input[type="range"]:disabled { cursor: not-allowed; opacity: .38; }
+            .status { min-height: 20px; margin: 14px 0 0; color: #147b57; font-size: 11px; font-weight: 700; line-height: 1.5; }
             .status.is-error { color: #bd3f4b; }
             .actions {
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                padding: 18px 26px 24px;
+                gap: 9px;
+                padding: 14px 22px 17px;
+                border-top: 1px solid #dce8ec;
+                background: rgba(255, 255, 255, .94);
             }
             button { font-family: inherit; }
             .action {
-                min-height: 43px;
-                padding: 0 18px;
+                min-height: 39px;
+                padding: 0 16px;
                 border: 0;
-                border-radius: 11px;
-                font-size: 13px;
+                border-radius: 9px;
+                font-size: 12px;
                 font-weight: 800;
                 cursor: pointer;
             }
             .reset { margin-right: auto; border: 1px solid #e2c5c9; color: #a23b46; background: #fff8f8; }
             .secondary { border: 1px solid #d5e2e6; color: #57717a; background: #f7fafb; }
-            .primary { color: #fff; background: linear-gradient(135deg, #168fb6, #53c7dd); }
-            button:disabled { cursor: not-allowed; opacity: .45; }
+            .primary { min-width: 108px; color: #fff; background: #168fb6; box-shadow: 0 7px 17px rgba(22, 143, 182, .2); }
+            .primary:hover { background: #117e9f; }
+            button:disabled { cursor: not-allowed; opacity: .42; box-shadow: none; }
             button:focus-visible, .file-button:focus-within { outline: 3px solid rgba(22, 143, 182, .25); outline-offset: 2px; }
+            @media (max-width: 820px) {
+                .panel { width: min(680px, 100%); }
+                .editor { grid-template-columns: 1fr; }
+                .inspector { padding: 18px 0 0; border-top: 1px solid #dce7ea; border-left: 0; }
+                .inspector-section + .inspector-section { margin-top: 16px; padding-top: 15px; }
+            }
             @media (max-width: 600px) {
-                .overlay { align-items: end; padding: 10px; }
-                .panel { max-height: calc(100vh - 20px); border-radius: 20px 20px 14px 14px; }
-                .header { padding: 21px 20px 17px; }
-                .body { padding: 20px 20px 6px; }
-                .actions { flex-wrap: wrap; padding: 16px 20px 20px; }
+                .overlay { align-items: end; padding: 8px; }
+                .panel { max-height: calc(100vh - 16px); border-radius: 17px 17px 12px 12px; }
+                .header { padding: 15px 16px; }
+                .body { padding: 15px 16px; }
+                .description { display: none; }
+                .actions { flex-wrap: wrap; padding: 13px 16px 16px; }
                 .reset { width: 100%; margin: 0; }
                 .secondary, .primary { flex: 1; }
+                .preview-instruction { display: none; }
             }
             @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
         `;
@@ -555,50 +691,75 @@
                         <button type="button" class="close" aria-label="閉じる">×</button>
                     </header>
                     <div class="body">
-                        <p class="description">選んだ画像をKu-LMSの背景に設定します。コンテンツの背景色は読みやすさを保ちながら半透明になり、画像はこのChromeに保存されます。</p>
-                        <div class="preview" data-preview role="application" aria-label="背景画像。ドラッグで位置を調整し、ホイールで拡大縮小できます">
-                            <img class="preview-image" data-preview-image alt="">
-                            <div class="site-preview" aria-hidden="true">
-                                <span class="site-preview-header"></span>
-                                <span class="site-preview-menu"></span>
-                                <span class="site-preview-content"></span>
-                            </div>
-                            <div class="ratio-guide" data-ratio-guide><span>16:9 ガイド</span></div>
-                            <span class="preview-ratio" data-preview-ratio></span>
-                            <span class="preview-instruction" data-preview-instruction>ドラッグで移動 · ホイールで拡大縮小</span>
-                            <span class="preview-empty" data-preview-empty>背景画像は設定されていません</span>
-                        </div>
-                        <div class="file-row">
-                            <label class="file-button">
-                                画像を選択
-                                <input type="file" accept="image/jpeg,image/png,image/webp" data-file-input>
-                            </label>
-                            <span class="file-name" data-file-name></span>
-                        </div>
-                        <p class="hint">JPEG・PNG・WebP、20MBまで。保存時に背景向けのサイズへ最適化します。</p>
-                        <div class="controls">
-                            <div>
-                                <div class="control-heading">
-                                    <label>画像の位置</label>
-                                    <button type="button" class="center-button" data-center-position>中央に戻す</button>
+                        <p class="description">画像の見える位置と、コンテンツの透け具合を調整できます。</p>
+                        <div class="editor">
+                            <div class="canvas-column">
+                                <div class="preview-shell">
+                                    <div class="preview-bar" aria-hidden="true">
+                                        <span class="window-dots"><i></i><i></i><i></i></span>
+                                        <span class="preview-title">Ku-LMS プレビュー</span>
+                                        <span class="preview-ratio" data-preview-ratio></span>
+                                    </div>
+                                    <div class="preview" data-preview tabindex="0" role="application" aria-label="背景画像。ドラッグまたは矢印キーで位置を調整し、ホイールまたはプラスとマイナスキーで拡大縮小できます">
+                                        <img class="preview-image" data-preview-image alt="">
+                                        <div class="site-preview" aria-hidden="true">
+                                            <span class="site-preview-header"></span>
+                                            <span class="site-preview-menu"></span>
+                                            <span class="site-preview-main">
+                                                <span class="site-preview-news"></span>
+                                                <span class="site-preview-courses">
+                                                    <i class="site-preview-course"></i>
+                                                    <i class="site-preview-course"></i>
+                                                    <i class="site-preview-course"></i>
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div class="ratio-guide" data-ratio-guide><span>16:9</span></div>
+                                        <span class="preview-instruction" data-preview-instruction>ドラッグで移動 · ホイールで拡大</span>
+                                        <label class="preview-empty" data-preview-empty for="klpf-custom-theme-file">
+                                            <span class="empty-icon" aria-hidden="true">＋</span>
+                                            <span class="empty-title">背景画像を選択</span>
+                                            <span class="empty-subtitle">JPEG・PNG・WebP</span>
+                                        </label>
+                                        <div class="preview-toolbar" data-preview-toolbar>
+                                            <button type="button" class="tool-button" data-zoom-out aria-label="縮小">−</button>
+                                            <output class="tool-value" data-toolbar-zoom>100%</output>
+                                            <button type="button" class="tool-button" data-zoom-in aria-label="拡大">＋</button>
+                                            <span class="tool-divider" aria-hidden="true"></span>
+                                            <button type="button" class="tool-button reset-view" data-reset-view>表示をリセット</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <div class="control-heading">
-                                    <label for="klpf-custom-theme-zoom">拡大率</label>
-                                    <output class="control-value" data-zoom-output>100%</output>
-                                </div>
-                                <input id="klpf-custom-theme-zoom" type="range" min="100" max="250" step="5" data-zoom>
-                            </div>
-                            <div>
-                                <div class="control-heading">
-                                    <label for="klpf-custom-theme-transparency">要素の透過度</label>
-                                    <output class="control-value" data-transparency-output>28%</output>
-                                </div>
-                                <input id="klpf-custom-theme-transparency" type="range" min="0" max="80" step="1" data-transparency>
-                            </div>
+                            <aside class="inspector">
+                                <section class="inspector-section">
+                                    <span class="section-label">背景画像</span>
+                                    <div class="file-row">
+                                        <label class="file-button" for="klpf-custom-theme-file" data-file-button-label>画像を選択</label>
+                                        <input id="klpf-custom-theme-file" type="file" accept="image/jpeg,image/png,image/webp" data-file-input>
+                                        <span class="file-name" data-file-name></span>
+                                    </div>
+                                    <p class="hint">20MBまで。保存時に背景向けのサイズへ最適化します。</p>
+                                </section>
+                                <section class="inspector-section controls">
+                                    <div>
+                                        <div class="control-heading">
+                                            <label for="klpf-custom-theme-zoom">拡大率</label>
+                                            <output class="control-value" data-zoom-output>100%</output>
+                                        </div>
+                                        <input id="klpf-custom-theme-zoom" type="range" min="100" max="250" step="5" data-zoom>
+                                    </div>
+                                    <div>
+                                        <div class="control-heading">
+                                            <label for="klpf-custom-theme-transparency">要素の透過度</label>
+                                            <output class="control-value" data-transparency-output>28%</output>
+                                        </div>
+                                        <input id="klpf-custom-theme-transparency" type="range" min="0" max="80" step="1" data-transparency>
+                                    </div>
+                                </section>
+                                <p class="status" data-status aria-live="polite"></p>
+                            </aside>
                         </div>
-                        <p class="status" data-status aria-live="polite"></p>
                     </div>
                     <footer class="actions">
                         <button type="button" class="action reset" data-reset>画像をリセット</button>
@@ -620,9 +781,10 @@
     function getPreviewDimensions() {
         const contents = document.querySelector('.lms-contents-wrap');
         if (!contents) return { width: 16, height: 9, ratio: 16 / 9 };
-        const rect = contents.getBoundingClientRect();
-        const width = Math.max(1, Math.round(rect.width));
-        const height = Math.max(1, Math.round(Math.max(rect.height, window.innerHeight - Math.max(0, rect.top))));
+        const backgroundArea = document.querySelector('.lms-contents-main') || contents;
+        const rect = backgroundArea.getBoundingClientRect();
+        const width = Math.max(1, Math.round(window.innerWidth));
+        const height = Math.max(1, Math.round(window.innerHeight - Math.max(0, rect.top)));
         return { width, height, ratio: Math.max(.8, Math.min(2.5, width / height)) };
     }
 
@@ -650,10 +812,14 @@
         const previewImage = shadowRoot.querySelector('[data-preview-image]');
         const sitePreview = shadowRoot.querySelector('.site-preview');
         const previewInstruction = shadowRoot.querySelector('[data-preview-instruction]');
+        const previewToolbar = shadowRoot.querySelector('[data-preview-toolbar]');
+        const ratioGuide = shadowRoot.querySelector('[data-ratio-guide]');
+        const fileButtonLabel = shadowRoot.querySelector('[data-file-button-label]');
         const transparency = shadowRoot.querySelector('[data-transparency]');
         const transparencyOutput = shadowRoot.querySelector('[data-transparency-output]');
         const zoom = shadowRoot.querySelector('[data-zoom]');
         const zoomOutput = shadowRoot.querySelector('[data-zoom-output]');
+        const toolbarZoom = shadowRoot.querySelector('[data-toolbar-zoom]');
         const previewRatio = shadowRoot.querySelector('[data-preview-ratio]');
         const dimensions = getPreviewDimensions();
 
@@ -671,13 +837,20 @@
         previewImage.hidden = !draftDataUrl;
         sitePreview.hidden = !draftDataUrl;
         previewInstruction.hidden = !draftDataUrl;
+        previewToolbar.hidden = !draftDataUrl;
+        ratioGuide.hidden = !draftDataUrl;
+        fileButtonLabel.textContent = draftDataUrl ? '画像を変更' : '画像を選択';
+        transparency.disabled = !draftDataUrl;
+        zoom.disabled = !draftDataUrl;
         transparency.value = String(draftTransparency);
         transparencyOutput.value = `${draftTransparency}%`;
         transparencyOutput.textContent = `${draftTransparency}%`;
         zoom.value = String(draftZoom);
         zoomOutput.value = `${draftZoom}%`;
         zoomOutput.textContent = `${draftZoom}%`;
-        previewRatio.textContent = `表示領域 ${dimensions.width} × ${dimensions.height}`;
+        toolbarZoom.value = `${draftZoom}%`;
+        toolbarZoom.textContent = `${draftZoom}%`;
+        previewRatio.textContent = `${dimensions.width} × ${dimensions.height}`;
 
         fileName.textContent = draftFileName || '画像が選択されていません';
         fileName.title = draftFileName;
@@ -686,16 +859,35 @@
         requestAnimationFrame(updateRatioGuide);
     }
 
+    function renderPreviewTransform() {
+        if (!shadowRoot) return;
+        const previewImage = shadowRoot.querySelector('[data-preview-image]');
+        const zoom = shadowRoot.querySelector('[data-zoom]');
+        const zoomOutput = shadowRoot.querySelector('[data-zoom-output]');
+        const toolbarZoom = shadowRoot.querySelector('[data-toolbar-zoom]');
+        const applyButton = shadowRoot.querySelector('[data-apply]');
+        if (!previewImage || !zoom || !zoomOutput || !toolbarZoom || !applyButton) return;
+
+        previewImage.style.objectPosition = `${draftPositionX}% ${draftPositionY}%`;
+        previewImage.style.transform = `scale(${draftZoom / 100})`;
+        zoom.value = String(draftZoom);
+        zoomOutput.value = `${draftZoom}%`;
+        zoomOutput.textContent = `${draftZoom}%`;
+        toolbarZoom.value = `${draftZoom}%`;
+        toolbarZoom.textContent = `${draftZoom}%`;
+        applyButton.disabled = !draftDataUrl || !draftIsDirty;
+    }
+
     function updateDraftPositionFromDrag(event, dragStart) {
         if (!draftDataUrl || !dragStart) return;
         const preview = shadowRoot?.querySelector('[data-preview]');
         if (!preview) return;
         const rect = preview.getBoundingClientRect();
         const sensitivity = 100 / (draftZoom / 100);
-        draftPositionX = normalizePercentage(dragStart.positionX - ((event.clientX - dragStart.clientX) / rect.width) * sensitivity, DEFAULT_POSITION);
-        draftPositionY = normalizePercentage(dragStart.positionY - ((event.clientY - dragStart.clientY) / rect.height) * sensitivity, DEFAULT_POSITION);
+        draftPositionX = normalizePosition(dragStart.positionX - ((event.clientX - dragStart.clientX) / rect.width) * sensitivity);
+        draftPositionY = normalizePosition(dragStart.positionY - ((event.clientY - dragStart.clientY) / rect.height) * sensitivity);
         draftIsDirty = true;
-        renderDraft();
+        renderPreviewTransform();
     }
 
     async function optimizeImage(file) {
@@ -769,10 +961,28 @@
         const applyButton = shadowRoot.querySelector('[data-apply]');
         const resetButton = shadowRoot.querySelector('[data-reset]');
         const preview = shadowRoot.querySelector('[data-preview]');
-        const centerButton = shadowRoot.querySelector('[data-center-position]');
+        const zoomOutButton = shadowRoot.querySelector('[data-zoom-out]');
+        const zoomInButton = shadowRoot.querySelector('[data-zoom-in]');
+        const resetViewButton = shadowRoot.querySelector('[data-reset-view]');
         const transparency = shadowRoot.querySelector('[data-transparency]');
         const zoom = shadowRoot.querySelector('[data-zoom]');
         let dragStart = null;
+
+        const setZoom = (value) => {
+            if (!draftDataUrl) return;
+            draftZoom = Math.max(100, Math.min(250, Math.round(Number(value) || DEFAULT_ZOOM)));
+            draftIsDirty = true;
+            renderPreviewTransform();
+        };
+
+        const resetView = () => {
+            if (!draftDataUrl) return;
+            draftPositionX = DEFAULT_POSITION;
+            draftPositionY = DEFAULT_POSITION;
+            draftZoom = DEFAULT_ZOOM;
+            draftIsDirty = true;
+            renderPreviewTransform();
+        };
 
         shadowRoot.querySelector('.close').addEventListener('click', closePanel);
         shadowRoot.querySelector('[data-close]').addEventListener('click', closePanel);
@@ -787,7 +997,8 @@
         });
         fileInput.addEventListener('change', () => handleFileSelection(fileInput.files?.[0]));
         preview.addEventListener('pointerdown', (event) => {
-            if (!draftDataUrl) return;
+            if (!draftDataUrl || event.button !== 0 || event.target.closest('button, label, input')) return;
+            preview.focus({ preventScroll: true });
             preview.classList.add('is-dragging');
             preview.setPointerCapture(event.pointerId);
             dragStart = {
@@ -807,30 +1018,54 @@
         };
         preview.addEventListener('pointerup', finishPositionDrag);
         preview.addEventListener('pointercancel', finishPositionDrag);
-        centerButton.addEventListener('click', () => {
-            if (!draftDataUrl) return;
-            draftPositionX = DEFAULT_POSITION;
-            draftPositionY = DEFAULT_POSITION;
-            draftIsDirty = true;
-            renderDraft();
+        preview.addEventListener('dblclick', (event) => {
+            if (event.target.closest('button, label, input')) return;
+            resetView();
         });
+        preview.addEventListener('keydown', (event) => {
+            if (!draftDataUrl) return;
+            const positionStep = event.shiftKey ? 5 : 1;
+            const positionChanges = {
+                ArrowLeft: [-positionStep, 0],
+                ArrowRight: [positionStep, 0],
+                ArrowUp: [0, -positionStep],
+                ArrowDown: [0, positionStep],
+            };
+            if (positionChanges[event.key]) {
+                event.preventDefault();
+                draftPositionX = normalizePosition(draftPositionX + positionChanges[event.key][0]);
+                draftPositionY = normalizePosition(draftPositionY + positionChanges[event.key][1]);
+                draftIsDirty = true;
+                renderPreviewTransform();
+                return;
+            }
+            if (event.key === '+' || event.key === '=') {
+                event.preventDefault();
+                setZoom(draftZoom + 5);
+            } else if (event.key === '-') {
+                event.preventDefault();
+                setZoom(draftZoom - 5);
+            } else if (event.key === '0') {
+                event.preventDefault();
+                resetView();
+            }
+        });
+        zoomOutButton.addEventListener('click', () => setZoom(draftZoom - 5));
+        zoomInButton.addEventListener('click', () => setZoom(draftZoom + 5));
+        resetViewButton.addEventListener('click', resetView);
         transparency.addEventListener('input', () => {
             draftTransparency = normalizePercentage(transparency.value, DEFAULT_TRANSPARENCY, 80);
             draftIsDirty = true;
             renderDraft();
         });
         zoom.addEventListener('input', () => {
-            draftZoom = Math.max(100, Math.min(250, Math.round(Number(zoom.value) || DEFAULT_ZOOM)));
-            draftIsDirty = true;
-            renderDraft();
+            setZoom(zoom.value);
         });
         preview.addEventListener('wheel', (event) => {
             if (!draftDataUrl) return;
             event.preventDefault();
             const direction = event.deltaY < 0 ? 1 : -1;
-            draftZoom = Math.max(100, Math.min(250, draftZoom + direction * 5));
-            draftIsDirty = true;
-            renderDraft();
+            setZoom(draftZoom + direction * 5);
         }, { passive: false });
         applyButton.addEventListener('click', async () => {
             if (!draftDataUrl) return;
