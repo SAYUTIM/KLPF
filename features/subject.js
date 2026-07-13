@@ -21,6 +21,28 @@
                 border: 2px solid #d9534f !important;
                 box-shadow: 0 0 10px rgba(217, 83, 79, 0.5);
             }
+            .klpf-search-button-disabled {
+                cursor: not-allowed !important;
+                opacity: 0.55;
+                filter: grayscale(0.25);
+            }
+            .klpf-search-button-notice {
+                display: none;
+                margin: 8px auto 0;
+                padding: 8px 12px;
+                width: fit-content;
+                max-width: min(360px, 100%);
+                border: 1px solid #7bc5df;
+                border-radius: 5px;
+                background: #eef9fd;
+                color: #24566a;
+                font-size: 13px;
+                font-weight: 600;
+                line-height: 1.5;
+            }
+            .klpf-search-button-notice.is-visible {
+                display: block;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -79,10 +101,37 @@
         };
     }
 
-    function toggleSearchButtonVisibility(isAutoActive) {
+    function getSearchButtonNotice(searchButton) {
+        let notice = document.getElementById('klpfSearchButtonNotice');
+        if (notice) return notice;
+
+        notice = document.createElement('p');
+        notice.id = 'klpfSearchButtonNotice';
+        notice.className = 'klpf-search-button-notice';
+        notice.setAttribute('role', 'status');
+        notice.setAttribute('aria-live', 'polite');
+        notice.textContent = '検索するには、「自動」のチェックを外してください。';
+        const buttonArea = searchButton.closest('.lms-footer-contents') || searchButton.parentElement;
+        buttonArea.insertAdjacentElement('afterend', notice);
+        return notice;
+    }
+
+    function setSearchButtonDisabled(isAutoActive) {
         const searchButton = safeQuerySelector('button[onclick="submitSearch();"]');
         if (searchButton) {
-            searchButton.style.display = isAutoActive ? 'none' : '';
+            const notice = getSearchButtonNotice(searchButton);
+            searchButton.style.removeProperty('display');
+            searchButton.classList.toggle('klpf-search-button-disabled', isAutoActive);
+            searchButton.setAttribute('aria-disabled', String(isAutoActive));
+            searchButton.toggleAttribute('aria-describedby', isAutoActive);
+            if (isAutoActive) searchButton.setAttribute('aria-describedby', notice.id);
+            searchButton.title = isAutoActive
+                ? '検索するには、「自動」のチェックを外してください。'
+                : '';
+
+            if (!isAutoActive) {
+                notice.classList.remove('is-visible');
+            }
         }
     }
 
@@ -116,7 +165,7 @@
             checkKiList: safeQuerySelectorAll('input[name="checkKiList"]:checked', form).map(cb => cb.value)
         };
 
-        toggleSearchButtonVisibility(settings.isAutoActive);
+        setSearchButtonDisabled(settings.isAutoActive);
 
         const currentQuarter = getCurrentQuarter();
 
@@ -204,6 +253,18 @@
     }
 
     function setupEventListeners(form) {
+        const searchButton = form.querySelector('button[onclick="submitSearch();"]');
+        if (searchButton) {
+            form.addEventListener('click', (event) => {
+                if (!event.target.closest('button[onclick="submitSearch();"]')) return;
+                if (!form.querySelector('#autoFilterCheckbox')?.checked) return;
+
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                getSearchButtonNotice(searchButton).classList.add('is-visible');
+            }, true);
+        }
+
         form.addEventListener('input', () => {
             const autoCheckbox = form.querySelector('#autoFilterCheckbox');
             if (autoCheckbox) {
