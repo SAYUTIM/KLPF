@@ -134,6 +134,7 @@
 
     function isHomePage() {
         return window.location.href.startsWith(LMS_HOME_URL)
+            || window.location.href.startsWith(LMS_HOME_BACK_URL)
             || !!safeQuerySelector(HOME_INFO_FORM_SELECTOR)
             || !!safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
     }

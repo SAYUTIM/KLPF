@@ -9,6 +9,7 @@ if (typeof LMS_URL === 'undefined') {
     // URL
     var LMS_URL = 'https://study.ns.kogakuin.ac.jp/';
     var LMS_HOME_URL = `${LMS_URL}lms/homeHoml/`;
+    var LMS_HOME_BACK_URL = `${LMS_URL}lms/tpicTpil/doBack`;
     var LMS_ERROR_URL = `${LMS_URL}lms/error/`
 
     // ログインページ

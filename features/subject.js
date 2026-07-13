@@ -8,7 +8,8 @@
 (function() {
     'use strict';
 
-    if (!window.location.href.startsWith(`${LMS_HOME_URL}doIndex;`)) {
+    if (!window.location.href.startsWith(LMS_HOME_URL)
+        && !window.location.href.startsWith(LMS_HOME_BACK_URL)) {
         return;
     }
 
