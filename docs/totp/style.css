@@ -19,7 +19,7 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 92px; }
+html { scroll-padding-top: 92px; }
 body {
     margin: 0;
     color: var(--ink);
@@ -144,16 +144,16 @@ footer > a:last-child { color: var(--muted); font-size: 13px; }
 
 .bg-effects { position: fixed; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
 .floating-shapes { position: absolute; inset: 0; }
-.shape { position: absolute; bottom: -160px; border-radius: 50%; background: rgba(255,255,255,.065); animation: float 20s infinite linear; }
-.shape:nth-child(1) { left: 8%; width: 90px; height: 90px; animation-delay: 0s; }
-.shape:nth-child(2) { left: 24%; width: 140px; height: 140px; animation-delay: -5s; }
-.shape:nth-child(3) { left: 64%; width: 65px; height: 65px; animation-delay: -10s; }
-.shape:nth-child(4) { left: 84%; width: 115px; height: 115px; animation-delay: -15s; }
+.shape { position: absolute; top: 0; border-radius: 50%; background: rgba(255,255,255,.065); animation: float 20s infinite linear; }
+.shape:nth-child(1) { left: 10%; width: 80px; height: 80px; animation-delay: 0s; }
+.shape:nth-child(2) { left: 20%; width: 120px; height: 120px; animation-delay: -5s; }
+.shape:nth-child(3) { left: 60%; width: 60px; height: 60px; animation-delay: -10s; }
+.shape:nth-child(4) { left: 80%; width: 100px; height: 100px; animation-delay: -15s; }
 
 @keyframes float {
-    0% { transform: translateY(0) rotate(0deg); opacity: 0; }
-    10%, 90% { opacity: .65; }
-    100% { transform: translateY(calc(-100vh - 320px)) rotate(360deg); opacity: 0; }
+    0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+    10%, 90% { opacity: .6; }
+    100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
 }
 
 @media (max-width: 900px) {
@@ -178,9 +178,4 @@ footer > a:last-child { color: var(--muted); font-size: 13px; }
     .steps li > span { width: 38px; height: 38px; }
     footer { align-items: flex-start; flex-direction: column; gap: 7px; }
     footer p { margin: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
-    .reading-progress, .article-section, .closing-card { transition: none; }
-    .shape { animation: none; }
 }

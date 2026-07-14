@@ -8,13 +8,33 @@
 (function() {
     'use strict';
 
+    const STYLE_ID = 'klpf-subject-filter-style';
+    const INITIALIZED_ATTRIBUTE = 'klpfSubjectFilterInitialized';
+    const HIGHLIGHT_INTERVAL_MS = 60 * 1000;
+    const SELECTORS = {
+        autoFilter: '#autoFilterCheckbox',
+        courseCards: '.lms-card',
+        dayBoxes: '.lms-daybox',
+        period: 'select[name="jigen"]',
+        weekday: 'select[name="yobi"]',
+        courseName: 'input[name="kougiName"]',
+        instructor: 'input[name="kyoinName"]',
+        selectedTerms: 'input[name="checkKiList"]:checked',
+        allTerms: 'input[name="checkKiList"]',
+    };
+
+    let highlightIntervalId = null;
+
     if (!window.location.href.startsWith(LMS_HOME_URL)
         && !window.location.href.startsWith(LMS_HOME_BACK_URL)) {
         return;
     }
 
     function injectStyles() {
+        if (document.getElementById(STYLE_ID)) return;
+
         const style = document.createElement('style');
+        style.id = STYLE_ID;
         style.textContent = `
             .lms-weekly-area { visibility: hidden; }
             .${SUBJECT_HIGHLIGHT_CLASS} {
@@ -47,6 +67,18 @@
         document.head.appendChild(style);
     }
 
+    function readFilterSettings(form, normalizeSearchText = false) {
+        const normalize = (value) => normalizeSearchText ? value.toLowerCase() : value;
+        return {
+            isAutoActive: form.querySelector(SELECTORS.autoFilter)?.checked || false,
+            yobi: form.querySelector(SELECTORS.weekday)?.value || 'all',
+            jigen: form.querySelector(SELECTORS.period)?.value || 'all',
+            kougiName: normalize(form.querySelector(SELECTORS.courseName)?.value.trim() || ''),
+            kyoinName: normalize(form.querySelector(SELECTORS.instructor)?.value.trim() || ''),
+            checkKiList: safeQuerySelectorAll(SELECTORS.selectedTerms, form).map(checkbox => checkbox.value),
+        };
+    }
+
     async function loadSettings() {
         try {
             const result = await chrome.storage.local.get(SUBJECT_FILTER_STORAGE_KEY);
@@ -73,14 +105,7 @@
     }
 
     function saveSettings(form) {
-        const settings = {
-            isAutoActive: form.querySelector('#autoFilterCheckbox')?.checked || false,
-            yobi: form.querySelector('select[name="yobi"]')?.value || 'all',
-            jigen: form.querySelector('select[name="jigen"]')?.value || 'all',
-            kougiName: form.querySelector('input[name="kougiName"]')?.value.trim() || '',
-            kyoinName: form.querySelector('input[name="kyoinName"]')?.value.trim() || '',
-            checkKiList: safeQuerySelectorAll('input[name="checkKiList"]:checked', form).map(cb => cb.value)
-        };
+        const settings = readFilterSettings(form);
         chrome.storage.local.set({ [SUBJECT_FILTER_STORAGE_KEY]: JSON.stringify(settings) });
     }
 
@@ -156,20 +181,13 @@
     }
 
     function applyClientSideFilter(form) {
-        const settings = {
-            isAutoActive: form.querySelector('#autoFilterCheckbox')?.checked || false,
-            yobi: form.querySelector('select[name="yobi"]').value,
-            jigen: form.querySelector('select[name="jigen"]').value,
-            kougiName: form.querySelector('input[name="kougiName"]').value.trim().toLowerCase(),
-            kyoinName: form.querySelector('input[name="kyoinName"]').value.trim().toLowerCase(),
-            checkKiList: safeQuerySelectorAll('input[name="checkKiList"]:checked', form).map(cb => cb.value)
-        };
+        const settings = readFilterSettings(form, true);
 
         setSearchButtonDisabled(settings.isAutoActive);
 
         const currentQuarter = getCurrentQuarter();
 
-        safeQuerySelectorAll('.lms-card').forEach(card => {
+        safeQuerySelectorAll(SELECTORS.courseCards).forEach(card => {
             const info = extractCardInfo(card);
             let isVisible = true;
 
@@ -190,8 +208,8 @@
             card.style.display = isVisible ? '' : 'none';
         });
 
-        safeQuerySelectorAll('.lms-daybox').forEach(dayBox => {
-            const visibleCards = safeQuerySelectorAll('.lms-card', dayBox).filter(c => c.style.display !== 'none');
+        safeQuerySelectorAll(SELECTORS.dayBoxes).forEach(dayBox => {
+            const visibleCards = safeQuerySelectorAll(SELECTORS.courseCards, dayBox).filter(card => card.style.display !== 'none');
             dayBox.style.display = visibleCards.length > 0 ? '' : 'none';
         });
     }
@@ -210,7 +228,7 @@
         const periodCodeToHighlight = ('0' + currentPeriod.label.replace('限', '')).slice(-2);
         const currentQuarter = getCurrentQuarter(now.getMonth() + 1);
 
-        safeQuerySelectorAll('.lms-card').forEach(card => {
+        safeQuerySelectorAll(SELECTORS.courseCards).forEach(card => {
             if (card.style.display === 'none') return;
             const info = extractCardInfo(card);
             if (
@@ -224,7 +242,7 @@
     }
 
     function addAutoFilterCheckbox(targetCell) {
-        if (document.getElementById('autoFilterCheckbox')) return;
+        if (document.querySelector(SELECTORS.autoFilter)) return;
 
         const container = document.createElement('span');
         container.className = 'lms-form-checkbox-label';
@@ -257,7 +275,7 @@
         if (searchButton) {
             form.addEventListener('click', (event) => {
                 if (!event.target.closest('button[onclick="submitSearch();"]')) return;
-                if (!form.querySelector('#autoFilterCheckbox')?.checked) return;
+                if (!form.querySelector(SELECTORS.autoFilter)?.checked) return;
 
                 event.preventDefault();
                 event.stopImmediatePropagation();
@@ -266,9 +284,9 @@
         }
 
         form.addEventListener('input', () => {
-            const autoCheckbox = form.querySelector('#autoFilterCheckbox');
+            const autoCheckbox = form.querySelector(SELECTORS.autoFilter);
             if (autoCheckbox) {
-                safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => cb.disabled = autoCheckbox.checked);
+                safeQuerySelectorAll(SELECTORS.allTerms, form).forEach(checkbox => checkbox.disabled = autoCheckbox.checked);
             }
             applyClientSideFilter(form);
             saveSettings(form);
@@ -280,11 +298,32 @@
                 e.preventDefault();
                 chrome.storage.local.remove(SUBJECT_FILTER_STORAGE_KEY, () => {
                     form.reset();
-                    safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => cb.disabled = false);
+                    safeQuerySelectorAll(SELECTORS.allTerms, form).forEach(checkbox => checkbox.disabled = false);
                     applyClientSideFilter(form);
                 });
             });
         }
+    }
+
+    function applySavedSettings(form, savedSettings) {
+        if (Object.keys(savedSettings).length === 0) return;
+
+        const autoCheckbox = form.querySelector(SELECTORS.autoFilter);
+        if (autoCheckbox) autoCheckbox.checked = savedSettings.isAutoActive === true;
+        form.querySelector(SELECTORS.weekday).value = savedSettings.yobi || 'all';
+        form.querySelector(SELECTORS.period).value = savedSettings.jigen || 'all';
+        form.querySelector(SELECTORS.courseName).value = savedSettings.kougiName || '';
+        form.querySelector(SELECTORS.instructor).value = savedSettings.kyoinName || '';
+        safeQuerySelectorAll(SELECTORS.allTerms, form).forEach(checkbox => {
+            checkbox.checked = savedSettings.checkKiList?.includes(checkbox.value) || false;
+            if (autoCheckbox) checkbox.disabled = autoCheckbox.checked;
+        });
+    }
+
+    function stopHighlightTimer() {
+        if (!highlightIntervalId) return;
+        clearInterval(highlightIntervalId);
+        highlightIntervalId = null;
     }
 
     async function main() {
@@ -297,27 +336,24 @@
             return;
         }
 
+        if (form.dataset[INITIALIZED_ATTRIBUTE] === 'true') {
+            weeklyArea.style.visibility = 'visible';
+            return;
+        }
+        form.dataset[INITIALIZED_ATTRIBUTE] = 'true';
+
         injectStyles();
         addAutoFilterCheckbox(termCell);
 
         const savedSettings = await loadSettings();
-        const autoCheckbox = form.querySelector('#autoFilterCheckbox');
-        if (Object.keys(savedSettings).length > 0) {
-            if (autoCheckbox) autoCheckbox.checked = savedSettings.isAutoActive === true;
-            form.querySelector('select[name="yobi"]').value = savedSettings.yobi || 'all';
-            form.querySelector('select[name="jigen"]').value = savedSettings.jigen || 'all';
-            form.querySelector('input[name="kougiName"]').value = savedSettings.kougiName || '';
-            form.querySelector('input[name="kyoinName"]').value = savedSettings.kyoinName || '';
-            safeQuerySelectorAll('input[name="checkKiList"]', form).forEach(cb => {
-                cb.checked = savedSettings.checkKiList ? savedSettings.checkKiList.includes(cb.value) : false;
-                if (autoCheckbox) cb.disabled = autoCheckbox.checked;
-            });
-        }
+        applySavedSettings(form, savedSettings);
 
         applyClientSideFilter(form);
         setupEventListeners(form);
         highlightCurrentClass();
-        setInterval(highlightCurrentClass, 60000);
+        stopHighlightTimer();
+        highlightIntervalId = setInterval(highlightCurrentClass, HIGHLIGHT_INTERVAL_MS);
+        window.addEventListener('pagehide', stopHighlightTimer, { once: true });
 
         weeklyArea.style.visibility = 'visible';
         console.log("[KLPF] 講義フィルター機能を初期化しました。");
@@ -330,7 +366,7 @@
     });
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', safeRun);
+        document.addEventListener('DOMContentLoaded', safeRun, { once: true });
     } else {
         safeRun();
     }

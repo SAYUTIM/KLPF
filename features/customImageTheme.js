@@ -18,13 +18,16 @@
     const STORAGE_KEY = 'klpfCustomImageTheme';
     const ALL_DISABLED_KEY = 'klpfInlineAllFeaturesDisabled';
     const ACTIVE_ATTRIBUTE = 'data-klpf-custom-image-theme-active';
+    const LEFT_TRANSPARENCY_ATTRIBUTE = 'data-klpf-custom-image-theme-left-transparent';
     const BACKGROUND_ATTRIBUTE = 'data-klpf-custom-image-theme-background';
     const BACKGROUND_PROPERTY = '--klpf-custom-image-theme-background';
     const WRAP_TOP_PROPERTY = '--klpf-custom-image-theme-wrap-top';
     const BACKGROUND_SIZE_PROPERTY = '--klpf-custom-image-theme-size';
     const DEFAULT_POSITION = 50;
     const DEFAULT_TRANSPARENCY = 28;
+    const DEFAULT_LEFT_TRANSPARENCY = false;
     const DEFAULT_ZOOM = 100;
+    const LEFT_COLUMN_SELECTOR = '.lms-menu-column, .lms-side-menu';
     const MAX_INPUT_BYTES = 20 * 1024 * 1024;
     const MAX_DATA_URL_LENGTH = 4_500_000;
     const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -37,6 +40,7 @@
     let draftPositionX = DEFAULT_POSITION;
     let draftPositionY = DEFAULT_POSITION;
     let draftTransparency = DEFAULT_TRANSPARENCY;
+    let draftLeftTransparency = DEFAULT_LEFT_TRANSPARENCY;
     let draftZoom = DEFAULT_ZOOM;
     let draftImageWidth = 0;
     let draftImageHeight = 0;
@@ -74,6 +78,7 @@
             positionX: normalizePosition(value.positionX),
             positionY: normalizePosition(value.positionY),
             contentTransparency: normalizePercentage(value.contentTransparency, DEFAULT_TRANSPARENCY, 80),
+            transparentLeftColumn: value.transparentLeftColumn === true,
             zoom: Math.max(100, Math.min(250, Math.round(Number(value.zoom) || DEFAULT_ZOOM))),
             imageWidth: Math.max(0, Math.round(Number(value.imageWidth) || 0)),
             imageHeight: Math.max(0, Math.round(Number(value.imageHeight) || 0)),
@@ -99,16 +104,30 @@
         });
     }
 
+    function getTransparencyElements() {
+        const contents = document.querySelector('.lms-contents-wrap');
+        if (!contents) return [];
+
+        const elements = new Set(contents.querySelectorAll('*'));
+        if (currentTheme?.transparentLeftColumn) {
+            document.querySelectorAll(LEFT_COLUMN_SELECTOR).forEach((column) => {
+                elements.add(column);
+                column.querySelectorAll('*').forEach((element) => elements.add(element));
+            });
+        }
+
+        return [...elements].filter((element) => (
+            currentTheme?.transparentLeftColumn || !element.closest(LEFT_COLUMN_SELECTOR)
+        ));
+    }
+
     function refreshElementTransparency({ recalculate = false } = {}) {
         const contents = document.querySelector('.lms-contents-wrap');
         if (!contents) return;
 
-        const elements = [...contents.querySelectorAll('*')];
+        const elements = getTransparencyElements();
         if (recalculate) {
-            for (const element of elements) {
-                element.removeAttribute(BACKGROUND_ATTRIBUTE);
-                element.style.removeProperty(BACKGROUND_PROPERTY);
-            }
+            clearElementTransparency();
         }
 
         for (const element of elements) {
@@ -181,6 +200,13 @@
         if (!contents) return;
         mutationObserver = new MutationObserver(scheduleTransparencyRefresh);
         mutationObserver.observe(contents, { childList: true, subtree: true });
+        if (currentTheme?.transparentLeftColumn) {
+            document.querySelectorAll(LEFT_COLUMN_SELECTOR).forEach((column) => {
+                if (!contents.contains(column)) {
+                    mutationObserver.observe(column, { childList: true, subtree: true });
+                }
+            });
+        }
         if (typeof ResizeObserver === 'function') {
             geometryObserver = new ResizeObserver(updateThemeGeometry);
             geometryObserver.observe(document.querySelector('.lms-contents-main') || contents);
@@ -227,14 +253,21 @@
             (document.head || document.documentElement).appendChild(style);
         }
         style.textContent = `
-            html[${ACTIVE_ATTRIBUTE}] .lms-contents-main {
-                min-height: 100vh !important;
+            /* 課題一覧などがLMS本体の想定高を越えても、背景を文書末尾まで維持する。 */
+            html[${ACTIVE_ATTRIBUTE}] {
+                min-height: 100% !important;
                 background-color: transparent !important;
                 background-image: url("${theme.dataUrl}") !important;
                 background-position: ${theme.positionX}% ${theme.positionY}% !important;
                 background-repeat: no-repeat !important;
                 background-size: var(${BACKGROUND_SIZE_PROPERTY}, cover) !important;
                 background-attachment: fixed !important;
+            }
+            html[${ACTIVE_ATTRIBUTE}] body,
+            html[${ACTIVE_ATTRIBUTE}] .lms-contents-main {
+                min-height: 100vh !important;
+                background-color: transparent !important;
+                background-image: none !important;
             }
             html[${ACTIVE_ATTRIBUTE}] .lms-contents-wrap {
                 min-height: calc(100vh - var(${WRAP_TOP_PROPERTY}, 0px)) !important;
@@ -245,7 +278,7 @@
                 background-color: transparent !important;
                 background-image: none !important;
             }
-            html[${ACTIVE_ATTRIBUTE}] .lms-contents-wrap [${BACKGROUND_ATTRIBUTE}] {
+            html[${ACTIVE_ATTRIBUTE}] [${BACKGROUND_ATTRIBUTE}] {
                 background-color: var(${BACKGROUND_PROPERTY}) !important;
             }
         `;
@@ -254,6 +287,7 @@
     function removeAppliedTheme() {
         stopMutationObserver();
         document.documentElement.removeAttribute(ACTIVE_ATTRIBUTE);
+        document.documentElement.removeAttribute(LEFT_TRANSPARENCY_ATTRIBUTE);
         document.documentElement.style.removeProperty(WRAP_TOP_PROPERTY);
         document.documentElement.style.removeProperty(BACKGROUND_SIZE_PROPERTY);
         currentImageDimensions = null;
@@ -269,10 +303,12 @@
             return;
         }
 
+        stopMutationObserver();
         currentTheme = normalized;
         loadCurrentImageDimensions(normalized);
         ensureThemeStyle(normalized);
         document.documentElement.setAttribute(ACTIVE_ATTRIBUTE, '');
+        document.documentElement.toggleAttribute(LEFT_TRANSPARENCY_ATTRIBUTE, normalized.transparentLeftColumn);
         waitForThemeContents();
 
         if (recalculateTimer !== null) clearTimeout(recalculateTimer);
@@ -512,8 +548,9 @@
             }
             .site-preview-menu {
                 border-right: 1px solid rgba(93, 122, 132, .28);
-                background: rgba(255, 255, 255, var(--preview-content-alpha, .72));
+                background: rgba(255, 255, 255, .96);
             }
+            .preview.is-left-transparent .site-preview-menu { background: rgba(255, 255, 255, var(--preview-content-alpha, .72)); }
             .site-preview-main {
                 display: grid;
                 grid-template-rows: 32% 1fr;
@@ -636,6 +673,50 @@
             .control-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
             .control-heading label { color: #45616b; font-size: 11px; font-weight: 800; }
             .control-value { color: #168fb6; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+            .toggle-setting {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 14px;
+                padding: 12px 13px;
+                border: 1px solid #dce8ec;
+                border-radius: 10px;
+                background: #fff;
+            }
+            .toggle-copy { display: grid; gap: 2px; min-width: 0; }
+            .toggle-copy strong { color: #45616b; font-size: 11px; }
+            .toggle-copy span { color: #87989e; font-size: 9px; line-height: 1.45; }
+            .toggle {
+                position: relative;
+                flex: 0 0 40px;
+                width: 40px;
+                height: 23px;
+            }
+            .toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+            .toggle-ui {
+                position: absolute;
+                inset: 0;
+                border-radius: 999px;
+                background: #c8d7dc;
+                cursor: pointer;
+                transition: background .18s ease;
+            }
+            .toggle-ui::after {
+                content: '';
+                position: absolute;
+                top: 3px;
+                left: 3px;
+                width: 17px;
+                height: 17px;
+                border-radius: 50%;
+                background: #fff;
+                box-shadow: 0 2px 6px rgba(32, 67, 78, .24);
+                transition: transform .18s ease;
+            }
+            .toggle input:checked + .toggle-ui { background: #168fb6; }
+            .toggle input:checked + .toggle-ui::after { transform: translateX(17px); }
+            .toggle input:focus-visible + .toggle-ui { outline: 3px solid rgba(22, 143, 182, .25); outline-offset: 2px; }
+            .toggle input:disabled + .toggle-ui { cursor: not-allowed; opacity: .42; }
             input[type="range"] {
                 width: 100%;
                 height: 5px;
@@ -770,6 +851,15 @@
                                         </div>
                                         <input id="klpf-custom-theme-transparency" type="range" min="0" max="80" step="1" data-transparency>
                                     </div>
+                                    <div class="toggle-setting">
+                                        <span class="toggle-copy">
+                                            <strong>左側も透過</strong>
+                                        </span>
+                                        <label class="toggle">
+                                            <input type="checkbox" data-left-transparency aria-label="左側も透過">
+                                            <span class="toggle-ui" aria-hidden="true"></span>
+                                        </label>
+                                    </div>
                                 </section>
                                 <p class="status" data-status aria-live="polite"></p>
                             </aside>
@@ -831,6 +921,7 @@
         const fileButtonLabel = shadowRoot.querySelector('[data-file-button-label]');
         const transparency = shadowRoot.querySelector('[data-transparency]');
         const transparencyOutput = shadowRoot.querySelector('[data-transparency-output]');
+        const leftTransparency = shadowRoot.querySelector('[data-left-transparency]');
         const zoom = shadowRoot.querySelector('[data-zoom]');
         const zoomOutput = shadowRoot.querySelector('[data-zoom-output]');
         const toolbarZoom = shadowRoot.querySelector('[data-toolbar-zoom]');
@@ -840,6 +931,7 @@
         preview.style.aspectRatio = String(dimensions.ratio);
         preview.style.setProperty('--preview-content-alpha', String(1 - (draftTransparency / 100)));
         preview.classList.toggle('has-image', !!draftDataUrl);
+        preview.classList.toggle('is-left-transparent', draftLeftTransparency);
         if (draftDataUrl) {
             if (previewImage.src !== draftDataUrl) previewImage.src = draftDataUrl;
             previewImage.style.objectPosition = `${draftPositionX}% ${draftPositionY}%`;
@@ -855,6 +947,8 @@
         ratioGuide.hidden = !draftDataUrl;
         fileButtonLabel.textContent = draftDataUrl ? '画像を変更' : '画像を選択';
         transparency.disabled = !draftDataUrl;
+        leftTransparency.disabled = !draftDataUrl;
+        leftTransparency.checked = draftLeftTransparency;
         zoom.disabled = !draftDataUrl;
         transparency.value = String(draftTransparency);
         transparencyOutput.value = `${draftTransparency}%`;
@@ -979,6 +1073,7 @@
         const zoomInButton = shadowRoot.querySelector('[data-zoom-in]');
         const resetViewButton = shadowRoot.querySelector('[data-reset-view]');
         const transparency = shadowRoot.querySelector('[data-transparency]');
+        const leftTransparency = shadowRoot.querySelector('[data-left-transparency]');
         const zoom = shadowRoot.querySelector('[data-zoom]');
         let dragStart = null;
 
@@ -1072,6 +1167,11 @@
             draftIsDirty = true;
             renderDraft();
         });
+        leftTransparency.addEventListener('change', () => {
+            draftLeftTransparency = leftTransparency.checked;
+            draftIsDirty = true;
+            renderDraft();
+        });
         zoom.addEventListener('input', () => {
             setZoom(zoom.value);
         });
@@ -1092,6 +1192,7 @@
                 positionX: draftPositionX,
                 positionY: draftPositionY,
                 contentTransparency: draftTransparency,
+                transparentLeftColumn: draftLeftTransparency,
                 zoom: draftZoom,
                 imageWidth: draftImageWidth,
                 imageHeight: draftImageHeight,
@@ -1116,6 +1217,7 @@
                 draftPositionX = DEFAULT_POSITION;
                 draftPositionY = DEFAULT_POSITION;
                 draftTransparency = DEFAULT_TRANSPARENCY;
+                draftLeftTransparency = DEFAULT_LEFT_TRANSPARENCY;
                 draftZoom = DEFAULT_ZOOM;
                 draftImageWidth = 0;
                 draftImageHeight = 0;
@@ -1149,6 +1251,7 @@
         draftPositionX = currentTheme?.positionX ?? DEFAULT_POSITION;
         draftPositionY = currentTheme?.positionY ?? DEFAULT_POSITION;
         draftTransparency = currentTheme?.contentTransparency ?? DEFAULT_TRANSPARENCY;
+        draftLeftTransparency = currentTheme?.transparentLeftColumn ?? DEFAULT_LEFT_TRANSPARENCY;
         draftZoom = currentTheme?.zoom ?? DEFAULT_ZOOM;
         draftImageWidth = currentTheme?.imageWidth || 0;
         draftImageHeight = currentTheme?.imageHeight || 0;

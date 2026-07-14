@@ -78,6 +78,22 @@ async function unregisterContentScript(scriptId) {
     }
 }
 
+async function replaceContentScriptRegistration(config) {
+    await unregisterContentScript(config.id);
+    await registerContentScript(config);
+}
+
+async function applyAutoAttendDependency(isEnabled) {
+    const meetConfig = CONTENT_SCRIPTS_CONFIG.find(config => config.storageKey === 'autoMeet');
+    if (!meetConfig) return;
+
+    if (isEnabled) {
+        await replaceContentScriptRegistration(meetConfig);
+    } else {
+        await unregisterContentScript(meetConfig.id);
+    }
+}
+
 /**
  * 全機能の状態をストレージから読み込み、必要に応じてスクリプトを登録/解除する。
  */
@@ -102,11 +118,7 @@ async function initializeScripts() {
 
             // 「自動出席」が有効な場合、「Meet自動参加」も有効にする依存関係を処理
             if (config.storageKey === 'autoAttend') {
-                const meetConfig = CONTENT_SCRIPTS_CONFIG.find(c => c.storageKey === 'autoMeet');
-                if (meetConfig) {
-                    await unregisterContentScript(meetConfig.id);
-                    await registerContentScript(meetConfig);
-                }
+                await applyAutoAttendDependency(true);
             }
         }
     }
@@ -163,16 +175,11 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
             }
 
             // 重複エラーを防ぐため、登録前に必ず解除する
-            await unregisterContentScript(config.id);
-            await registerContentScript(config);
+            await replaceContentScriptRegistration(config);
 
             // 「自動出席」が有効な場合、「Meet自動参加」も有効にする依存関係を処理
             if (key === 'autoAttend') {
-                const meetConfig = CONTENT_SCRIPTS_CONFIG.find(c => c.storageKey === 'autoMeet');
-                if (meetConfig) {
-                    await unregisterContentScript(meetConfig.id);
-                    await registerContentScript(meetConfig);
-                }
+                await applyAutoAttendDependency(true);
             }
         } else {
             // 機能が無効になった場合、スクリプトを解除する
@@ -180,10 +187,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 
             // 「自動出席」が無効な場合、「Meetミュート参加」も解除する
             if (key === 'autoAttend') {
-                const meetConfig = CONTENT_SCRIPTS_CONFIG.find(c => c.storageKey === 'autoMeet');
-                if (meetConfig) {
-                    await unregisterContentScript(meetConfig.id);
-                }
+                await applyAutoAttendDependency(false);
             }
         }
     }

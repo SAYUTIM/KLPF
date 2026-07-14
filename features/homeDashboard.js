@@ -13,6 +13,7 @@
     const HIDDEN_HOMEWORK_STORAGE_KEY = 'klpf-hidden-homework-items';
     const DELETED_HOMEWORK_STORAGE_KEY = 'klpf-deleted-homework-keys';
     const OPEN_HOME_EDITOR_EVENT = 'klpf-open-home-editor';
+    const INITIALIZED_ATTRIBUTE = 'klpfDashboardInitialized';
     const DEFAULT_ORDER = ['profile', 'study', 'activity', 'calendar', 'homework'];
     const MODULES = {
         profile: { label: 'プロフィール', description: '利用者名とプロフィール画像' },
@@ -691,9 +692,17 @@
         observer.observe(column, { childList: true, subtree: true });
     }
 
+    function cleanupDashboard() {
+        observer?.disconnect();
+        observer = null;
+        document.removeEventListener(OPEN_HOME_EDITOR_EVENT, openEditor);
+    }
+
     async function main() {
         column = await waitForElement(COLUMN_SELECTOR, document, 10000);
         if (!column) return;
+        if (column.dataset[INITIALIZED_ATTRIBUTE] === 'true') return;
+        column.dataset[INITIALIZED_ATTRIBUTE] = 'true';
 
         await loadState();
         createCalendarModule();
@@ -705,6 +714,7 @@
         renderCompactCalendar();
         observeDashboard();
         document.addEventListener(OPEN_HOME_EDITOR_EVENT, openEditor);
+        window.addEventListener('pagehide', cleanupDashboard, { once: true });
     }
 
     main().catch(error => {

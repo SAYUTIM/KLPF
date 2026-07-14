@@ -14,6 +14,11 @@ const HOMEWORK_NAVIGATION_READY_EVENT = 'klpf-home-attendance-navigation-ready';
 const HOMEWORK_NAVIGATION_FLAG = 'klpfHomeworkNavigation';
 const ATTENDANCE_READY_FLAG = 'klpfHomeAttendanceReady';
 const HOMEWORK_NAVIGATION_TIMEOUT_MS = 15000;
+const HOMEWORK_ROWS_TIMEOUT_MS = 30000;
+const HOMEWORK_CACHE_STORAGE_KEY = 'homework';
+const HOMEWORK_FORM_SELECTOR = 'form#homehomlInfo[name="homeHomlActionForm"]';
+const HOMEWORK_DEADLINE_CLASS = 'klpf-homework-deadline';
+const HOMEWORK_URGENT_DEADLINE_CLASS = 'klpf-homework-deadline-urgent';
 
 /**
  * 課題データを表現する型定義
@@ -206,6 +211,17 @@ function setupHomeworkClickListener(containerId, sid) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // 旧バージョンで保存されたキャッシュにも期限クラスを補う。
+    container.querySelectorAll(`.${HOMEWORK_ITEM_CLASS}`).forEach((item) => {
+        const deadlineElement = item.firstElementChild;
+        if (!(deadlineElement instanceof HTMLElement)) return;
+        deadlineElement.classList.add(HOMEWORK_DEADLINE_CLASS);
+        deadlineElement.classList.toggle(
+            HOMEWORK_URGENT_DEADLINE_CLASS,
+            deadlineElement.style.color.trim().toLowerCase() === 'red',
+        );
+    });
+
     container.addEventListener('pointerdown', (event) => {
         const item = event.target.closest(`.${HOMEWORK_ITEM_CLASS}`);
         if (!item) return;
@@ -305,7 +321,10 @@ function renderHomework(homeworkData) {
         const deadlineDiv = document.createElement('div');
         const deadlineDate = new Date(item.deadline.replace(/年|月/g, "/").replace("日", ""));
         const diff = (deadlineDate - new Date()) / (1000 * 60 * 60 * 24);
-        deadlineDiv.style.cssText = (diff >= 0 && diff <= 7) ? "color: red; font-size: 0.8em;" : "color: #666; font-size: 0.8em;";
+        const isUrgentDeadline = diff >= 0 && diff <= 7;
+        deadlineDiv.className = HOMEWORK_DEADLINE_CLASS;
+        deadlineDiv.classList.toggle(HOMEWORK_URGENT_DEADLINE_CLASS, isUrgentDeadline);
+        deadlineDiv.style.cssText = isUrgentDeadline ? "color: red; font-size: 0.8em;" : "color: #666; font-size: 0.8em;";
         deadlineDiv.textContent = `📅 ${item.deadline}`;
 
         const lessonDiv = document.createElement('div');
@@ -354,7 +373,7 @@ function manageLoadingIndicator(show) {
         homeworkContainer = document.createElement('div');
         homeworkContainer.id = HOMEWORK_CONTAINER_ID;
         applyHomeworkContainerStyles(homeworkContainer);
-        document.querySelector('form#homehomlInfo[name="homeHomlActionForm"]')
+        document.querySelector(HOMEWORK_FORM_SELECTOR)
             ?.insertAdjacentElement("afterend", homeworkContainer);
     }
     const firstHomeworkItem = homeworkContainer?.querySelector(`.${HOMEWORK_ITEM_CLASS}`);
@@ -381,11 +400,84 @@ function manageLoadingIndicator(show) {
     };
 }
 
+function throwIfHomeworkUpdateAborted() {
+    if (hasHomeworkUserInteracted) {
+        throw new DOMException('Homework update aborted.', 'AbortError');
+    }
+}
+
+function replaceHomeworkContainer(form, sid, container) {
+    document.getElementById(HOMEWORK_CONTAINER_ID)?.remove();
+    form.insertAdjacentElement('afterend', container);
+    setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
+}
+
+async function restoreCachedHomework(form, sid) {
+    try {
+        const result = await chrome.storage.local.get(HOMEWORK_CACHE_STORAGE_KEY);
+        const cachedHtml = result[HOMEWORK_CACHE_STORAGE_KEY];
+        if (!cachedHtml || typeof cachedHtml !== 'string') return;
+
+        const template = document.createElement('template');
+        template.innerHTML = cachedHtml;
+        const cachedContainer = template.content.firstElementChild;
+        if (!cachedContainer) return;
+
+        cachedContainer.id = HOMEWORK_CONTAINER_ID;
+        replaceHomeworkContainer(form, sid, cachedContainer);
+    } catch (error) {
+        console.error("[KLPF] キャッシュされた課題の読み込みに失敗しました。", error);
+    }
+}
+
+async function fetchHomeworkData(sid) {
+    hasHomeworkUserInteracted = false;
+
+    const iframe = document.createElement('iframe');
+    iframe.src = `/lms/klmsKlil/;SID=${sid}`;
+    iframe.id = HOMEWORK_RAW_DATA_IFRAME_ID;
+    iframe.style.display = 'none';
+
+    const updateState = { iframe, reject: null };
+    activeHomeworkUpdate = updateState;
+    document.body.appendChild(iframe);
+
+    await new Promise((resolve, reject) => {
+        updateState.reject = reject;
+        iframe.onload = resolve;
+        iframe.onerror = reject;
+    });
+
+    throwIfHomeworkUpdateAborted();
+
+    const iframeDocument = iframe.contentDocument;
+    if (!iframeDocument) throw new Error("iframeのコンテンツが取得できませんでした。");
+
+    const firstHomeworkRow = await waitForHomeworkRows(iframeDocument, HOMEWORK_ROWS_TIMEOUT_MS);
+    if (!firstHomeworkRow) throw new Error("課題データの待機がタイムアウトしました。");
+
+    throwIfHomeworkUpdateAborted();
+    return parseHomeworkData(iframeDocument);
+}
+
+async function updateHomeworkList(form, sid) {
+    const homeworkData = await fetchHomeworkData(sid);
+    const newHomeworkContainer = renderHomework(homeworkData);
+
+    replaceHomeworkContainer(form, sid, newHomeworkContainer);
+    await chrome.storage.local.set({
+        [HOMEWORK_CACHE_STORAGE_KEY]: newHomeworkContainer.outerHTML,
+    });
+
+    const { gasWebhook } = await chrome.storage.sync.get(['gasWebhook']);
+    if (gasWebhook === true) sendHomeworkToGAS(homeworkData);
+}
+
 /**
  * メイン処理
  */
 async function main() {
-    const form = safeQuerySelector('form#homehomlInfo[name="homeHomlActionForm"]');
+    const form = safeQuerySelector(HOMEWORK_FORM_SELECTOR);
     if (!form || document.getElementById(HOMEWORK_CONTAINER_ID)) return;
 
     const sid = getSid();
@@ -396,72 +488,11 @@ async function main() {
 
     window.addEventListener('pagehide', abortActiveHomeworkUpdate, { once: true });
 
-    // キャッシュされた課題をまず表示
-    try {
-        const { homework: cachedHtml } = await chrome.storage.local.get("homework");
-        if (cachedHtml && typeof cachedHtml === 'string') {
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = cachedHtml;
-            const cachedContainer = tempDiv.firstElementChild;
-            if (cachedContainer) {
-                cachedContainer.id = HOMEWORK_CONTAINER_ID;
-                form.insertAdjacentElement("afterend", cachedContainer);
-                setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
-            }
-        }
-    } catch (error) {
-        console.error("[KLPF] キャッシュされた課題の読み込みに失敗しました。", error);
-    }
+    await restoreCachedHomework(form, sid);
 
-    // 新しい課題データをバックグラウンドで取得
     const stopLoading = manageLoadingIndicator(true);
     try {
-        hasHomeworkUserInteracted = false;
-
-        const iframe = document.createElement("iframe");
-        iframe.src = `/lms/klmsKlil/;SID=${sid}`;
-        iframe.id = HOMEWORK_RAW_DATA_IFRAME_ID;
-        iframe.style.display = "none";
-
-        activeHomeworkUpdate = { iframe };
-        document.body.appendChild(iframe);
-
-        await new Promise((resolve, reject) => {
-            activeHomeworkUpdate.reject = reject;
-            iframe.onload = resolve;
-            iframe.onerror = reject;
-        });
-
-        if (hasHomeworkUserInteracted) {
-            throw new DOMException('Homework update aborted.', 'AbortError');
-        }
-
-        const iframeDoc = iframe.contentDocument;
-        if (!iframeDoc) throw new Error("iframeのコンテンツが取得できませんでした。");
-
-        // iframe内で課題のtbodyが生成されるのを待機する
-        const waiting_tbody = await waitForHomeworkRows(iframeDoc, 30000);
-        if (!waiting_tbody) throw new Error("課題データの待機がタイムアウトしました。");
-
-        if (hasHomeworkUserInteracted) {
-            throw new DOMException('Homework update aborted.', 'AbortError');
-        }
-
-        const homeworkData = parseHomeworkData(iframeDoc);
-        const newHomeworkContainer = renderHomework(homeworkData);
-
-        // 表示を更新し、キャッシュを保存
-        const oldContainer = document.getElementById(HOMEWORK_CONTAINER_ID);
-        if (oldContainer) oldContainer.remove();
-        form.insertAdjacentElement("afterend", newHomeworkContainer);
-        setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
-
-        await chrome.storage.local.set({ homework: newHomeworkContainer.outerHTML });
-
-        // GASに送信
-        const { gasWebhook } = await chrome.storage.sync.get(["gasWebhook"]);
-        if (gasWebhook === true) sendHomeworkToGAS(homeworkData);
-
+        await updateHomeworkList(form, sid);
     } catch (error) {
         if (error?.name === 'AbortError') {
             return;

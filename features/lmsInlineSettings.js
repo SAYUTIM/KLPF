@@ -25,6 +25,7 @@
     const THEME_ELEMENT_RULES_STORAGE_KEY = 'klpfSiteThemeElementRules';
     const THEME_RECENT_COLORS_STORAGE_KEY = 'klpfSiteThemeRecentColors';
     const THEME_PRESET_STORAGE_KEY = 'klpfSiteThemePreset';
+    const URGENT_HOMEWORK_DEADLINE_SELECTOR = '.klpf-homework-deadline-urgent';
     const THEME_ALLOWED_PROPERTIES = ['color', 'background-color', 'border-color'];
     const THEME_COLOR_CONFIG = [
         {
@@ -250,6 +251,9 @@
             existingStyle?.remove();
             return;
         }
+
+        // 期限間近の警告色は、親要素を対象にしたテーマルールより常に優先する。
+        rules.push(`${URGENT_HOMEWORK_DEADLINE_SELECTOR}, ${URGENT_HOMEWORK_DEADLINE_SELECTOR} * { color: red !important; }`);
 
         const style = existingStyle || document.createElement('style');
         style.id = THEME_STYLE_ID;

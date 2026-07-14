@@ -5,6 +5,22 @@
  * @file 自動出席機能を担当するモジュール
  */
 
+let autoAttendIntervalId = null;
+
+function stopAutoAttendPolling() {
+    if (!autoAttendIntervalId) return;
+    clearInterval(autoAttendIntervalId);
+    autoAttendIntervalId = null;
+}
+
+function startAutoAttendPolling(settings, state) {
+    stopAutoAttendPolling();
+    autoAttendIntervalId = setInterval(() => {
+        void runAutoAttendSequence(settings, state);
+    }, ATTEND_CHECK_INTERVAL_MS);
+    window.addEventListener('pagehide', stopAutoAttendPolling, { once: true });
+}
+
 /**
  * 機能の状態をlocalStorageで管理するクラス
  */
@@ -296,10 +312,9 @@ async function main() {
     // 実行条件を満たしている場合、または既にシーケンスが進行中の場合
     if (shouldRun(settings) || state.isReloaded()) {
         console.log("[KLPF] 自動出席処理を開始します。");
-        setInterval(async () => {
-            await runAutoAttendSequence(settings, state);
-        }, ATTEND_CHECK_INTERVAL_MS);
+        startAutoAttendPolling(settings, state);
     } else {
+        stopAutoAttendPolling();
         state.resetAll();
     }
 }
