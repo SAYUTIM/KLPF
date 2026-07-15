@@ -17,6 +17,12 @@
     const ROOT_ID = 'klpf-inline-settings-root';
     const THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-theme-menu-item';
     const CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-custom-image-theme-menu-item';
+    const ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE = 'data-klpf-attendance-refresh-menu-item';
+    const ATTENDANCE_REFRESH_TOAST_ID = 'klpf-attendance-refresh-toast';
+    const ATTENDANCE_REFRESH_STYLE_ID = 'klpf-attendance-refresh-menu-style';
+    const ATTENDANCE_RATE_FEATURE_KEY = 'attendanceRateDisplay';
+    const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
+    const ATTENDANCE_RATE_CONSENT_MESSAGE = 'この機能は、ブラウザの起動後、初めてKU-LMSを開いたとき、または「出席状況」の更新ボタンを押したときに、出席情報を取得するためバックグラウンドでKU-PORTへアクセスします。アクセス時にはChromeの新しいウィンドウが一時的に生成されます。KU-PORTがすでに開かれている場合や、通信中にKU-PORTが開かれた場合は処理を中断します。';
     const OPEN_CUSTOM_IMAGE_THEME_EVENT = 'klpf-open-custom-image-theme';
     const THEME_ROOT_ID = 'klpf-site-theme-root';
     const THEME_STYLE_ID = 'klpf-site-theme-style';
@@ -27,6 +33,15 @@
     const THEME_PRESET_STORAGE_KEY = 'klpfSiteThemePreset';
     const URGENT_HOMEWORK_DEADLINE_SELECTOR = '.klpf-homework-deadline-urgent';
     const THEME_ALLOWED_PROPERTIES = ['color', 'background-color', 'border-color'];
+    const THEME_KNOWN_ELEMENT_TARGETS = [
+        { className: 'klpf-attendance-last-date', selector: '.klpf-attendance-last-date', label: '最終カードタッチ', cascadeOrder: 3 },
+        { className: 'klpf-attendance-rate-value', selector: '.klpf-attendance-rate-value', label: '出席率', cascadeOrder: 3 },
+        { className: 'klpf-attendance-sync-state', selector: '.klpf-attendance-sync-state', label: '出席状況の更新状態', cascadeOrder: 3 },
+        { className: 'klpf-attendance-last-row', selector: '.klpf-attendance-last-row', label: '最終カードタッチの行', cascadeOrder: 2 },
+        { className: 'klpf-attendance-rate-row', selector: '.klpf-attendance-rate-row', label: '出席率・更新状態の行', cascadeOrder: 2 },
+        { className: 'klpf-attendance-rate', selector: '.klpf-attendance-rate', label: '出席状況', cascadeOrder: 1 },
+        { className: 'lms-cardrole', selector: '.lms-cardrole', label: '.lms-cardrole', cascadeOrder: 0 },
+    ];
     const THEME_COLOR_CONFIG = [
         {
             key: 'text',
@@ -92,6 +107,10 @@
     let isOpen = false;
     let hasPendingReloadPrompt = false;
     let isReloadPromptOpen = false;
+    let isAttendanceConsentOpen = false;
+    let attendanceManualRefreshPending = false;
+    let attendanceRefreshCooldownEndsAt = 0;
+    let attendanceRefreshCountdownTimer = null;
     const activeScrollLocks = new Set();
     let state = {
         settings: {},
@@ -221,6 +240,7 @@
         const orderedElementRules = normalizeElementRules(elementRules)
             .map((rule, index) => {
                 let depth = 0;
+                const knownTarget = THEME_KNOWN_ELEMENT_TARGETS.find(target => target.selector === rule.selector);
                 try {
                     let element = document.querySelector(rule.selector);
                     while (element?.parentElement) {
@@ -230,6 +250,8 @@
                 } catch (_error) {
                     // Keep an unreadable selector at its original relative position.
                 }
+                // 出席表示がまだDOMへ挿入されていなくても、欄全体→各行→個別表示の順に上書きする。
+                if (knownTarget) depth = 100 + knownTarget.cascadeOrder;
                 return { rule, index, depth };
             })
             .sort((left, right) => left.depth - right.depth || left.index - right.index)
@@ -942,6 +964,8 @@
 
     function getThemeElementLabel(element) {
         if (!(element instanceof Element)) return '未選択';
+        const knownTarget = THEME_KNOWN_ELEMENT_TARGETS.find(target => element.classList.contains(target.className));
+        if (knownTarget) return knownTarget.label;
         const className = [...element.classList].filter(name => !name.startsWith('klpf-')).slice(0, 2).join('.');
         const identity = element.id ? `#${element.id}` : (className ? `.${className}` : '');
         const text = element.textContent?.replace(/\s+/g, ' ').trim().slice(0, 28);
@@ -950,6 +974,8 @@
 
     function getThemeHierarchyLabel(element) {
         if (!(element instanceof Element)) return '';
+        const knownTarget = THEME_KNOWN_ELEMENT_TARGETS.find(target => element.classList.contains(target.className));
+        if (knownTarget) return knownTarget.label;
         if (element.id && !element.id.startsWith('fc-dom-')) return `#${element.id}`;
         const className = [...element.classList].find(name => !name.startsWith('klpf-'));
         return className ? `.${className}` : element.tagName.toLowerCase();
@@ -979,6 +1005,8 @@
 
     function buildThemeSelector(element) {
         if (!(element instanceof Element)) return null;
+        const knownTarget = THEME_KNOWN_ELEMENT_TARGETS.find(target => element.classList.contains(target.className));
+        if (knownTarget) return knownTarget.selector;
         if (element.id && !element.id.startsWith('klpf-') && !element.id.startsWith('fc-dom-')) {
             const selector = `#${CSS.escape(element.id)}`;
             if (document.querySelectorAll(selector).length === 1) return selector;
@@ -1147,6 +1175,12 @@
                 candidates.push(current);
             }
             current = current.parentElement;
+        }
+        // 科目名などをクリックした場合、兄弟要素の出席欄は通常の親子階層に含まれないため明示的に候補へ加える。
+        const courseCard = element.closest('.lms-card');
+        const attendanceRole = courseCard?.querySelector('.lms-cardrole');
+        if (attendanceRole && !candidates.includes(attendanceRole)) {
+            candidates.splice(Math.min(1, candidates.length), 0, attendanceRole);
         }
         themeInspectCandidates = [...new Set(candidates)];
         themeHoveredElement?.removeAttribute('data-klpf-theme-hover');
@@ -1770,6 +1804,24 @@
     }
 
     function getPanelMarkup() {
+        if (isAttendanceConsentOpen) {
+            return `
+                <style>${getStyles()}</style>
+                <div class="overlay is-open is-confirm" part="overlay">
+                    <section class="panel" role="dialog" aria-modal="true" aria-labelledby="klpf-attendance-consent-title">
+                        <div class="prompt-body">
+                            <h2 class="prompt-title" id="klpf-attendance-consent-title">出席率表示を有効にしますか？</h2>
+                            <p class="prompt-text">${ATTENDANCE_RATE_CONSENT_MESSAGE}</p>
+                            <div class="prompt-actions">
+                                <button type="button" class="prompt-button secondary" data-attendance-consent-cancel>キャンセル</button>
+                                <button type="button" class="prompt-button primary" data-attendance-consent-confirm>OK</button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            `;
+        }
+
         if (isReloadPromptOpen) {
             return `
                 <style>${getStyles()}</style>
@@ -1872,6 +1924,7 @@
         await loadState();
         hasPendingReloadPrompt = false;
         isReloadPromptOpen = false;
+        isAttendanceConsentOpen = false;
         isOpen = true;
         updatePageScrollLock('settings', true);
         render();
@@ -1882,6 +1935,16 @@
         if (!input || state.allDisabled) return;
 
         const key = input.dataset.featureKey;
+        if (key === ATTENDANCE_RATE_FEATURE_KEY && input.checked) {
+            const stored = await storageGet('sync', [ATTENDANCE_RATE_CONSENT_KEY]);
+            if (stored[ATTENDANCE_RATE_CONSENT_KEY] !== true) {
+                input.checked = false;
+                isAttendanceConsentOpen = true;
+                render();
+                shadowRoot.querySelector('[data-attendance-consent-confirm]')?.focus();
+                return;
+            }
+        }
         await storageSet('sync', { [key]: input.checked });
         state.settings[key] = input.checked;
         markSettingsChanged();
@@ -1913,7 +1976,10 @@
             return;
         }
 
-        const localSettings = await storageGet('local', [PREVIOUS_SETTINGS_KEY]);
+        const [localSettings, consentSettings] = await Promise.all([
+            storageGet('local', [PREVIOUS_SETTINGS_KEY]),
+            storageGet('sync', [ATTENDANCE_RATE_CONSENT_KEY]),
+        ]);
         const previousSettings = localSettings[PREVIOUS_SETTINGS_KEY] || {};
         const restoredSettings = features.reduce((values, feature) => {
             values[feature.key] = typeof previousSettings[feature.key] === 'boolean'
@@ -1921,6 +1987,9 @@
                 : feature.defaultValue;
             return values;
         }, {});
+        if (consentSettings[ATTENDANCE_RATE_CONSENT_KEY] !== true) {
+            restoredSettings[ATTENDANCE_RATE_FEATURE_KEY] = false;
+        }
 
         state.allDisabled = false;
         await storageSet('local', { [ALL_DISABLED_KEY]: false });
@@ -1961,9 +2030,13 @@
         const closeButton = shadowRoot.querySelector('.close');
         const reloadButton = shadowRoot.querySelector('[data-reload-page]');
         const closeWithoutReloadButton = shadowRoot.querySelector('[data-close-without-reload]');
+        const attendanceConsentConfirm = shadowRoot.querySelector('[data-attendance-consent-confirm]');
+        const attendanceConsentCancel = shadowRoot.querySelector('[data-attendance-consent-cancel]');
 
         overlay?.addEventListener('click', (event) => {
-            if (event.target === overlay && !isReloadPromptOpen) requestClosePanel();
+            if (event.target === overlay && !isReloadPromptOpen && !isAttendanceConsentOpen) {
+                requestClosePanel();
+            }
         });
         panel?.addEventListener('change', (event) => {
             handleMasterToggle(event);
@@ -1972,6 +2045,22 @@
         closeButton?.addEventListener('click', requestClosePanel);
         reloadButton?.addEventListener('click', () => window.location.reload());
         closeWithoutReloadButton?.addEventListener('click', closePanelImmediately);
+        attendanceConsentConfirm?.addEventListener('click', async () => {
+            await storageSet('sync', {
+                [ATTENDANCE_RATE_CONSENT_KEY]: true,
+                [ATTENDANCE_RATE_FEATURE_KEY]: true,
+            });
+            state.settings[ATTENDANCE_RATE_FEATURE_KEY] = true;
+            isAttendanceConsentOpen = false;
+            markSettingsChanged();
+            render();
+        });
+        attendanceConsentCancel?.addEventListener('click', async () => {
+            await storageSet('sync', { [ATTENDANCE_RATE_FEATURE_KEY]: false });
+            state.settings[ATTENDANCE_RATE_FEATURE_KEY] = false;
+            isAttendanceConsentOpen = false;
+            render();
+        });
     }
 
     function render() {
@@ -2060,6 +2149,191 @@
         return item;
     }
 
+    function showAttendanceRefreshError(message) {
+        let toast = document.getElementById(ATTENDANCE_REFRESH_TOAST_ID);
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = ATTENDANCE_REFRESH_TOAST_ID;
+            toast.setAttribute('role', 'status');
+            toast.setAttribute('aria-live', 'polite');
+            Object.assign(toast.style, {
+                position: 'fixed',
+                right: '18px',
+                bottom: '18px',
+                zIndex: '2147483647',
+                maxWidth: 'min(360px, calc(100vw - 36px))',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                color: '#ffffff',
+                fontSize: '13px',
+                lineHeight: '1.5',
+                boxShadow: '0 6px 20px rgba(0, 0, 0, .2)',
+                transition: 'opacity .2s ease, transform .2s ease',
+            });
+            (document.body || document.documentElement).appendChild(toast);
+        }
+
+        toast.textContent = message;
+        toast.style.background = '#b42318';
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
+        window.clearTimeout(showAttendanceRefreshError.timer);
+        showAttendanceRefreshError.timer = window.setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(6px)';
+        }, 5000);
+    }
+
+    function ensureAttendanceRefreshMenuStyle() {
+        if (document.getElementById(ATTENDANCE_REFRESH_STYLE_ID)) return;
+        const style = document.createElement('style');
+        style.id = ATTENDANCE_REFRESH_STYLE_ID;
+        style.textContent = `
+            [${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}] {
+                padding: 0 !important;
+            }
+            [${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}].is-klpf-cooldown {
+                position: relative;
+            }
+            [${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}].is-klpf-cooldown a {
+                color: #7a7a7a !important;
+                pointer-events: none;
+            }
+            [${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}].is-klpf-cooldown::after {
+                position: absolute;
+                inset: 0;
+                z-index: 2;
+                border-radius: 2px;
+                background: rgba(210, 214, 218, .42);
+                content: '';
+                cursor: not-allowed;
+            }
+        `;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    function renderAttendanceRefreshCooldown() {
+        const remainingSeconds = Math.max(
+            0,
+            Math.ceil((attendanceRefreshCooldownEndsAt - Date.now()) / 1000)
+        );
+        document.querySelectorAll(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`).forEach(item => {
+            const link = item.querySelector('a');
+            const label = item.querySelector('span');
+            const isCoolingDown = remainingSeconds > 0;
+            if (label) label.textContent = isCoolingDown
+                ? `出席状況(${remainingSeconds})`
+                : '出席状況🔄️';
+            item.classList.toggle('is-klpf-cooldown', isCoolingDown);
+            if (link) {
+                if (isCoolingDown) {
+                    link.setAttribute('aria-disabled', 'true');
+                    link.setAttribute('tabindex', '-1');
+                } else {
+                    link.removeAttribute('aria-disabled');
+                    link.removeAttribute('tabindex');
+                }
+            }
+        });
+
+        if (remainingSeconds === 0 && attendanceRefreshCountdownTimer !== null) {
+            window.clearInterval(attendanceRefreshCountdownTimer);
+            attendanceRefreshCountdownTimer = null;
+        }
+        return remainingSeconds;
+    }
+
+    function startAttendanceRefreshCooldown(remainingSeconds) {
+        const seconds = Math.max(0, Number(remainingSeconds) || 0);
+        attendanceRefreshCooldownEndsAt = Date.now() + seconds * 1000;
+        renderAttendanceRefreshCooldown();
+        if (attendanceRefreshCountdownTimer !== null) {
+            window.clearInterval(attendanceRefreshCountdownTimer);
+        }
+        attendanceRefreshCountdownTimer = seconds > 0
+            ? window.setInterval(renderAttendanceRefreshCooldown, 250)
+            : null;
+    }
+
+    async function syncAttendanceRefreshCooldown() {
+        try {
+            const response = await chrome.runtime.sendMessage({
+                type: 'get-attendance-refresh-cooldown',
+            });
+            startAttendanceRefreshCooldown(response?.remainingSeconds || 0);
+        } catch (error) {
+            console.warn('[KLPF] 出席状況の更新待ち時間を取得できませんでした。', error);
+        }
+    }
+
+    async function handleAttendanceRefreshClick(link) {
+        const localRemainingSeconds = renderAttendanceRefreshCooldown();
+        if (localRemainingSeconds > 0) {
+            showAttendanceRefreshError(
+                `出席状況は30秒に1回更新できます。あと${localRemainingSeconds}秒お待ちください。`
+            );
+            return;
+        }
+        if (link.dataset.klpfRefreshing === 'true') return;
+        link.dataset.klpfRefreshing = 'true';
+        link.setAttribute('aria-disabled', 'true');
+        attendanceManualRefreshPending = true;
+        let refreshStarted = false;
+
+        try {
+            const response = await chrome.runtime.sendMessage({
+                type: 'request-attendance-rate-refresh',
+                manual: true,
+            });
+            if (response?.status === 'cooldown') {
+                startAttendanceRefreshCooldown(response.remainingSeconds);
+                showAttendanceRefreshError(
+                    `出席状況は30秒に1回更新できます。あと${response.remainingSeconds}秒お待ちください。`
+                );
+            } else if (response?.status === 'kuport-open') {
+                showAttendanceRefreshError('Ku-portが開いているため、出席状況の更新を中止しました。');
+            } else if (response?.status === 'already-running') {
+                showAttendanceRefreshError('出席状況を更新中です。完了までお待ちください。');
+            } else if (['started', 'started-existing-session'].includes(response?.status)) {
+                refreshStarted = true;
+                await syncAttendanceRefreshCooldown();
+            } else if (response?.status === 'completed') {
+                attendanceManualRefreshPending = false;
+                await syncAttendanceRefreshCooldown();
+            } else {
+                showAttendanceRefreshError('出席状況の更新を開始できませんでした。');
+            }
+        } catch (error) {
+            console.warn('[KLPF] 出席状況の手動更新を開始できませんでした。', error);
+            showAttendanceRefreshError('出席状況の更新中にエラーが発生しました。');
+        } finally {
+            if (!refreshStarted) attendanceManualRefreshPending = false;
+            delete link.dataset.klpfRefreshing;
+            link.removeAttribute('aria-disabled');
+            renderAttendanceRefreshCooldown();
+        }
+    }
+
+    function buildAttendanceRefreshMenuItem() {
+        ensureAttendanceRefreshMenuStyle();
+        const item = document.createElement('li');
+        item.setAttribute(ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE, '');
+
+        const link = document.createElement('a');
+        link.href = '#';
+        const label = document.createElement('span');
+        label.textContent = '出席状況🔄️';
+        link.appendChild(label);
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void handleAttendanceRefreshClick(link);
+        });
+        item.appendChild(link);
+        window.requestAnimationFrame(renderAttendanceRefreshCooldown);
+        return item;
+    }
+
     function getSettingsMenus() {
         return [...new Set([
             ...document.querySelectorAll('.selectBoxSettei.lms-user-menu .selectBox.lms-sp-user-menu'),
@@ -2072,7 +2346,7 @@
     function injectMenuItem() {
         const menus = getSettingsMenus();
         const menuSet = new Set(menus);
-        document.querySelectorAll(`#${MENU_ITEM_ID}, [${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}], [${THEME_MENU_ITEM_ATTRIBUTE}], [${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
+        document.querySelectorAll(`#${MENU_ITEM_ID}, [${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}], [${THEME_MENU_ITEM_ATTRIBUTE}], [${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}], [${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
             if (!menuSet.has(item.parentElement)) item.remove();
         });
 
@@ -2087,6 +2361,7 @@
                 menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`)?.remove();
                 menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
                 menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+                menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`)?.remove();
                 continue;
             }
 
@@ -2111,9 +2386,23 @@
             }
 
             let customImageThemeItem = menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`);
-            if (!customImageThemeItem) customImageThemeItem = buildCustomImageThemeMenuItem();
-            if (menu.lastElementChild !== customImageThemeItem) {
+            if (!customImageThemeItem) {
+                customImageThemeItem = buildCustomImageThemeMenuItem();
                 menu.appendChild(customImageThemeItem);
+            }
+
+            const attendanceFeature = features.find(feature => feature.key === ATTENDANCE_RATE_FEATURE_KEY);
+            const attendanceEnabled = attendanceFeature
+                && getFeatureValue(state.settings, attendanceFeature);
+            let attendanceRefreshItem = menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`);
+            if (attendanceEnabled) {
+                if (!attendanceRefreshItem) attendanceRefreshItem = buildAttendanceRefreshMenuItem();
+                attendanceRefreshItem.classList.remove('clickableSettei', 'on');
+                if (customImageThemeItem.nextElementSibling !== attendanceRefreshItem) {
+                    customImageThemeItem.insertAdjacentElement('afterend', attendanceRefreshItem);
+                }
+            } else {
+                attendanceRefreshItem?.remove();
             }
         }
     }
@@ -2179,9 +2468,31 @@
         }
     });
 
+    chrome.runtime.onMessage.addListener((message) => {
+        if (!attendanceManualRefreshPending || message.type !== 'klpf-attendance-debug') return false;
+        if (message.stage === '処理終了') {
+            attendanceManualRefreshPending = false;
+            if (message.details?.status !== 'completed') {
+                showAttendanceRefreshError('出席状況の更新に失敗しました。');
+            }
+        } else if (message.stage === 'Ku-portが別タブで開かれたため出席状況の取得中止') {
+            attendanceManualRefreshPending = false;
+            showAttendanceRefreshError(
+                '更新中にKu-portが開かれたため、出席状況の更新を中止しました。'
+            );
+        } else if (message.stage === 'バックグラウンド取得失敗') {
+            attendanceManualRefreshPending = false;
+            showAttendanceRefreshError('出席状況の更新に失敗しました。');
+        }
+        return false;
+    });
+
     loadFeatureDefinitions()
         .then(loadState)
-        .then(injectMenuItem)
+        .then(() => {
+            injectMenuItem();
+            return syncAttendanceRefreshCooldown();
+        })
         .catch((error) => {
             console.warn('[KLPF] KU-LMS内設定の初期状態読み込みに失敗しました。', error);
         });
@@ -2192,7 +2503,10 @@
     globalThis[INSTANCE_KEY] = {
         refresh() {
             loadState()
-                .then(syncOptionalCustomizationState)
+                .then(() => {
+                    syncOptionalCustomizationState();
+                    return syncAttendanceRefreshCooldown();
+                })
                 .catch((error) => {
                     console.warn('[KLPF] サイトテーマ色を再適用できませんでした。', error);
                 });

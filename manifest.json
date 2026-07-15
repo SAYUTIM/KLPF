@@ -2,11 +2,12 @@
   "manifest_version": 3,
   "name": "KLPF",
   "description": "KOGAKUIN UNIVERSITY - Learning Management System Plugin Framework : https://sayutim.github.io/KLPF/",
-  "version": "4.3.1",
+  "version": "4.4.0",
   "permissions": [
     "tabs",
     "storage", 
     "scripting",
+    "offscreen",
     "contextMenus"
   ],
   "background": {

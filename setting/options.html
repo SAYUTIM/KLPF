@@ -78,6 +78,14 @@
                 </label>
             </div>
 
+            <div class="switch-container" title="ブラウザ起動後、初めてKu-LMSホームを開いたときだけKu-portから出席率と最終カードタッチ日を取得します。Ku-portが開いている場合は自動取得しません。">
+                <span class="switch-label">出席率表示</span>
+                <label class="switch">
+                    <input type="checkbox" id="attendance-rate-display">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
             <div class="switch-container" title="教材ページで教材リンクの隣に一括開封のボタンを配置します。それをクリックするとそのリンクの中にある教材を自動で開き、参照済みにします。">
                 <span class="switch-label">教材一括開封</span>
                 <label class="switch">
@@ -237,6 +245,19 @@
             <div class="backup-modal-actions">
                 <button type="button" id="backup-cancel-button" class="backup-action-button backup-action-button-secondary">キャンセル</button>
                 <button type="button" id="backup-confirm-button" class="backup-action-button">エクスポートする</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="attendance-consent-modal" class="modal-overlay">
+        <div class="modal-content attendance-consent-modal-content" role="dialog" aria-modal="true" aria-labelledby="attendance-consent-title">
+            <h2 id="attendance-consent-title">出席率表示を有効にしますか？</h2>
+            <p>
+                この機能は、ブラウザの起動後、初めてKU-LMSを開いたとき、または「出席状況」の更新ボタンを押したときに、出席情報を取得するためバックグラウンドでKU-PORTへアクセスします。アクセス時にはChromeの新しいウィンドウが一時的に生成されます。KU-PORTがすでに開かれている場合や、通信中にKU-PORTが開かれた場合は処理を中断します。
+            </p>
+            <div class="backup-modal-actions">
+                <button type="button" id="attendance-consent-cancel" class="backup-action-button backup-action-button-secondary">キャンセル</button>
+                <button type="button" id="attendance-consent-confirm" class="backup-action-button">OK</button>
             </div>
         </div>
     </div>

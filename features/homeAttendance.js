@@ -110,13 +110,17 @@
     }
 
     function handleCourseNavigationPointerDown(event) {
-        if (event.target instanceof Element && event.target.closest(COURSE_LINK_SELECTOR)) {
+        if (!(event.target instanceof Element) || event.target.closest(`.${BADGE_CLASS}`)) {
+            return;
+        }
+        if (event.target.closest(COURSE_LINK_SELECTOR)) {
             hasUserInteracted = true;
         }
     }
 
     function handleCourseNavigationClick(event) {
         if (!(event.target instanceof Element)) return;
+        if (event.target.closest(`.${BADGE_CLASS}`)) return;
         const link = event.target.closest(COURSE_LINK_SELECTOR);
         if (!link) return;
 
@@ -135,6 +139,7 @@
     function isHomePage() {
         return window.location.href.startsWith(LMS_HOME_URL)
             || window.location.href.startsWith(LMS_HOME_BACK_URL)
+            || window.location.href.startsWith(LMS_HOME_KLIL_BACK_URL)
             || !!safeQuerySelector(HOME_INFO_FORM_SELECTOR)
             || !!safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
     }
@@ -275,7 +280,7 @@
             .${CARD_INFO_CLASS} {
                 position: relative;
                 padding-right: 68px;
-                z-index: 1;
+                z-index: 2;
             }
             .${BADGE_CLASS} {
                 position: absolute;
@@ -435,11 +440,13 @@
     function handleAttendanceBadgePointerDown(event) {
         event.preventDefault();
         event.stopPropagation();
+        event.stopImmediatePropagation();
     }
 
     function handleAttendanceBadgeClick(event, courseId) {
         event.preventDefault();
         event.stopPropagation();
+        event.stopImmediatePropagation();
 
         const badge = event.currentTarget;
         if (!(badge instanceof HTMLButtonElement) || badge.disabled) {

@@ -691,6 +691,23 @@ select:hover {
     margin: 0 0 18px 0;
 }
 
+.attendance-consent-modal-content {
+    max-width: 560px;
+    text-align: left;
+}
+
+.attendance-consent-modal-content h2 {
+    margin: 0 0 18px;
+    color: #fff;
+    font-size: 24px;
+    text-align: center;
+}
+
+.attendance-consent-modal-content p {
+    font-size: 15px;
+    line-height: 1.8;
+}
+
 .backup-modal-actions {
     display: flex;
     gap: 12px;

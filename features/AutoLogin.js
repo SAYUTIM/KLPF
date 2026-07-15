@@ -35,6 +35,20 @@ function handleLmsStartPage() {
 }
 
 /**
+ * Ku-portの入口・再ログイン画面から統合認証へ進む。
+ */
+function findKuportLoginButton() {
+    return safeQuerySelectorAll('button').find(button => {
+        const label = (button.textContent || '').replace(/\s+/g, ' ').trim();
+        return label === 'ログイン' || label.includes('再ログインはこちら');
+    }) || null;
+}
+
+function notifyKuportAutoLoginUnavailable() {
+    void chrome.runtime.sendMessage({ type: 'kuport-auto-login-unavailable' }).catch(() => {});
+}
+
+/**
  * 統合認証のユーザー名入力ページ（prelogin.cgi）を処理する。
  * @param {string} username
  */
@@ -265,14 +279,27 @@ async function main() {
         return;
     }
 
+    const { href } = window.location;
+    if (href.startsWith(KUPORT_URL)) {
+        const loginButton = findKuportLoginButton();
+        if (!loginButton) return;
+
+        const { username, password } = await getCredentials();
+        if (!username || !password) {
+            notifyKuportAutoLoginUnavailable();
+            return;
+        }
+        loginButton.click();
+        return;
+    }
+
     const { username, password, totpSecret } = await getCredentials();
 
     if (!username || !password) {
         console.log("[KLPF] ユーザー名またはパスワードが未設定のため、自動ログインをスキップします。");
+        notifyKuportAutoLoginUnavailable();
         return;
     }
-
-    const { href } = window.location;
 
     if (href.startsWith(LMS_LOGIN_URL)) {
         handleLmsStartPage();
@@ -281,6 +308,10 @@ async function main() {
     } else if (href.startsWith(SSO_LOGIN_URL)) {
         handleLogin(password);
     } else if (href.startsWith(SSO_OTP_URL)) {
+        if (!totpSecret) {
+            notifyKuportAutoLoginUnavailable();
+            return;
+        }
         await handleTotpPage(totpSecret);
     } else if (href.startsWith(SSO_TIMEOUT_URL)) {
         sso_timeoutpage();

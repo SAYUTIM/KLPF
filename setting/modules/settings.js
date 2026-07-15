@@ -8,6 +8,10 @@
 
 import { CONTENT_SCRIPTS_CONFIG } from '../../scripts.config.js';
 
+const ATTENDANCE_RATE_FEATURE_KEY = 'attendanceRateDisplay';
+const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
+let attendanceConsentResolver = null;
+
 /**
  * 設定項目の定義。
  * HTML要素のID、ストレージキー、値の型をマッピングする。
@@ -27,6 +31,7 @@ export const SETTINGS_CONFIG = [
     { id: 'kuport-dialog-outside-close', key: 'kuportDialogOutsideClose', type: 'checked', storage: 'sync' },
     { id: 'search-subject',  key: 'searchSubject', type: 'checked', storage: 'sync' },
     { id: 'home-attendance-badge', key: 'homeAttendanceBadge', type: 'checked', storage: 'sync' },
+    { id: 'attendance-rate-display', key: 'attendanceRateDisplay', type: 'checked', storage: 'sync' },
     { id: 'dark-mode',       key: 'darkMode',      type: 'checked', storage: 'sync' },
     { id: 'home-work',        key: 'homework',      type: 'checked', storage: 'sync' },
     { id: 'logout-block',    key: 'logoutblock',   type: 'checked', storage: 'sync' },
@@ -121,6 +126,43 @@ export async function saveSettings() {
     }
 }
 
+function showAttendanceConsentModal() {
+    const modal = document.getElementById('attendance-consent-modal');
+    if (!modal) return Promise.resolve(false);
+
+    modal.classList.add('visible');
+    document.getElementById('attendance-consent-confirm')?.focus();
+    return new Promise((resolve) => {
+        attendanceConsentResolver = resolve;
+    });
+}
+
+function resolveAttendanceConsent(accepted) {
+    document.getElementById('attendance-consent-modal')?.classList.remove('visible');
+    attendanceConsentResolver?.(accepted);
+    attendanceConsentResolver = null;
+}
+
+async function handleAttendanceRateToggle(element) {
+    element.disabled = true;
+    try {
+        if (element.checked) {
+            const stored = await chrome.storage.sync.get(ATTENDANCE_RATE_CONSENT_KEY);
+            if (stored[ATTENDANCE_RATE_CONSENT_KEY] !== true) {
+                const accepted = await showAttendanceConsentModal();
+                if (accepted) {
+                    await chrome.storage.sync.set({ [ATTENDANCE_RATE_CONSENT_KEY]: true });
+                } else {
+                    element.checked = false;
+                }
+            }
+        }
+        await saveSettings();
+    } finally {
+        element.disabled = false;
+    }
+}
+
 /**
  * ストレージから設定を読み込み、UIに反映させる。
  * @returns {Promise<void>}
@@ -182,11 +224,22 @@ export async function loadAndApplySettings() {
  * 全ての設定要素にイベントリスナーを登録する。
  */
 export function addEventListenersToSettings() {
+    document.getElementById('attendance-consent-confirm')?.addEventListener('click', () => {
+        resolveAttendanceConsent(true);
+    });
+    document.getElementById('attendance-consent-cancel')?.addEventListener('click', () => {
+        resolveAttendanceConsent(false);
+    });
+
     for (const config of SETTINGS_CONFIG) {
         const element = document.getElementById(config.id);
         if (element) {
             const eventType = config.type === 'value' ? 'input' : 'change';
-            element.addEventListener(eventType, saveSettings);
+            if (config.key === ATTENDANCE_RATE_FEATURE_KEY) {
+                element.addEventListener(eventType, () => void handleAttendanceRateToggle(element));
+            } else {
+                element.addEventListener(eventType, saveSettings);
+            }
         }
     }
 }

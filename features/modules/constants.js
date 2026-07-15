@@ -10,11 +10,13 @@ if (typeof LMS_URL === 'undefined') {
     var LMS_URL = 'https://study.ns.kogakuin.ac.jp/';
     var LMS_HOME_URL = `${LMS_URL}lms/homeHoml/`;
     var LMS_HOME_BACK_URL = `${LMS_URL}lms/tpicTpil/doBack`;
+    var LMS_HOME_KLIL_BACK_URL = `${LMS_URL}lms/klmsKlil/doBack`;
     var LMS_ERROR_URL = `${LMS_URL}lms/error/`
 
     // ログインページ
     var LMS_LOGIN_URL = `${LMS_URL}lms/lginLgir/`;
     var KU_SSO = 'https://slink.secioss.com/';
+    var KUPORT_URL = 'https://ku-port.sc.kogakuin.ac.jp/';
     var SSO_PRELOGIN_URL = `${KU_SSO}pub/prelogin.cgi`;
     var SSO_LOGIN_URL = `${KU_SSO}pub/login.cgi`;
     var SSO_OTP_URL = `${KU_SSO}pub/otplogin.cgi`;
