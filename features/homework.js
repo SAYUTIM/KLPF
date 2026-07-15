@@ -19,6 +19,8 @@ const HOMEWORK_CACHE_STORAGE_KEY = 'homework';
 const HOMEWORK_FORM_SELECTOR = 'form#homehomlInfo[name="homeHomlActionForm"]';
 const HOMEWORK_DEADLINE_CLASS = 'klpf-homework-deadline';
 const HOMEWORK_URGENT_DEADLINE_CLASS = 'klpf-homework-deadline-urgent';
+const HOMEWORK_URGENT_THRESHOLD_DAYS = 7;
+const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /**
  * 課題データを表現する型定義
@@ -203,6 +205,29 @@ function waitForHomeworkRows(doc, timeout = 30000) {
 }
 
 /**
+ * 期限文字列が現在時刻から7日以内か判定する。
+ * @param {string} deadlineText - KU-LMSに表示される期限文字列。
+ * @param {Date} now - 判定基準となる現在時刻。
+ * @returns {boolean}
+ */
+function isUrgentHomeworkDeadline(deadlineText, now = new Date()) {
+    const normalizedDeadline = deadlineText.replace(/^📅\s*/, '').trim();
+    const deadlineDate = new Date(normalizedDeadline.replace(/年|月/g, "/").replace("日", ""));
+    if (!Number.isFinite(deadlineDate.getTime())) return false;
+
+    const remainingDays = (deadlineDate - now) / MILLISECONDS_PER_DAY;
+    return remainingDays >= 0 && remainingDays <= HOMEWORK_URGENT_THRESHOLD_DAYS;
+}
+
+function applyHomeworkDeadlineState(deadlineElement, deadlineText) {
+    const isUrgent = isUrgentHomeworkDeadline(deadlineText);
+    deadlineElement.classList.add(HOMEWORK_DEADLINE_CLASS);
+    deadlineElement.classList.toggle(HOMEWORK_URGENT_DEADLINE_CLASS, isUrgent);
+    deadlineElement.style.color = isUrgent ? 'red' : '#666';
+    deadlineElement.style.fontSize = '0.8em';
+}
+
+/**
  * 課題コンテナにクリックイベントリスナーを設定する。
  * @param {string} containerId - イベントリスナーを設定するコンテナのID。
  * @param {string} sid - セッションID。
@@ -211,15 +236,11 @@ function setupHomeworkClickListener(containerId, sid) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // 旧バージョンで保存されたキャッシュにも期限クラスを補う。
+    // キャッシュ表示時にも現在時刻を基準に期限の警告状態を更新する。
     container.querySelectorAll(`.${HOMEWORK_ITEM_CLASS}`).forEach((item) => {
         const deadlineElement = item.firstElementChild;
         if (!(deadlineElement instanceof HTMLElement)) return;
-        deadlineElement.classList.add(HOMEWORK_DEADLINE_CLASS);
-        deadlineElement.classList.toggle(
-            HOMEWORK_URGENT_DEADLINE_CLASS,
-            deadlineElement.style.color.trim().toLowerCase() === 'red',
-        );
+        applyHomeworkDeadlineState(deadlineElement, deadlineElement.textContent || '');
     });
 
     container.addEventListener('pointerdown', (event) => {
@@ -319,13 +340,8 @@ function renderHomework(homeworkData) {
         }
 
         const deadlineDiv = document.createElement('div');
-        const deadlineDate = new Date(item.deadline.replace(/年|月/g, "/").replace("日", ""));
-        const diff = (deadlineDate - new Date()) / (1000 * 60 * 60 * 24);
-        const isUrgentDeadline = diff >= 0 && diff <= 7;
-        deadlineDiv.className = HOMEWORK_DEADLINE_CLASS;
-        deadlineDiv.classList.toggle(HOMEWORK_URGENT_DEADLINE_CLASS, isUrgentDeadline);
-        deadlineDiv.style.cssText = isUrgentDeadline ? "color: red; font-size: 0.8em;" : "color: #666; font-size: 0.8em;";
         deadlineDiv.textContent = `📅 ${item.deadline}`;
+        applyHomeworkDeadlineState(deadlineDiv, item.deadline);
 
         const lessonDiv = document.createElement('div');
         lessonDiv.style.fontWeight = "bold";

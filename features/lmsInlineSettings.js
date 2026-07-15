@@ -31,7 +31,7 @@
     const THEME_ELEMENT_RULES_STORAGE_KEY = 'klpfSiteThemeElementRules';
     const THEME_RECENT_COLORS_STORAGE_KEY = 'klpfSiteThemeRecentColors';
     const THEME_PRESET_STORAGE_KEY = 'klpfSiteThemePreset';
-    const URGENT_HOMEWORK_DEADLINE_SELECTOR = '.klpf-homework-deadline-urgent';
+    const URGENT_HOMEWORK_DEADLINE_SELECTOR = '#homework .homeworkItem > .klpf-homework-deadline.klpf-homework-deadline-urgent';
     const THEME_ALLOWED_PROPERTIES = ['color', 'background-color', 'border-color'];
     const THEME_KNOWN_ELEMENT_TARGETS = [
         { className: 'klpf-attendance-last-date', selector: '.klpf-attendance-last-date', label: '最終カードタッチ', cascadeOrder: 3 },
@@ -274,7 +274,7 @@
             return;
         }
 
-        // 期限間近の警告色は、親要素を対象にしたテーマルールより常に優先する。
+        // IDを含む親要素のテーマルールより詳細度を高くし、期限警告色を常に優先する。
         rules.push(`${URGENT_HOMEWORK_DEADLINE_SELECTOR}, ${URGENT_HOMEWORK_DEADLINE_SELECTOR} * { color: red !important; }`);
 
         const style = existingStyle || document.createElement('style');
