@@ -1,45 +1,125 @@
-// Copyright (c) 2025 SAYU
+// Copyright (c) 2025-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
-document.addEventListener('DOMContentLoaded', () => {
-  const setupButton = document.getElementById('setup-button');
-  setupButton.addEventListener('click', () => {
-    const userConfirmation = window.confirm(
-      'これからの自動環境構築には1分から3分程度かかることがあります。\n\n' +
-      '処理中に、Googleの認証や権限の許可を求める画面が2回表示されますので、すべて許可してください。\n\n' +
-      '設定を正常に完了するために、このタブを閉じたり、他のタブへ移動したりしないようお願いいたします。\n\n' +
-      '準備はよろしいですか？'
-    );
-    chrome.storage.local.set({ gassetup_start: 1 });
-    chrome.storage.local.get({ gasWebhook : 1 });
-    chrome.runtime.sendMessage({
-        type: 'inject',
-        data: "gassetup"
+const HEADER_OFFSET_EXTRA = 22;
+const COPY_FEEDBACK_DURATION_MS = 1800;
+
+function getHeaderOffset() {
+  const header = document.querySelector('.site-header');
+  return (header?.getBoundingClientRect().height || 0) + HEADER_OFFSET_EXTRA;
+}
+
+function scrollToSection(target) {
+  const top = target.getBoundingClientRect().top + window.scrollY - getHeaderOffset();
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
+
+function initializeSmoothAnchorNavigation() {
+  document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+    anchor.addEventListener('click', (event) => {
+      const targetId = anchor.getAttribute('href')?.slice(1);
+      const target = targetId ? document.getElementById(targetId) : null;
+      if (!target) return;
+
+      event.preventDefault();
+      history.replaceState(null, '', `#${targetId}`);
+      scrollToSection(target);
     });
-    if (userConfirmation) {
-      chrome.tabs.create({ url: 'https://script.google.com/home/projects/create' });
-    }
   });
+}
 
-  const copyButton = document.getElementById('copy-code-btn');
-    if (copyButton) {
-        copyButton.addEventListener('click', function() {
-            const codeElement = document.getElementById('code-to-copy');
-            const codeToCopy = codeElement.textContent || codeElement.innerText;
-            const button = this;
+function initializeTableOfContents() {
+  const links = [...document.querySelectorAll('.table-of-contents a[data-section]')];
+  const sections = links
+    .map((link) => document.getElementById(link.dataset.section))
+    .filter(Boolean);
+  if (!links.length || !sections.length) return;
 
-            navigator.clipboard.writeText(codeToCopy).then(function() {
-                button.textContent = 'コピー完了！';
-                button.classList.add('copied');
-                setTimeout(function() {
-                    button.textContent = 'コピー';
-                    button.classList.remove('copied');
-                }, 2000);
-            }, function(err) {
-                console.error('クリップボードへのコピーに失敗しました: ', err);
-                alert('コピーに失敗しました。手動でコピーしてください。');
-            });
-        });
+  const setActiveLink = (sectionId) => {
+    links.forEach((link) => {
+      const isActive = link.dataset.section === sectionId;
+      link.classList.toggle('is-active', isActive);
+      if (isActive) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  };
+
+  const updateActiveSection = () => {
+    const threshold = getHeaderOffset() + 70;
+    let activeSection = sections[0];
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= threshold) activeSection = section;
     }
 
+    const isAtPageBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+    if (isAtPageBottom) activeSection = sections[sections.length - 1];
+    setActiveLink(activeSection.id);
+  };
+
+  updateActiveSection();
+  window.addEventListener('scroll', updateActiveSection, { passive: true });
+  window.addEventListener('resize', updateActiveSection);
+}
+
+function initializeScrollProgress() {
+  const progress = document.querySelector('.scroll-progress');
+  if (!progress) return;
+
+  const updateProgress = () => {
+    const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+    const ratio = scrollable > 0 ? Math.min(1, Math.max(0, window.scrollY / scrollable)) : 0;
+    progress.style.transform = `scaleX(${ratio})`;
+  };
+
+  updateProgress();
+  window.addEventListener('scroll', updateProgress, { passive: true });
+  window.addEventListener('resize', updateProgress);
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
+}
+
+function initializeCopyButtons() {
+  document.querySelectorAll('[data-copy-target]').forEach((button) => {
+    const defaultLabel = button.textContent;
+    button.addEventListener('click', async () => {
+      const target = document.getElementById(button.dataset.copyTarget);
+      if (!target) return;
+
+      try {
+        await copyText(target.textContent.trim());
+        button.textContent = 'コピーしました';
+        button.classList.add('copied');
+      } catch (error) {
+        console.error('[KLPF] コードのコピーに失敗しました。', error);
+        button.textContent = 'コピーできませんでした';
+      }
+
+      window.setTimeout(() => {
+        button.textContent = defaultLabel;
+        button.classList.remove('copied');
+      }, COPY_FEEDBACK_DURATION_MS);
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initializeSmoothAnchorNavigation();
+  initializeTableOfContents();
+  initializeScrollProgress();
+  initializeCopyButtons();
 });

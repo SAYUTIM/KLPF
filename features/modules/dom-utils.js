@@ -34,7 +34,7 @@ function waitForElement(selector, root = document, timeout = 5000) {
         // タイムアウト処理
         timeoutId = setTimeout(() => {
             observer.disconnect();
-            console.warn(`[KLPF] 要素の待機がタイムアウトしました: ${selector}`);
+            console.debug(`[KLPF] 要素の待機がタイムアウトしました: ${selector}`);
             resolve(null);
         }, timeout);
 

@@ -2,6 +2,7 @@
 // This software is released under the MIT License, see LICENSE.
 
 import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
+import { isVersionNewer } from './features/modules/version-utils.js';
 
 const SUBJECT_FILTER_STORAGE_KEY = 'klpf-course-filter-settings';
 const ATTENDANCE_CACHE_KEY = 'klpf-attendance-rate-cache';
@@ -14,6 +15,9 @@ const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
 const ATTENDANCE_FETCH_JOB_TIMEOUT_MS = 2 * 60 * 1000;
 const ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
 const ATTENDANCE_BACKGROUND_JOB_TAB_ID = -1;
+const HOME_UPDATE_CHECK_KEY = 'klpf-home-update-check';
+const HOME_UPDATE_NOTICE_DISABLED_KEY = 'hideHomeUpdateNotification';
+const LATEST_RELEASE_API_URL = 'https://api.github.com/repos/SAYUTIM/KLPF/releases/latest';
 const KUPORT_ENTRY_URL = 'https://ku-port.sc.kogakuin.ac.jp/';
 const KUPORT_URL_PATTERN = 'https://ku-port.sc.kogakuin.ac.jp/*';
 const ATTENDANCE_PARSER_PATH = 'offscreen/attendanceParser.html';
@@ -30,7 +34,61 @@ const KUPORT_TRANSITION_HOSTS = new Set([
 let creatingAttendanceParser = null;
 const startingBackgroundAttendanceTabs = new Set();
 let attendanceFetchAbortController = null;
-let lastManualAttendanceRefreshAt = 0;
+let lastAttendanceRefreshAt = 0;
+let homeUpdateNoticeQueue = Promise.resolve();
+
+function getLocalDateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+async function claimHomeUpdateNotice() {
+    const noticePreference = await chrome.storage.sync.get(HOME_UPDATE_NOTICE_DISABLED_KEY);
+    if (noticePreference[HOME_UPDATE_NOTICE_DISABLED_KEY] === true) {
+        return { status: 'disabled' };
+    }
+
+    const today = getLocalDateKey();
+    const stored = await chrome.storage.local.get(HOME_UPDATE_CHECK_KEY);
+    let updateState = stored[HOME_UPDATE_CHECK_KEY] || {};
+
+    if (updateState.checkedDate !== today) {
+        const response = await fetch(LATEST_RELEASE_API_URL, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`GitHub Release API: ${response.status}`);
+        const latestRelease = await response.json();
+        const latestVersion = String(latestRelease.tag_name || '').trim();
+        const currentVersion = chrome.runtime.getManifest().version;
+        updateState = {
+            checkedDate: today,
+            latestVersion,
+            updateAvailable: isVersionNewer(latestVersion, currentVersion),
+            notifiedDate: updateState.notifiedDate || '',
+        };
+        await chrome.storage.local.set({ [HOME_UPDATE_CHECK_KEY]: updateState });
+    }
+
+    if (!updateState.updateAvailable || !updateState.latestVersion) {
+        return { status: 'up-to-date' };
+    }
+    if (updateState.notifiedDate === today) {
+        return { status: 'already-notified' };
+    }
+
+    updateState.notifiedDate = today;
+    await chrome.storage.local.set({ [HOME_UPDATE_CHECK_KEY]: updateState });
+    return {
+        status: 'update-available',
+        latestVersion: updateState.latestVersion,
+    };
+}
+
+function queueHomeUpdateNoticeClaim() {
+    const queuedClaim = homeUpdateNoticeQueue.then(claimHomeUpdateNotice);
+    homeUpdateNoticeQueue = queuedClaim.catch(() => undefined);
+    return queuedClaim;
+}
 
 async function reportAttendanceDebug(stage, details = {}) {
     const message = {
@@ -75,6 +133,9 @@ async function finishAttendanceFetch(tabId, status) {
     const job = await getAttendanceFetchJob();
     if (!job || job.tabId !== tabId) return;
 
+    if (status === 'completed' && !job.manual) {
+        await recordAttendanceRefreshCooldown();
+    }
     await clearAttendanceFetchJob();
     await chrome.storage.session.set({
         [ATTENDANCE_BROWSER_SESSION_KEY]: {
@@ -86,7 +147,7 @@ async function finishAttendanceFetch(tabId, status) {
         try {
             await closeCreatedAttendanceContext(job);
         } catch (error) {
-            console.warn('[KLPF] 出席率取得用の一時画面を閉じられませんでした。', error);
+            console.debug('[KLPF] 出席率取得用の一時画面を閉じられませんでした。', error);
         }
     }
     await reportAttendanceDebug('処理終了', { status });
@@ -316,7 +377,7 @@ async function createAttendanceLoginContext() {
         }
         if (Number.isInteger(popupWindow?.id)) await chrome.windows.remove(popupWindow.id);
     } catch (error) {
-        console.warn('[KLPF] 最小化したKu-portログイン画面を作成できませんでした。', error);
+        console.debug('[KLPF] 最小化したKu-portログイン画面を作成できませんでした。', error);
     }
 
     return {
@@ -348,7 +409,10 @@ async function prepareAttendanceRefreshJob() {
     return null;
 }
 
-async function setAttendanceFetchJob(tabId, { createdByExtension = false, createdWindowId = null } = {}) {
+async function setAttendanceFetchJob(
+    tabId,
+    { createdByExtension = false, createdWindowId = null, manual = false } = {}
+) {
     await chrome.storage.session.set({
         [ATTENDANCE_BROWSER_SESSION_KEY]: {
             status: 'running',
@@ -359,22 +423,19 @@ async function setAttendanceFetchJob(tabId, { createdByExtension = false, create
             startedAt: Date.now(),
             createdByExtension,
             createdWindowId,
+            manual,
             phase: 'login-tab',
         },
     });
 }
 
-async function startAttendanceLoginFlow({ abortIfKuportOpen = false } = {}) {
-    const autoLoginSetting = await chrome.storage.sync.get('autoLogin');
-    if (autoLoginSetting.autoLogin === false) {
-        await reportAttendanceDebug('自動ログインが無効のため取得中止');
-        return { status: 'auto-login-disabled' };
-    }
+async function startAttendanceLoginFlow({ abortIfKuportOpen = false, manual = false } = {}) {
     const createdContext = await createAttendanceLoginContext();
     const tab = createdContext.tab;
     await setAttendanceFetchJob(tab.id, {
         createdByExtension: true,
         createdWindowId: createdContext.createdWindowId,
+        manual,
     });
     if (abortIfKuportOpen) {
         const existingTabs = await chrome.tabs.query({ url: KUPORT_URL_PATTERN });
@@ -396,7 +457,7 @@ async function startAttendanceLoginFlow({ abortIfKuportOpen = false } = {}) {
 async function tryManualRefreshFromBackgroundSession() {
     const sessionProbeController = new AbortController();
     attendanceFetchAbortController = sessionProbeController;
-    await setAttendanceFetchJob(ATTENDANCE_BACKGROUND_JOB_TAB_ID);
+    await setAttendanceFetchJob(ATTENDANCE_BACKGROUND_JOB_TAB_ID, { manual: true });
     try {
         await reportAttendanceDebug('既存Ku-portセッションをバックグラウンドで確認');
         let response = await fetch(KUPORT_ENTRY_URL, {
@@ -469,30 +530,35 @@ async function tryManualRefreshFromBackgroundSession() {
 
 async function checkManualRefreshCooldown() {
     const requestedAt = Date.now();
-    const memoryElapsed = requestedAt - lastManualAttendanceRefreshAt;
+    const memoryElapsed = requestedAt - lastAttendanceRefreshAt;
     if (memoryElapsed < ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS) {
         return Math.ceil((ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS - memoryElapsed) / 1000);
     }
-    lastManualAttendanceRefreshAt = requestedAt;
+    lastAttendanceRefreshAt = requestedAt;
 
     const stored = await chrome.storage.session.get(ATTENDANCE_MANUAL_REFRESH_KEY);
     const lastRequestedAt = stored[ATTENDANCE_MANUAL_REFRESH_KEY]?.requestedAt;
     const elapsed = Number.isFinite(lastRequestedAt) ? requestedAt - lastRequestedAt : Infinity;
     if (elapsed < ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS) {
-        lastManualAttendanceRefreshAt = lastRequestedAt;
+        lastAttendanceRefreshAt = lastRequestedAt;
         return Math.ceil((ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS - elapsed) / 1000);
     }
+    await recordAttendanceRefreshCooldown(requestedAt);
+    return 0;
+}
+
+async function recordAttendanceRefreshCooldown(requestedAt = Date.now()) {
+    lastAttendanceRefreshAt = requestedAt;
     await chrome.storage.session.set({
         [ATTENDANCE_MANUAL_REFRESH_KEY]: { requestedAt },
     });
-    return 0;
 }
 
 async function getManualRefreshCooldownRemaining() {
     const stored = await chrome.storage.session.get(ATTENDANCE_MANUAL_REFRESH_KEY);
     const storedRequestedAt = stored[ATTENDANCE_MANUAL_REFRESH_KEY]?.requestedAt;
     const lastRequestedAt = Math.max(
-        lastManualAttendanceRefreshAt,
+        lastAttendanceRefreshAt,
         Number.isFinite(storedRequestedAt) ? storedRequestedAt : 0
     );
     if (!lastRequestedAt) return 0;
@@ -508,12 +574,16 @@ async function requestAttendanceRateRefresh({ manual = false } = {}) {
     const attendanceSettings = await chrome.storage.sync.get([
         ATTENDANCE_RATE_FEATURE_KEY,
         ATTENDANCE_RATE_CONSENT_KEY,
+        'autoLogin',
     ]);
     if (attendanceSettings[ATTENDANCE_RATE_CONSENT_KEY] !== true) {
         return { status: 'consent-required' };
     }
     if (attendanceSettings[ATTENDANCE_RATE_FEATURE_KEY] !== true) {
         return { status: 'feature-disabled' };
+    }
+    if (attendanceSettings.autoLogin === false) {
+        return { status: 'auto-login-disabled' };
     }
 
     if (!manual) {
@@ -551,7 +621,7 @@ async function requestAttendanceRateRefresh({ manual = false } = {}) {
             await reportAttendanceDebug('Ku-portが開かれたため再ログインを中止');
             return { status: 'kuport-open' };
         }
-        return startAttendanceLoginFlow({ abortIfKuportOpen: true });
+        return startAttendanceLoginFlow({ abortIfKuportOpen: true, manual: true });
     }
 
     const existingTabs = await chrome.tabs.query({ url: KUPORT_URL_PATTERN });
@@ -649,7 +719,7 @@ async function enableAutomaticSubjectFilter() {
             settings = parsed;
         }
     } catch (error) {
-        console.warn('[KLPF] 既存の講義フィルター設定を読み込めなかったため初期化します。', error);
+        console.debug('[KLPF] 既存の講義フィルター設定を読み込めなかったため初期化します。', error);
     }
 
     settings.isAutoActive = true;
@@ -658,14 +728,15 @@ async function enableAutomaticSubjectFilter() {
     });
 }
 
-function isAllowedGasWebhookUrl(value) {
+function isAllowedWebhookUrl(value) {
     if (typeof value !== 'string') return false;
 
     try {
         const url = new URL(value);
         return url.protocol === 'https:'
-            && url.hostname === 'script.google.com'
-            && url.pathname.startsWith('/a/macros/g.kogakuin.jp/s/');
+            && !!url.hostname
+            && !url.username
+            && !url.password;
     } catch {
         return false;
     }
@@ -907,8 +978,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (result.gasWebhook !== true) {
                     throw new Error('課題通知が無効です。');
                 }
-                if (!isAllowedGasWebhookUrl(result.gaswebhookurl)) {
-                    throw new Error('GAS Webhook URLが未設定または許可対象外です。');
+                if (!isAllowedWebhookUrl(result.gaswebhookurl)) {
+                    throw new Error('Webhook URLが未設定または許可対象外です。');
                 }
 
                 const response = await fetch(result.gaswebhookurl, {
@@ -921,10 +992,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     throw new Error(`HTTPエラー ステータス: ${response.status}`);
                 }
 
-                console.log('[KLPF] 課題データをGASに送信しました。');
+                console.log('[KLPF] 課題データをWebhookに送信しました。');
                 sendResponse({ success: true });
             } catch (error) {
-                console.error('[KLPF] GASへのデータ送信に失敗しました:', error);
+                console.error('[KLPF] Webhookへのデータ送信に失敗しました:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -954,8 +1025,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     key: config.storageKey,
                     label: config.displayName,
                     defaultValue: !!config.enabledByDefault,
+                    isBeta: !!config.isBeta,
                 })),
         });
+        return true;
+    }
+
+    if (message.type === 'claim-home-update-notice') {
+        queueHomeUpdateNoticeClaim()
+            .then(sendResponse)
+            .catch(error => {
+                console.debug('[KLPF] ホーム用の更新確認を実行できませんでした。', error);
+                sendResponse({ status: 'error' });
+            });
         return true;
     }
 

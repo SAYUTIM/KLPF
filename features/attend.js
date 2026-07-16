@@ -192,7 +192,7 @@ async function step2_clickLessonCard(settings) {
             }
         }
     }
-    console.warn("[KLPF] 対象の授業カードが見つかりませんでした。");
+    console.debug("[KLPF] 対象の授業カードが見つかりませんでした。");
     return false;
 }
 
@@ -208,7 +208,7 @@ async function step3_clickAttendButton() {
         attendButton.click();
         return true;
     }
-    console.warn("[KLPF] 出席ボタンが見つかりませんでした。");
+    console.debug("[KLPF] 出席ボタンが見つかりませんでした。");
     return false;
 }
 
@@ -220,7 +220,7 @@ async function step4_clickOKButton() {
     console.log("[KLPF] ステップ4: OKボタンの検索とクリック");
     const iframe = await waitForElement('iframe[name="dispCosa"]');
     if (!iframe || !iframe.contentWindow) {
-        console.warn("[KLPF] 確認ダイアログのiframeが見つかりませんでした。");
+        console.debug("[KLPF] 確認ダイアログのiframeが見つかりませんでした。");
         return false;
     }
     const okButton = await waitForElement('input[type="button"][value="OK"]', iframe.contentWindow.document);
@@ -229,7 +229,7 @@ async function step4_clickOKButton() {
         okButton.click();
         return true;
     }
-    console.warn("[KLPF] OKボタンが見つかりませんでした。");
+    console.debug("[KLPF] OKボタンが見つかりませんでした。");
     return false;
 }
 
@@ -242,7 +242,7 @@ function joinMeet(meetID) {
         console.log(`[KLPF] Google Meet (ID: ${meetID}) を開きます。`);
         chrome.runtime.sendMessage({ action: "openTab", url: meetID });
     } else {
-        console.warn("[KLPF] Meetのリンクが未設定のため、Meetを開けませんでした。");
+        console.debug("[KLPF] Meetのリンクが未設定のため、Meetを開けませんでした。");
     }
 }
 
@@ -270,7 +270,7 @@ async function runAutoAttendSequence(settings, state) {
                 const success = await step3_clickAttendButton();
                 if (success) state.setAttendSubmitted(true);
                 else if (state.isRetryLimitExceeded('attend')) {
-                    console.warn("[KLPF] 出席ボタンの検索を諦め、Meetへの参加を試みます。");
+                    console.debug("[KLPF] 出席ボタンの検索を諦め、Meetへの参加を試みます。");
                     state.setAttendSubmitted(true); // スキップ
                     state.setOKClicked(true); // OKボタンもスキップ
                     joinMeet(settings.meetID);
@@ -283,7 +283,7 @@ async function runAutoAttendSequence(settings, state) {
                     state.setOKClicked(true);
                     joinMeet(settings.meetID);
                 } else if (state.isRetryLimitExceeded('ok')) {
-                    console.warn("[KLPF] OKボタンの検索を諦め、Meetへの参加を試みます。");
+                    console.debug("[KLPF] OKボタンの検索を諦め、Meetへの参加を試みます。");
                     state.setOKClicked(true); // スキップ
                     joinMeet(settings.meetID);
                 }

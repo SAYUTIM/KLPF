@@ -3,6 +3,9 @@
 
 /**
  * @file ホーム左カラムの編集、課題の非表示・復元、課題カレンダーを管理する。
+ *
+ * homework.jsが生成した課題DOMを再利用し、保存済みレイアウトの適用と
+ * FullCalendarを使った一覧・編集UIをこのファイル内で完結させる。
  */
 
 (function() {
@@ -21,6 +24,13 @@
         activity: { label: '利用状況', description: '履修・課題一覧と前回ログイン' },
         calendar: { label: '課題カレンダー', description: '提出日を科目名で表示' },
         homework: { label: '課題リスト', description: '提出期限がある課題の一覧' },
+    };
+    const MODULE_SELECTORS = {
+        profile: ['.homeProfHeader', '.homeProfContents'],
+        study: ['.lms-study'],
+        activity: ['.last_login_date'],
+        calendar: ['#klpf-home-calendar'],
+        homework: ['#homework'],
     };
 
     let column = null;
@@ -108,14 +118,7 @@
 
     function getModuleElements(key) {
         if (!column) return [];
-        const selectors = {
-            profile: ['.homeProfHeader', '.homeProfContents'],
-            study: ['.lms-study'],
-            activity: ['.last_login_date'],
-            calendar: ['#klpf-home-calendar'],
-            homework: ['#homework'],
-        };
-        return selectors[key].flatMap(selector => Array.from(column.querySelectorAll(selector)));
+        return MODULE_SELECTORS[key].flatMap(selector => Array.from(column.querySelectorAll(selector)));
     }
 
     function applyLayout() {
@@ -584,18 +587,7 @@
         overlay.querySelector('.klpf-dashboard-editor-close')?.focus();
     }
 
-    function createEditor() {
-        overlay = document.createElement('div');
-        overlay.id = 'klpf-dashboard-editor-overlay';
-        overlay.className = 'klpf-dashboard-editor-overlay';
-        overlay.hidden = true;
-
-        const panel = document.createElement('section');
-        panel.className = 'klpf-dashboard-editor';
-        panel.setAttribute('role', 'dialog');
-        panel.setAttribute('aria-modal', 'true');
-        panel.setAttribute('aria-labelledby', 'klpf-dashboard-editor-title');
-
+    function createEditorHeader() {
         const header = document.createElement('header');
         header.className = 'klpf-dashboard-editor-header';
         const headingGroup = document.createElement('div');
@@ -608,9 +600,10 @@
         const close = createButton('×', 'klpf-dashboard-editor-close', '編集を終了');
         close.addEventListener('click', closeEditor);
         header.append(headingGroup, close);
+        return header;
+    }
 
-        const body = document.createElement('div');
-        body.className = 'klpf-dashboard-editor-body';
+    function createEditorControls() {
         const controls = document.createElement('div');
         controls.className = 'klpf-dashboard-editor-controls';
 
@@ -628,7 +621,10 @@
         restoredList.className = 'klpf-restored-homework-list';
         restoreSection.append(restoreTitle, restoredList);
         controls.append(moduleSection, restoreSection);
+        return controls;
+    }
 
+    function createEditorCalendarPreview() {
         const preview = document.createElement('section');
         preview.className = 'klpf-dashboard-calendar-preview';
         const previewTitle = document.createElement('div');
@@ -642,29 +638,55 @@
         editorDayDetailsElement.hidden = true;
         editorDayDetailsElement.setAttribute('aria-live', 'polite');
         preview.append(previewTitle, editorCalendarElement, editorDayDetailsElement);
-        body.append(controls, preview);
+        return preview;
+    }
 
+    function resetDashboardLayout() {
+        layoutState = { order: [...DEFAULT_ORDER], hidden: [] };
+        void saveLayout();
+        applyLayout();
+        renderModuleList();
+    }
+
+    function createEditorFooter() {
         const footer = document.createElement('div');
         footer.className = 'klpf-dashboard-editor-footer';
         const reset = createButton('標準に戻す', 'klpf-dashboard-reset', '表示と順序を標準に戻す');
-        reset.addEventListener('click', () => {
-            layoutState = { order: [...DEFAULT_ORDER], hidden: [] };
-            void saveLayout();
-            applyLayout();
-            renderModuleList();
-        });
+        reset.addEventListener('click', resetDashboardLayout);
         const done = createButton('完了', 'klpf-dashboard-done', '編集を完了');
         done.addEventListener('click', closeEditor);
         footer.append(reset, done);
+        return footer;
+    }
 
-        panel.append(header, body, footer);
+    function handleEditorOverlayClick(event) {
+        if (event.target === overlay) closeEditor();
+    }
+
+    function handleEditorKeydown(event) {
+        if (event.key === 'Escape' && overlay && !overlay.hidden) closeEditor();
+    }
+
+    function createEditor() {
+        overlay = document.createElement('div');
+        overlay.id = 'klpf-dashboard-editor-overlay';
+        overlay.className = 'klpf-dashboard-editor-overlay';
+        overlay.hidden = true;
+
+        const panel = document.createElement('section');
+        panel.className = 'klpf-dashboard-editor';
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'true');
+        panel.setAttribute('aria-labelledby', 'klpf-dashboard-editor-title');
+
+        const body = document.createElement('div');
+        body.className = 'klpf-dashboard-editor-body';
+        body.append(createEditorControls(), createEditorCalendarPreview());
+
+        panel.append(createEditorHeader(), body, createEditorFooter());
         overlay.appendChild(panel);
-        overlay.addEventListener('click', event => {
-            if (event.target === overlay) closeEditor();
-        });
-        document.addEventListener('keydown', event => {
-            if (event.key === 'Escape' && !overlay.hidden) closeEditor();
-        });
+        overlay.addEventListener('click', handleEditorOverlayClick);
+        document.addEventListener('keydown', handleEditorKeydown);
         document.body.appendChild(overlay);
     }
 
@@ -696,6 +718,7 @@
         observer?.disconnect();
         observer = null;
         document.removeEventListener(OPEN_HOME_EDITOR_EVENT, openEditor);
+        document.removeEventListener('keydown', handleEditorKeydown);
     }
 
     async function main() {

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "KLPF",
   "description": "KOGAKUIN UNIVERSITY - Learning Management System Plugin Framework : https://sayutim.github.io/KLPF/",
-  "version": "4.4.1",
+  "version": "4.4.2",
   "permissions": [
     "tabs",
     "storage", 
@@ -21,6 +21,9 @@
     "https://meet.google.com/*",
     "https://script.google.com/*",
     "https://slink.secioss.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
   ],
   "options_page": "setting/options.html",
   "content_scripts": [
@@ -41,6 +44,18 @@
         "features/lmsInlineSettings.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://study.ns.kogakuin.ac.jp/lms/homeHoml/*",
+        "https://study.ns.kogakuin.ac.jp/lms/tpicTpil/doBack*",
+        "https://study.ns.kogakuin.ac.jp/lms/klmsKlil/doBack*"
+      ],
+      "js": [
+        "features/modules/dom-utils.js",
+        "features/lmsUpdateNotice.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "icons": {
@@ -52,7 +67,8 @@
     {
       "resources": [
         "features/pageWorld/homeAttendance.js",
-        "features/pageWorld/logoutBlock.js"
+        "features/pageWorld/logoutBlock.js",
+        "icon/icon48.png"
       ],
       "matches": [
         "https://study.ns.kogakuin.ac.jp/*"

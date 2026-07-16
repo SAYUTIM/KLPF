@@ -3,64 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>課題メール通知リマインダー</title>
+    <meta name="description" content="KLPFの課題通知Webhookを設定するための手動導入ガイドとWebhook仕様です。">
+    <title>課題通知Webhook 設定ガイド - KLPF</title>
     <link rel="stylesheet" href="setupgas.css">
 </head>
 <body>
+    <div class="scroll-progress" aria-hidden="true"></div>
 
-    <div class="container">
-        <h1>通知機能の有効化方法</h1>
-
-        <h2>通知機能について</h2>
-        
-        <div class="notification-info">
-            <p>この機能は、お使いのGoogleアカウントと連携し、課題の締切が近づくとメールで自動的にお知らせするリマインダーです。Googleの公式サービス「Google Apps Script」を利用して、安全に通知を自動化します。</p>
-            <ul>
-                <li><strong>チェック間隔:</strong> 10分ごとに自動で締切を確認します。</li>
-                <li><strong>通知タイミング:</strong> 締切の<strong>18時間前、6時間前、1時間前</strong>の計3回、通知メールが届きます。</li>
-                <li><strong>通知元と先:</strong> 設定に使用したGoogleアカウントのメールアドレスにより送受信されます。</li>
-            </ul>
+    <header class="site-header">
+        <div class="header-inner">
+            <a class="brand" href="https://sayutim.github.io/KLPF/" aria-label="KLPFホーム">
+                <img src="../icon/icon48.png" alt="" width="36" height="36">
+                <span><strong>KLPF</strong><small>課題通知ガイド</small></span>
+            </a>
+            <nav class="header-links" aria-label="関連ページ">
+                <a href="https://sayutim.github.io/KLPF/#features">機能</a>
+                <a href="https://sayutim.github.io/KLPF/#download">ダウンロード</a>
+                <a href="https://github.com/SAYUTIM/KLPF/releases" target="_blank" rel="noopener noreferrer">リリースノート</a>
+            </nav>
         </div>
+    </header>
 
-        <p>設定には、簡単で確実な「<strong>自動環境構築</strong>」と、ご自身で手順を進める「<strong>手動環境構築</strong>」の2通りがあります。特に理由がない限り、自動での導入を推奨します。</p>
+    <main>
+        <section class="hero" id="overview" aria-labelledby="page-title">
+            <div class="hero-orb hero-orb-one" aria-hidden="true"></div>
+            <div class="hero-orb hero-orb-two" aria-hidden="true"></div>
+            <div class="hero-inner">
+                <p class="eyebrow">HOMEWORK NOTIFICATION</p>
+                <h1 id="page-title">課題の締切を、<br>見逃さないための通知設定。</h1>
+                <p class="hero-lead">KLPFがKU-LMSから取得した課題一覧をWebhookへ送り、GASによるメール通知や、自分で作った通知サービスと連携できるようにします。</p>
+                <div class="hero-actions">
+                    <a class="button button-primary" href="#manual-setup">手動で設定を始める</a>
+                    <a class="button button-secondary" href="#custom-webhook">自作Webhookを使う人はこちら</a>
+                </div>
+                <dl class="hero-facts">
+                    <div><dt>送信タイミング</dt><dd>課題リスト更新時</dd></div>
+                    <div><dt>送信形式</dt><dd>JSON / POST</dd></div>
+                    <div><dt>標準通知</dt><dd>18・6・1時間前</dd></div>
+                </dl>
+            </div>
+        </section>
 
-        <hr style="margin: 40px 0;">
-        
-        <h2><span class="recommended-badge">推奨</span> 自動で環境構築</h2>
-        
-        <ol class="steps">
+        <div class="guide-layout">
+            <aside class="table-of-contents" aria-label="ページ内目次">
+                <div class="toc-inner">
+                    <span class="toc-label">目次</span>
+                    <nav>
+                        <a href="#overview" data-section="overview"><span>00</span>概要</a>
+                        <a href="#manual-setup" data-section="manual-setup"><span>01</span>手動GAS構築</a>
+                        <a href="#after-setup" data-section="after-setup"><span>02</span>設定後の操作</a>
+                        <a href="#custom-webhook" data-section="custom-webhook"><span>03</span>自作Webhook</a>
+                        <a href="#request-spec" data-section="request-spec"><span>04</span>送信仕様</a>
+                        <a href="#automatic-setup" data-section="automatic-setup"><span>05</span>自動構築について</a>
+                    </nav>
+                </div>
+            </aside>
+
+            <article class="guide-content">
+                <section class="guide-section intro-section" aria-labelledby="about-title">
+                    <p class="section-index">はじめに</p>
+                    <h2 id="about-title">この設定でできること</h2>
+                    <p class="section-lead">「課題リストアップ」が集めた未提出課題を、設定したWebhook URLへまとめて送信します。標準のGASコードを使う場合は、10分ごとに締切を確認し、締切の18時間前・6時間前・1時間前に自分宛てのメールを送れます。</p>
+                    <div class="capability-list">
+                        <div><strong>課題を自動同期</strong><span>授業名・課題名・期限などをWebhookへ送信します。</span></div>
+                        <div><strong>Gmailでリマインド</strong><span>標準GASを使えば、自分のGoogleアカウントから自分へ通知します。</span></div>
+                        <div><strong>自由に拡張</strong><span>Discord、Slack、自作APIなどへつなぐ処理を自分で実装できます。</span></div>
+                    </div>
+                    <div class="notice notice-important"><strong>現在、自動環境構築は利用できません。</strong><span>以下の手動手順で設定してください。すでに作成済みのWebhookは引き続き利用できます。</span></div>
+                </section>
+
+                <section class="guide-section" id="manual-setup" aria-labelledby="manual-title">
+                    <p class="section-index">01 / RECOMMENDED</p>
+                    <h2 id="manual-title">Google Apps Scriptを手動で構築する</h2>
+                    <p class="section-lead">標準のメール通知を使いたい場合はこちらです。GoogleアカウントでGASプロジェクトを作り、掲載コードを貼り付けてWebアプリとして公開します。</p>
+                    <ol class="steps">
             <li>
-                <p>ブラウザでGoogleアカウントにログインしていない場合は以下からログインしてください。</p>
-                <a href="https://accounts.google.co.jp/" target="_blank" rel="noopener noreferrer">
-                    https://accounts.google.co.jp/
-                </a>
+                <span class="step-number">1</span>
+                <div><h3>Googleアカウントを確認してプロジェクトを作成</h3>
+                <p>通知の送信元・受信先に使うGoogleアカウントへログインし、新しいGoogle Apps Scriptプロジェクトを開きます。</p>
+                <div class="inline-actions"><a class="text-link" href="https://accounts.google.co.jp/" target="_blank" rel="noopener noreferrer">Googleへログイン</a><a class="text-link" href="https://script.google.com/home/projects/create" target="_blank" rel="noopener noreferrer">GASプロジェクトを作成</a></div></div>
             </li>
             <li>
-                <p>ログインできたら、以下のボタンを押して自動環境構築を開始します。処理には1〜3分程度かかります。</p>
-                <button id="setup-button">自動環境構築を開始します</button>
+                <span class="step-number">2</span>
+                <div><h3>プロジェクト名を変更</h3>
+                <p>左上の「無題のプロジェクト」を選び、プロジェクト名をわかりやすい名前に変更します。<strong>(例:KLPF課題リマインダー)</strong></p></div>
             </li>
-        </ol>
+            <li>
+                <span class="step-number">3</span>
+                <div><h3>コードを貼り付け</h3>
+                <p>エディタ内の既存コードをすべて削除し、下のコードをコピーして貼り付けます。</p>
+                <div class="code-panel">
+                    <div class="code-panel-header"><span>コード.gs</span><button type="button" id="copy-code-btn" class="copy-button" data-copy-target="code-to-copy">コードをコピー</button></div>
+                    <details class="code-disclosure">
+                        <summary>
+                            <pre class="code-preview" aria-hidden="true"><code>// Copyright (c) 2025 SAYU
+// This software is released under the MIT License
 
-        <hr style="margin: 40px 0;">
-
-        <h2>手動で環境構築</h2>
-        <p>自動環境構築がうまく行かない場合は、以下の手順で手動セットアップをお試しください。</p>
-        <ol class="steps">
-            <li>
-                <p><strong>Google Apps Scriptプロジェクトの作成</strong><br>
-                下のリンクをクリックして、新しいGoogle Apps Scriptプロジェクトを作成します。</p>
-                <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener noreferrer">Google Apps Scriptプロジェクトを新規作成</a>
-            </li>
-            <li>
-                <p><strong>プロジェクト名の変更</strong><br>
-                プロジェクトが開いたら、左上の「無題のプロジェクト」をクリックし、プロジェクト名を「<strong>KLPF課題リマインダー</strong>」に変更して「名前を変更」ボタンを押します。</p>
-            </li>
-            <li>
-                <p><strong>コードの貼り付け</strong><br>
-                エディタに表示されているデフォルトのコード（`function myFunction() { }`）を<strong>すべて削除</strong>し、下の枠内にあるコードをすべてコピーして貼り付けます。</p>
-                <div class="code-block-container">
-                    <button id="copy-code-btn" class="copy-button">コピー</button>
-                    <pre id="code-to-copy" style="background-color: #f0f0f0; border: 1px solid #ccc; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; font-size: 14px;"><code>
+function main() { ... }</code></pre>
+                            <span class="disclosure-label"><span class="closed-label">全コードを表示</span><span class="open-label">コードを折りたたむ</span></span>
+                        </summary>
+                        <pre id="code-to-copy"><code>
 // Copyright (c) 2025 SAYU
 // This software is released under the MIT License, see LICENSE.
 
@@ -94,19 +136,19 @@ function main() {
       .timeBased()
       .everyMinutes(10)
       .create();
-  
+
   console.log('10分ごとに実行するトリガーをセットしました。');
   console.log('セットアップは正常に終了しました。このタブを閉じてKu-LMSで課題リストアップの更新を行ってください。');
 }
 
 // Copyright (c) 2025 SAYU
-const PROPERTIES_KEY = 'HOMEWORKS_DATA'; 
+const PROPERTIES_KEY = 'HOMEWORKS_DATA';
 
 function doPost(e) {
   try {
     const incomingHomeworks = JSON.parse(e.postData.contents);
     const userProperties = PropertiesService.getUserProperties();
-    
+
     const currentDataJSON = userProperties.getProperty(PROPERTIES_KEY);
     const homeworks = currentDataJSON ? JSON.parse(currentDataJSON) : [];
 
@@ -156,7 +198,7 @@ function updateHomeworkList(currentList, incomingList) {
                 lessonName: h.lessonName,
                 homeworkName: h.homeworkName,
                 deadline: h.deadline,
-                reminders: { h18: false, h6: false, h1: false } 
+                reminders: { h18: false, h6: false, h1: false }
             });
             addedCount++;
         }
@@ -172,7 +214,7 @@ function checkDeadlinesAndSendReminders() {
 
   let homeworks = JSON.parse(homeworksJSON);
   const now = new Date();
-  
+
   const remindersToSend = {
     h18: [],
     h6: [],
@@ -183,7 +225,7 @@ function checkDeadlinesAndSendReminders() {
   homeworks.forEach(hw => {
     const deadlineStr = hw.deadline.replace(/\s\(.\)/, '');
     const deadline = new Date(deadlineStr.replace(/年|月/g, "/").replace("日", ""));
-    
+
     const reminderChecks = [
       { hours: 18, flag: 'h18', text: "18時間" },
       { hours: 6,  flag: 'h6',  text: "6時間" },
@@ -219,7 +261,7 @@ function checkDeadlinesAndSendReminders() {
 
 function sendGroupedReminderEmail(userEmail, groupedHomeworks, remainingTimeText, allHomeworks) {
   const subject = `【課題通知】締切まで約${remainingTimeText}の課題が${groupedHomeworks.length}件あります`;
-  
+
   let mainHomeworksHtml = "";
   groupedHomeworks.forEach(hw => {
     mainHomeworksHtml += `
@@ -247,7 +289,7 @@ function sendGroupedReminderEmail(userEmail, groupedHomeworks, remainingTimeText
       &lt;p style="color: #888; font-size: 0.8em;"&gt;このメールは拡張機能KLPFによって自動送信されました。&lt;/p&gt;
     &lt;/div&gt;
   `;
-  
+
   GmailApp.sendEmail(userEmail, subject, "", { htmlBody: body });
 }
 
@@ -288,7 +330,7 @@ function showScheduledHomework() {
     console.log('現在登録されている課題リマインダーはありません。');
     return;
   }
-  
+
   const homeworks = JSON.parse(homeworksJSON);
   console.log(`--- 現在登録されている課題リマインダー (${homeworks.length}件) ---`);
   homeworks.forEach((hw, index) => {
@@ -317,48 +359,163 @@ function clearAllDataAndTriggers() {
   console.log('すべての課題データを削除しました。');
   console.log('リセットが完了しました。');
 }
-                  </code></pre>
-                </div>
+                        </code></pre>
+                    </details>
+                </div></div>
             </li>
             <li>
-                <p><strong>プロジェクトの保存とデプロイ</strong><br>
-                コードを貼り付けたら、左上のフロッピーディスクのアイコン💾をクリックしてプロジェクトを保存します。次に、右上の「<strong>デプロイ</strong>」ボタンを押し、「<strong>新しいデプロイ</strong>」を選択します。</p>
-            </li>
-             <li>
-                <p><strong>デプロイ設定</strong><br>
-                「<strong>種類の選択</strong>」で歯車のアイコン⚙️をクリックし、「<strong>ウェブアプリ</strong>」を選択します。<br>次の項目を設定してください。<br>
-                ・説明: (任意、例: 課題リマインダー)<br>
-                ・次のユーザーとして実行: <strong>自分</strong><br>
-                ・アクセスできるユーザー: <strong>自分のみ</strong><br>
-                設定後、「<strong>デプロイ</strong>」ボタンを押します。</p>
+                <span class="step-number">4</span>
+                <div><h3>保存して新しいデプロイを作成</h3>
+                <p>ctrl+s または保存アイコンを押した後、右上の「<strong>デプロイ</strong>」から「<strong>新しいデプロイ</strong>」を選びます。</p></div>
             </li>
             <li>
-                <p><strong>権限の承認</strong><br>
-                「<strong>アクセスを承認</strong>」ボタンが表示されるのでクリックします。Googleアカウントの選択画面が表示されたら、現在ログインしている自分のアカウントを選択します。<br>
-                次に、プロジェクトがGoogleアカウントにアクセスするのを許可するために下にスクロールし「<strong>Allow</strong>」をクリックします。<br>
-                <small>※ このスクリプトはあなたのGmailアカウントを使って、あなた自身にのみメールを送信します。メール送信元と受信先のメールアドレスは同じになります。</small></p>
+                <span class="step-number">5</span>
+                <div><h3>ウェブアプリとしてデプロイ</h3>
+                <p>種類の選択⚙は「<strong>ウェブアプリ</strong>」、実行ユーザーは「<strong>自分</strong>」、アクセスできるユーザーは「<strong>自分のみ</strong>」を選び、「デプロイ」を押します。</p></div>
             </li>
             <li>
-                <p><strong>ウェブアプリURLの取得と設定</strong><br>
-                デプロイが完了すると、「<strong>ウェブアプリ URL</strong>」が表示されます。<br>このURLをコピーし、<strong>拡張機能のオプション画面にある「Webhook URL」の欄に貼り付け</strong>て保存します。<br>
-                <small>※ ウェブアプリURLは「https://script.google.com/a/macros/g.kogakuin.jp/s/...」から始まります。</small></p>
+                <span class="step-number">6</span>
+                <div><h3>Googleの権限を承認</h3>
+                <p>「このウェブ アプリケーションを使用するには、データへのアクセスを許可する必要があります。」と表示されたら、<strong>アクセスを承認</strong>をクリックします。<br>
+                    その後、「Google hasn’t verified this app」と表示される別ウィンドウが開かれるので、「<strong>詳細</strong>」をクリックし、「<strong>Go to [プロジェクト名] (unsafe)</strong>」をクリックします。<br>
+                    次に、「[プロジェクト名] wants access to your Google Account」と書かれた画面に遷移するので、「<strong>Select all</strong>」のチェックボックスをクリックして権限を付与します。<br>
+                    下にスクロールして「<strong>continue</strong>」をクリックします。
+                </p></div>
             </li>
             <li>
-                <p><strong>初回実行とトリガー設定</strong><br>
-                GASのエディタ画面に戻り、「<strong>完了</strong>」ボタンを押し、新しいデプロイの画面を閉じます。<br>
-                上部の関数選択ドロップダウンで「<strong>main</strong>」が選択されていることを確認し「<strong>実行</strong>」ボタン▶️を押します。<br>
-                権限を要求されるので「<strong>権限を確認</strong>」をクリックします。Googleアカウントの選択画面が表示されたら、現在ログインしている自分のアカウントを選択します。<br>
-                プロジェクトにログインする画面が表示されるので「<strong>次へ</strong>」を押し、プロジェクトがGoogleアカウントへのアクセスを求めている画面が表示されたら「<strong>続行</strong>」をクリックします。<br>
-                これにより初期設定が完了し、10分ごとに課題をチェックするトリガーが自動的に設定され、テストメールが送信されます。</p>
+                <span class="step-number">7</span>
+                <div><h3>ウェブアプリURLをKLPFへ登録</h3>
+                <p>デプロイ完了後に表示される「<strong>ウェブアプリURL</strong>」をコピーし、KLPFのオプション画面で「課題リストアップ設定」→「Webhook URL」へ貼り付けます。</p>
+                <p class="muted-note">GASのURLは通常 <code>https://script.google.com/...</code> から始まります。</p></div>
             </li>
             <li>
-                <p><strong>環境構築終了</strong><br>
-                以上で通知機能の環境構築が終了しましたので、拡張機能のオプション画面の「通知機能」をONにして、クルムスを開き課題リストアップの更新を完了させてください。
-                </p>
+                <span class="step-number">8</span>
+                <div><h3><code>main</code> を初回実行</h3>
+                <p>URLの貼り付けが完了したら、サイトに戻り、「<strong>完了</strong>」をクリックします。<br>
+                    次に、GASエディタ上部の関数選択で「<strong>main</strong>」を選んで実行し、必要な権限を先ほどと同じように承認します。テストメールが届き、10分ごとの確認トリガーが作成されたらGAS側の準備は完了です。</p></div>
             </li>
         </ol>
+                </section>
 
-    </div>
+                <section class="guide-section" id="after-setup" aria-labelledby="after-title">
+                    <p class="section-index">02 / ACTIVATE</p>
+                    <h2 id="after-title">KLPFで通知機能を有効にする</h2>
+                    <ol class="compact-steps">
+                        <li><span>1</span><p>拡張機能のオプションページで「<strong>課題リストアップ設定</strong>」を開きます。</p></li>
+                        <li><span>2</span><p>作成したWebhook URLを貼り付けます。</p></li>
+                        <li><span>3</span><p>「<strong>通知機能</strong>」をONにし、表示された接続許可を確認します。</p></li>
+                        <li><span>4</span><p>KU-LMSホームで課題リストアップを更新します。課題が1件以上あればWebhookへ送信されます。</p></li>
+                        <li><span>5</span><p><strong>ここまでで環境構築は終了です。</strong>以下からは自作Webhookの設定を行いたい人向けの説明です。</p></li>
+                    </ol>
+                    <p class="muted-note">送信エラーが発生しても、KU-LMS上の課題リスト表示自体は継続します。Webhook側は短時間で2xxレスポンスを返すようにしてください。</p>
+                </section>
+
+                <section class="guide-section" id="custom-webhook" aria-labelledby="custom-title">
+                    <p class="section-index">03 / FOR DEVELOPERS</p>
+                    <h2 id="custom-title">自作Webhookへ課題データを送る</h2>
+                    <p class="section-lead">標準GASを使わず、任意のHTTPSエンドポイントへ同じ課題データを送信できます。DiscordやSlackへ直接送る場合は、受信サーバー側で各サービス用の形式へ変換してください。</p>
+                    <div class="developer-flow" aria-label="Webhook連携の流れ">
+                        <div><span>1</span><strong>HTTPSエンドポイントを用意</strong><small>POSTされたJSON配列を受け取れるようにします。</small></div>
+                        <div><span>2</span><strong>URLをKLPFへ登録</strong><small>通知機能をONにすると、そのホストへの接続許可が表示されます。</small></div>
+                        <div><span>3</span><strong>KU-LMSで課題を更新</strong><small>取得できた未提出課題が期限順で送信されます。</small></div>
+                    </div>
+                    <div class="notice"><strong>送信先はHTTPS必須です。</strong><span>URLにユーザー名・パスワードを埋め込む形式には対応していません。認証が必要な場合は、推測されにくいURLやクエリトークンを受信側で検証してください。</span></div>
+                </section>
+
+                <section class="guide-section" id="request-spec" aria-labelledby="spec-title">
+                    <p class="section-index">04 / REQUEST SPECIFICATION</p>
+                    <h2 id="spec-title">KLPFが送信するリクエスト</h2>
+                    <p class="section-lead">課題一覧そのものをJSON配列として送信します。ラッパーオブジェクトは付かず、レスポンス本文はKLPFでは使用しません。</p>
+                    <div class="spec-table-wrap">
+                        <table class="spec-table">
+                            <tbody>
+                                <tr><th>HTTPメソッド</th><td><code>POST</code></td></tr>
+                                <tr><th>Content-Type</th><td><code>application/json</code></td></tr>
+                                <tr><th>本文</th><td>期限順に並んだ課題オブジェクトの配列</td></tr>
+                                <tr><th>送信単位</th><td>その時点で取得できた課題の全件。差分データではありません</td></tr>
+                                <tr><th>成功判定</th><td>HTTPステータスが200〜299</td></tr>
+                                <tr><th>送信条件</th><td>通知機能がON、URL設定済み、課題が1件以上</td></tr>
+                                <tr><th>認証ヘッダー</th><td>付与しません</td></tr>
+                                <tr><th>レスポンス本文</th><td>読み取りません</td></tr>
+                                <tr><th>自動再試行</th><td>行いません</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="snippet-panel">
+                        <div class="code-panel-header"><span>送信されるJSONの例</span><button type="button" class="copy-button" data-copy-target="payload-example">コピー</button></div>
+                        <pre id="payload-example"><code>[
+  {
+    "deadline": "2026年07月22日 (水) 24:00",
+    "homeworkName": "第4回レポート",
+    "lessonName": "情報システム",
+    "kyozaiId": "123456",
+    "kyozaiSyCd": "1"
+  }
+]</code></pre>
+                    </div>
+
+                    <h3 class="subheading">各フィールド</h3>
+                    <div class="field-list">
+                        <div><code>deadline</code><span>KU-LMSに表示された提出期限。締切なしを表す文字列が含まれる場合があります。</span></div>
+                        <div><code>homeworkName</code><span>課題、テスト、アンケートなどの表示名。</span></div>
+                        <div><code>lessonName</code><span>授業名。</span></div>
+                        <div><code>kyozaiId</code><span>KU-LMS上の教材ID。取得できない場合は <code>null</code>。</span></div>
+                        <div><code>kyozaiSyCd</code><span>KU-LMS上の教材種別コード。取得できない場合は <code>null</code>。</span></div>
+                    </div>
+
+                    <div class="snippet-panel">
+                        <div class="code-panel-header"><span>最小の受信例（Node.js / Express）</span><button type="button" class="copy-button" data-copy-target="receiver-example">コピー</button></div>
+                        <details class="code-disclosure compact">
+                            <summary><pre class="code-preview"><code>app.post('/klpf-webhook', (req, res) =&gt; {
+  const homeworks = req.body;
+  // 保存・通知処理...</code></pre><span class="disclosure-label"><span class="closed-label">全コードを表示</span><span class="open-label">コードを折りたたむ</span></span></summary>
+                            <pre id="receiver-example"><code>import express from 'express';
+
+const app = express();
+app.use(express.json());
+
+app.post('/klpf-webhook', (req, res) =&gt; {
+  const homeworks = req.body;
+  if (!Array.isArray(homeworks)) {
+    return res.status(400).json({ error: 'Expected an array' });
+  }
+
+  console.log(`${homeworks.length}件の課題を受信しました`);
+  // ここで保存、Discord通知、Slack通知などを実行します。
+  return res.status(204).end();
+});
+
+app.listen(3000);</code></pre>
+                        </details>
+                    </div>
+                    <div class="notice notice-warning"><strong>課題情報は指定したサービスへ送信されます。</strong><span>Webhookの運営者、ログ保存、再送、第三者提供などはKLPFでは管理できません。自分で管理できる送信先だけを登録してください。</span></div>
+                </section>
+
+                <section class="guide-section" id="automatic-setup" aria-labelledby="automatic-title">
+                    <p class="section-index">05 / CURRENT STATUS</p>
+                    <h2 id="automatic-title">自動環境構築について</h2>
+                    <div class="unavailable-panel">
+                        <span class="status-dot" aria-hidden="true"></span>
+                        <div><strong>現在利用できません</strong><p>Google Apps Script側の画面変更により、自動操作による環境構築は停止しています。復旧するまでは本ページの手動手順を利用してください。</p></div>
+                    </div>
+                </section>
+            </article>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <div class="footer-brand"><img src="../icon/icon48.png" alt="" width="36" height="36"><div><strong>KLPF</strong><span>工学院大学での学習体験を向上させるChrome拡張機能</span></div></div>
+            <nav aria-label="フッターリンク">
+                <a href="https://sayutim.github.io/KLPF/">KLPF公式ページ</a>
+                <a href="https://github.com/SAYUTIM/KLPF/releases" target="_blank" rel="noopener noreferrer">リリースノート</a>
+                <a href="https://sayutim.github.io/KLPF/privacypolicy/">プライバシーポリシー</a>
+                <a href="https://sayutim.github.io/KLPF/terms/">利用規約</a>
+            </nav>
+        </div>
+        <p class="copyright">Copyright © 2024-2026 SAYU. All Rights Reserved.</p>
+    </footer>
 
     <script src="setupgas.js"></script>
 </body>

@@ -17,6 +17,7 @@ const PATHS = {
 const MODULES = {
   CONSTANTS: `${PATHS.MODULES}constants.js`,
   DOM_UTILS: `${PATHS.MODULES}dom-utils.js`,
+  ATTENDANCE_UTILS: `${PATHS.MODULES}attendance-utils.js`,
   TOTP: `${PATHS.MODULES}totp.js`,
 };
 
@@ -47,6 +48,7 @@ const URLS = {
  * @property {string[]} matches - スクリプトを注入するURLパターン。
  * @property {chrome.scripting.RunAt} runAt - スクリプトを注入するタイミング。
  * @property {boolean} [enabledByDefault=false] - デフォルトで有効にするか。
+ * @property {boolean} [isBeta=false] - ベータ版として案内する機能か。
  * @property {string} [optionsPanelId] - 対応するオプションパネルのID。
 */
 
@@ -79,8 +81,9 @@ export const CONTENT_SCRIPTS_CONFIG = [
     {
         id: 'AutoAttendScript',
         storageKey: 'autoAttend',
-        displayName: '[β] 自動出席',
+        displayName: '自動出席',
         displayOrder: 50,
+        isBeta: true,
         js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}attend.js`],
         matches: [URLS.KOGAKUIN_LMS, URLS.GOOGLE_MEET],
         runAt: 'document_idle',
@@ -119,8 +122,9 @@ export const CONTENT_SCRIPTS_CONFIG = [
     {
         id: 'DarkMode',
         storageKey: 'darkMode',
-        displayName: '[β] ダークモード',
+        displayName: 'ダークモード',
         displayOrder: 110,
+        isBeta: true,
         js: [`${PATHS.FEATURES}darkmode.js`],
         matches: [URLS.KOGAKUIN_LMS],
         runAt: 'document_start',
@@ -158,7 +162,7 @@ export const CONTENT_SCRIPTS_CONFIG = [
         storageKey: 'attendanceRateDisplay',
         displayName: '出席率表示',
         displayOrder: 65,
-        js: [MODULES.DOM_UTILS, `${PATHS.FEATURES}attendanceRate.js`],
+        js: [MODULES.DOM_UTILS, MODULES.ATTENDANCE_UTILS, `${PATHS.FEATURES}attendanceRate.js`],
         matches: [
             URLS.KOGAKUIN_KUPORT,
             URLS.KOGAKUIN_LMS_HOME,

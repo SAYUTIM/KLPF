@@ -2,13 +2,30 @@
 // This software is released under the MIT License, see LICENSE.
 
 /**
- * @file Ku-portの出席率を保存し、Ku-LMSホームの授業カードへ表示する。
+ * @file KU-PORTの出席情報を保存し、KU-LMSホームの授業カードへ表示する。
+ *
+ * KU-PORTでは出席表の監視とキャッシュ保存、KU-LMSでは授業カードとの照合と
+ * 表示状態（キャッシュ・更新中・最新）の管理を担当する。
  */
 
 (function() {
     'use strict';
 
+    const attendanceUtils = globalThis.KLPFAttendanceUtils;
+    if (!attendanceUtils) {
+        console.error('[KLPF 出席率表示] 出席表解析モジュールを読み込めませんでした。');
+        return;
+    }
+
+    const {
+        normalizeText,
+        normalizeCourseName,
+        parseAttendanceRecords,
+    } = attendanceUtils;
+
     const FEATURE_NAME = 'KLPF 出席率表示';
+    const AUTO_LOGIN_REQUIRED_MESSAGE = '自動ログインが有効ではないため、出席状況の更新を開始できませんでした。';
+    const ATTENDANCE_REFRESH_TOAST_ID = 'klpf-attendance-refresh-toast';
     const KUPORT_HOST = 'ku-port.sc.kogakuin.ac.jp';
     const LMS_HOST = 'study.ns.kogakuin.ac.jp';
     const ATTENDANCE_TABLE_ID = 'funcForm:jugyoKaisuInfo';
@@ -18,7 +35,47 @@
     const STYLE_ID = 'klpf-attendance-rate-style';
     const RATE_CLASS = 'klpf-attendance-rate';
     const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+    function showAttendanceRefreshError(message) {
+        let toast = document.getElementById(ATTENDANCE_REFRESH_TOAST_ID);
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = ATTENDANCE_REFRESH_TOAST_ID;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            Object.assign(toast.style, {
+                position: 'fixed',
+                right: '18px',
+                bottom: '18px',
+                zIndex: '2147483647',
+                maxWidth: 'min(360px, calc(100vw - 36px))',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: '#b42318',
+                color: '#ffffff',
+                fontSize: '13px',
+                lineHeight: '1.5',
+                boxShadow: '0 6px 20px rgba(0, 0, 0, .2)',
+                transition: 'opacity .2s ease, transform .2s ease',
+            });
+            (document.body || document.documentElement).appendChild(toast);
+        }
+
+        toast.textContent = message;
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
+        window.clearTimeout(showAttendanceRefreshError.timer);
+        showAttendanceRefreshError.timer = window.setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(6px)';
+        }, 5000);
+    }
     const CAPTURE_DEBOUNCE_MS = 250;
+    const KUPORT_MESSAGE_TYPES = new Set([
+        'klpf-attendance-auto-fetch',
+        'klpf-attendance-capture-now',
+        'klpf-attendance-session-bootstrap',
+    ]);
     const DAY_ABBREVIATIONS = {
         月曜日: '月',
         火曜日: '火',
@@ -37,72 +94,6 @@
     let autoFetchRequested = false;
     let sessionBootstrapReported = false;
     let refreshDisplayState = 'cache';
-
-    function normalizeText(value) {
-        return String(value || '').replace(/\s+/g, ' ').trim();
-    }
-
-    function normalizeCourseName(value) {
-        return normalizeText(value)
-            .normalize('NFKC')
-            .replace(/[･・]/g, '・')
-            .replace(/\s+/g, '')
-            .toLowerCase();
-    }
-
-    function parseCourseLabel(value) {
-        const rawLabel = normalizeText(value);
-        const courseCode = rawLabel.match(/^[A-Z]\d{7}/)?.[0] || '';
-        const courseName = rawLabel
-            .replace(/^[A-Z]\d{7}/, '')
-            .replace(/（[^）]*）\s*$/, '')
-            .replace(/\[[^\]]*\]|【[^】]*】/g, '')
-            .trim();
-        return {
-            courseCode,
-            courseName,
-            normalizedName: normalizeCourseName(courseName),
-        };
-    }
-
-    function parseRate(value) {
-        const match = String(value || '').normalize('NFKC').match(/(\d+(?:\.\d+)?)\s*%/);
-        if (!match) return null;
-        const rate = Number(match[1]);
-        return Number.isFinite(rate) ? Math.max(0, Math.min(100, rate)) : null;
-    }
-
-    function parseLastAttendanceDate(cells) {
-        for (let index = cells.length - 1; index >= 3; index -= 1) {
-            const mark = normalizeText(cells[index].querySelector('.syuketsuKbnMark')?.textContent);
-            if (mark !== '〇') continue;
-            const date = normalizeText(cells[index].querySelector('.jugyoDate')?.textContent);
-            if (/^\d{2}\/\d{2}$/.test(date)) return date;
-        }
-        return '';
-    }
-
-    function parseAttendanceRecords(container) {
-        const records = new Map();
-        for (const row of container.querySelectorAll('tbody tr')) {
-            const cells = Array.from(row.cells || []);
-            if (cells.length < 3) continue;
-
-            const course = parseCourseLabel(cells[1].textContent);
-            if (!course.normalizedName) continue;
-            const schedule = normalizeText(cells[0].textContent).replace(/\s+/g, '');
-            const record = {
-                schedule,
-                courseCode: course.courseCode,
-                courseName: course.courseName,
-                normalizedName: course.normalizedName,
-                rate: parseRate(cells[2].textContent),
-                lastAttendanceDate: parseLastAttendanceDate(cells),
-            };
-            records.set(`${schedule}|${course.normalizedName}`, record);
-        }
-        return [...records.values()];
-    }
 
     async function captureKuportAttendance() {
         scheduledCapture = null;
@@ -196,52 +187,70 @@
     function scheduleCapture() {
         if (scheduledCapture !== null) clearTimeout(scheduledCapture);
         scheduledCapture = setTimeout(() => {
-            void captureKuportAttendance().catch(error => {
-                console.error(`[${FEATURE_NAME}] Ku-portの出席率保存に失敗しました。`, error);
-            });
+            void captureKuportAttendanceSafely();
         }, CAPTURE_DEBOUNCE_MS);
     }
 
-    function startKuportCapture() {
-        if (!runtimeMessageListener) {
-            runtimeMessageListener = (message, _sender, sendResponse) => {
-                if (message.type !== 'klpf-attendance-auto-fetch'
-                    && message.type !== 'klpf-attendance-capture-now'
-                    && message.type !== 'klpf-attendance-session-bootstrap') return false;
-
-                const isBootstrapRequest = message.type === 'klpf-attendance-session-bootstrap';
-                if (message.type === 'klpf-attendance-auto-fetch') autoFetchRequested = true;
-                const request = isBootstrapRequest
-                    ? handleKuportSessionBootstrap()
-                    : handleKuportFetchRequest(message.type === 'klpf-attendance-auto-fetch');
-                request
-                    .then(sendResponse)
-                    .catch(error => sendResponse({ status: 'error', error: error.message }));
-                return true;
-            };
-            chrome.runtime.onMessage.addListener(runtimeMessageListener);
+    async function captureKuportAttendanceSafely() {
+        try {
+            return await captureKuportAttendance();
+        } catch (error) {
+            console.error(`[${FEATURE_NAME}] Ku-portの出席率保存に失敗しました。`, error);
+            return false;
         }
+    }
+
+    function registerKuportMessageListener() {
+        if (runtimeMessageListener) return;
+
+        runtimeMessageListener = (message, _sender, sendResponse) => {
+            if (!KUPORT_MESSAGE_TYPES.has(message.type)) return false;
+
+            const isAutoFetch = message.type === 'klpf-attendance-auto-fetch';
+            if (isAutoFetch) autoFetchRequested = true;
+            const request = message.type === 'klpf-attendance-session-bootstrap'
+                ? handleKuportSessionBootstrap()
+                : handleKuportFetchRequest(isAutoFetch);
+            request
+                .then(sendResponse)
+                .catch(error => sendResponse({ status: 'error', error: error.message }));
+            return true;
+        };
+        chrome.runtime.onMessage.addListener(runtimeMessageListener);
+    }
+
+    function observeKuportPageUntilAttendanceTable() {
+        observer?.disconnect();
+        observer = new MutationObserver(() => {
+            reportSessionBootstrapIfReady();
+            if (!document.getElementById(ATTENDANCE_TABLE_ID)) return;
+
+            observer?.disconnect();
+            observer = null;
+            startKuportCapture();
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
+    function observeAttendanceTable(container) {
+        observer?.disconnect();
+        observer = new MutationObserver(scheduleCapture);
+        observer.observe(container, { childList: true, subtree: true, characterData: true });
+    }
+
+    function startKuportCapture() {
+        registerKuportMessageListener();
 
         reportSessionBootstrapIfReady();
 
         const container = document.getElementById(ATTENDANCE_TABLE_ID);
         if (!container) {
-            observer = new MutationObserver(() => {
-                reportSessionBootstrapIfReady();
-                if (!document.getElementById(ATTENDANCE_TABLE_ID)) return;
-                observer.disconnect();
-                observer = null;
-                startKuportCapture();
-            });
-            observer.observe(document.documentElement, { childList: true, subtree: true });
+            observeKuportPageUntilAttendanceTable();
             return;
         }
 
-        void captureKuportAttendance().catch(error => {
-            console.error(`[${FEATURE_NAME}] Ku-portの出席率保存に失敗しました。`, error);
-        });
-        observer = new MutationObserver(scheduleCapture);
-        observer.observe(container, { childList: true, subtree: true, characterData: true });
+        void captureKuportAttendanceSafely();
+        observeAttendanceTable(container);
     }
 
     function getCardSchedule(card) {
@@ -364,6 +373,39 @@
         });
     }
 
+    function getRateLevelClass(rate) {
+        if (rate >= 80) return 'is-good';
+        if (rate >= 60) return 'is-warning';
+        return 'is-danger';
+    }
+
+    function getRefreshStateLabel() {
+        if (refreshDisplayState === 'latest') return '最新';
+        if (['cache', 'cache-fallback'].includes(refreshDisplayState)) return 'キャッシュ';
+        return '更新中';
+    }
+
+    function getRefreshStateDescription() {
+        const descriptions = {
+            latest: 'Ku-portから最新データを取得済み',
+            'cache-fallback': 'Ku-portの更新に失敗または中断したため保存済みデータを表示',
+            cache: '保存済みデータを表示',
+            'loading-cache': '保存済みデータを表示しながらKu-portを更新中',
+        };
+        return descriptions[refreshDisplayState] || descriptions['loading-cache'];
+    }
+
+    function createAttendanceAccessibleLabel(record, cache) {
+        const updatedAt = formatUpdatedAt(cache.updatedAt);
+        return [
+            `Ku-port集計 ${record.rate}%`,
+            record.lastAttendanceDate && `最終カードタッチ ${record.lastAttendanceDate}`,
+            getRefreshStateDescription(),
+            cache.academicTerm,
+            updatedAt && `データ更新 ${updatedAt}`,
+        ].filter(Boolean).join('・');
+    }
+
     function createAttendanceElements(record, cache) {
         const lastAttendanceElement = document.createElement('div');
         lastAttendanceElement.className = `${RATE_CLASS} klpf-attendance-last-row`;
@@ -374,7 +416,7 @@
 
         const rateElement = document.createElement('div');
         rateElement.className = `${RATE_CLASS} klpf-attendance-rate-row is-${refreshDisplayState}`;
-        rateElement.classList.add(record.rate >= 80 ? 'is-good' : record.rate >= 60 ? 'is-warning' : 'is-danger');
+        rateElement.classList.add(getRateLevelClass(record.rate));
         const rateLabel = document.createElement('span');
         rateLabel.className = 'klpf-attendance-rate-value';
         rateLabel.textContent = `出席率 ${record.rate}%`;
@@ -382,28 +424,10 @@
 
         const stateLabel = document.createElement('span');
         stateLabel.className = 'klpf-attendance-sync-state';
-        stateLabel.textContent = refreshDisplayState === 'latest'
-            ? '最新'
-            : ['cache', 'cache-fallback'].includes(refreshDisplayState)
-                ? 'キャッシュ'
-                : '更新中';
+        stateLabel.textContent = getRefreshStateLabel();
         rateElement.appendChild(stateLabel);
 
-        const updatedAt = formatUpdatedAt(cache.updatedAt);
-        const displayStatus = refreshDisplayState === 'latest'
-            ? 'Ku-portから最新データを取得済み'
-            : refreshDisplayState === 'cache-fallback'
-                ? 'Ku-portの更新に失敗または中断したため保存済みデータを表示'
-                : refreshDisplayState === 'cache'
-                    ? '保存済みデータを表示'
-                    : '保存済みデータを表示しながらKu-portを更新中';
-        const accessibleLabel = [
-            `Ku-port集計 ${record.rate}%`,
-            record.lastAttendanceDate && `最終カードタッチ ${record.lastAttendanceDate}`,
-            displayStatus,
-            cache.academicTerm,
-            updatedAt && `データ更新 ${updatedAt}`,
-        ].filter(Boolean).join('・');
+        const accessibleLabel = createAttendanceAccessibleLabel(record, cache);
         for (const element of [lastAttendanceElement, rateElement]) {
             element.title = accessibleLabel;
             element.setAttribute('aria-label', accessibleLabel);
@@ -488,7 +512,10 @@
         chrome.runtime.onMessage.addListener(runtimeMessageListener);
         chrome.runtime.sendMessage({ type: 'request-attendance-rate-refresh' }, response => {
             if (chrome.runtime.lastError) return;
-            if (response?.status === 'browser-session-already-checked') {
+            if (response?.status === 'auto-login-disabled') {
+                showAttendanceRefreshError(AUTO_LOGIN_REQUIRED_MESSAGE);
+                setRefreshDisplayState('cache-fallback');
+            } else if (response?.status === 'browser-session-already-checked') {
                 setRefreshDisplayState(
                     response.previousStatus === 'completed' ? 'cache' : 'cache-fallback'
                 );

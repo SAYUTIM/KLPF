@@ -5,126 +5,246 @@
     <title>KLPF</title>
     <link rel="stylesheet" href="options.css">
 </head>
-<body>
+<body data-options-view="calm">
     <div class="custom-cursor"></div>
     <div id="particle-canvas"></div>
-    <div class="loading">
+    <div class="loading" aria-hidden="true">
         <div class="orbit4 leo"></div>
         <div class="orbit3 leo"></div>
         <div class="orbit2 leo"></div>
         <div class="orbit1 w1 leo"></div>
         <div class="orbit1 w2 leo"></div>
         <div class="orbit1 w3 leo"></div>
+        <div class="loading-brand">
+            <img src="../icon/icon48.png" alt="">
+            <strong>KLPF</strong>
+            <span class="loading-progress"><span></span></span>
+        </div>
+        <span class="loading-screen-sweep loading-screen-sweep--40"></span>
+        <span class="loading-screen-sweep loading-screen-sweep--80"></span>
     </div>
+    <div class="options-view-transition" aria-hidden="true"></div>
 
-    <div class="backup-actions">
-        <button type="button" id="export-settings-button" class="backup-action-button">設定をエクスポート</button>
-        <button type="button" id="import-settings-button" class="backup-action-button backup-action-button-secondary">設定をインポート</button>
-        <input type="file" id="import-settings-file" accept=".json,application/json" hidden>
-    </div>
+    <header class="options-page-header">
+        <div class="options-page-brand" aria-label="KLPF オプション">
+            <span class="options-page-brand-mark" aria-hidden="true">
+                <img src="../icon/icon48.png" alt="">
+            </span>
+            <span class="options-page-brand-copy">
+                <strong>KLPF</strong>
+                <small>拡張機能の設定</small>
+            </span>
+        </div>
+        <div class="options-page-actions">
+            <div class="backup-actions">
+                <button type="button" id="export-settings-button" class="backup-action-button">設定をエクスポート</button>
+                <button type="button" id="import-settings-button" class="backup-action-button backup-action-button-secondary">設定をインポート</button>
+                <input type="file" id="import-settings-file" accept=".json,application/json" hidden>
+            </div>
+            <button type="button" id="options-view-toggle" class="options-view-toggle" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7.5h16M4 12h10M4 16.5h7"></path>
+                </svg>
+                <span id="options-view-toggle-label">旧表示に戻す</span>
+            </button>
+        </div>
+    </header>
 
     <div class="settings-wrapper">
 
+        <aside class="calm-navigation" aria-label="設定の目次">
+            <div class="calm-navigation-inner">
+                <span class="calm-navigation-label">設定メニュー</span>
+                <nav>
+                    <a class="calm-navigation-link is-active" href="#settings-overview" data-section="settings-overview">
+                        <span>概要</span>
+                    </a>
+                    <a class="calm-navigation-link" href="#category-account" data-section="category-account">
+                        <span class="calm-navigation-number">01</span>
+                        <span>ログイン・セッション</span>
+                    </a>
+                    <a class="calm-navigation-link" href="#category-learning" data-section="category-learning">
+                        <span class="calm-navigation-number">02</span>
+                        <span>学習支援</span>
+                    </a>
+                    <a class="calm-navigation-link" href="#category-attendance" data-section="category-attendance">
+                        <span class="calm-navigation-number">03</span>
+                        <span>出席・自動化</span>
+                    </a>
+                    <a class="calm-navigation-link" href="#category-display" data-section="category-display">
+                        <span class="calm-navigation-number">04</span>
+                        <span>表示・操作</span>
+                    </a>
+                </nav>
+                <p class="calm-navigation-note">変更内容は自動で保存されます。</p>
+            </div>
+        </aside>
+
         <div class="container main-settings">
-            <h1 class="box_color">KLPF</h1>
-
-            <div id="update-notification" class="update-notification"></div>
-
-            <div class="switch-container" title="Ku-LMS もしくは ku-port を開くと自動でログインされます。使用する場合は統合認証ユーザー名とパスワードを入力してください。">
-                <span class="switch-label">自動ログイン</span>
-                <label class="switch">
-                    <input type="checkbox" id="auto-login">
-                    <span class="slider"></span>
-                </label>
+            <div id="settings-overview" class="settings-heading">
+                <span class="settings-heading-kicker">OPTIONS</span>
+                <div class="settings-heading-title-row">
+                    <h1 class="box_color" data-text="KLPF">KLPF</h1>
+                    <label class="all-features-toggle" for="all-features-toggle" title="KLPFのすべての機能を一時停止または復元します。">
+                        <span class="all-features-toggle-copy">
+                            <strong>拡張機能</strong>
+                            <small id="all-features-toggle-status">ON</small>
+                        </span>
+                        <input type="checkbox" id="all-features-toggle" role="switch" checked>
+                        <span class="all-features-toggle-track" aria-hidden="true"></span>
+                    </label>
+                </div>
             </div>
 
-            <div class="switch-container" title="KuLMSで自動ログアウトされるのを無効化します。">
-                <span class="switch-label">自動ログアウト無効</span>
-                <label class="switch">
-                    <input type="checkbox" id="logout-block">
-                    <span class="slider"></span>
+            <div id="update-notification" class="update-notification">
+                <span class="update-notification-icon" aria-hidden="true">↑</span>
+                <span class="update-notification-copy">
+                    <strong id="update-notification-title"></strong>
+                    <span>更新内容を確認して、最新版へアップデートしてください。</span>
+                </span>
+                <label class="update-notification-preference" for="hide-home-update-notification">
+                    <span>KU-LMSホームでは表示しない</span>
+                    <input type="checkbox" id="hide-home-update-notification" role="switch">
+                    <span class="update-notification-toggle" aria-hidden="true"></span>
                 </label>
-            </div>
-            
-            <div class="switch-container" title="未提出課題、未実施テストをまとめてKu-LMSホーム画面に表示します。">
-                <span class="switch-label">課題リストアップ</span>
-                <label class="switch">
-                    <input type="checkbox" id="home-work">
-                    <span class="slider"></span>
-                </label>
+                <a class="update-notification-action" href="https://sayutim.github.io/KLPF/#download" target="_blank" rel="noopener noreferrer">更新を見る →</a>
             </div>
 
-            <div class="switch-container" title="Meet を開くと自動でカメラとマイクをオフにして参加します。">
-                <span class="switch-label">Meetミュート参加</span>
-                <label class="switch">
-                    <input type="checkbox" id="auto-meet">
-                    <span class="slider"></span>
-                </label>
-            </div>
+            <section id="category-account" class="feature-category" aria-labelledby="category-account-title">
+                <header class="feature-category-header">
+                    <span class="feature-category-index">01</span>
+                    <div>
+                        <h2 id="category-account-title">ログイン・セッション</h2>
+                        <p>大学サービスへのログインとセッション維持関連の設定</p>
+                    </div>
+                </header>
+                <div class="feature-category-list">
+                    <div class="switch-container" data-feature-key="autoLogin" title="KU-LMSまたはKU-PORTのログイン画面を開いたとき、保存済みの統合認証ユーザー名とパスワードを入力して自動ログインします。TOTP秘密鍵を登録している場合は、ワンタイムパスワードの入力にも対応します。">
+                        <div class="switch-copy"><span class="switch-label">自動ログイン</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="auto-login">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="inline-options-host" data-options-host="auto-login-options"></div>
+                    <div class="switch-container" data-feature-key="logoutblock" title="KU-LMSを開いたまま操作している際に、セッションタイムアウトによって自動ログアウト画面へ移動するのを防ぎます。長時間KU-LMSを開いている時の再ログイン回数を減らせます。パソコンのスリープや休止、Wi-Fi変更等による通信切断やサーバー側でのセッション無効化、別端末や別ブラウザでの再ログインによるSID無効化が発生した場合には対応していません。">
+                        <div class="switch-copy"><span class="switch-label">自動ログアウト無効</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="logout-block">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
 
-            <div class="switch-container" title="クォーター、曜日、時間を選択し、Ku-LMSを開いておくと3分前に自動で出席ボタンを押しmeetに参加します。">
-                <span class="switch-label">[β] 自動出席</span>
-                <label class="switch">
-                    <input type="checkbox" id="auto-attend">
-                    <span class="slider"></span>
-                </label>
-            </div>
+            <section id="category-learning" class="feature-category" aria-labelledby="category-learning-title">
+                <header class="feature-category-header">
+                    <span class="feature-category-index">02</span>
+                    <div>
+                        <h2 id="category-learning-title">学習支援</h2>
+                        <p>課題、教材、授業一覧を見やすくする機能</p>
+                    </div>
+                </header>
+                <div class="feature-category-list">
+                    <div class="switch-container" data-feature-key="homework" title="各授業の未提出課題や未実施テスト、未回答アンケートを取得し、KU-LMSホーム画面へ期限付きの一覧としてまとめます。また、Webhook URLを登録して通知機能を有効にすると、GASや自作サービスへ課題データを送信できます。">
+                        <div class="switch-copy"><span class="switch-label">課題リストアップ</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="home-work">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="inline-options-host" data-options-host="homework-options"></div>
+                    <div class="switch-container" data-feature-key="kyozaiopen" title="授業の教材一覧に一括開封ボタンを追加します。ボタンを押すと対象リンク内の教材を順番に開いて参照済みにするため、複数教材の確認作業をまとめて進められます。">
+                        <div class="switch-copy"><span class="switch-label">教材一括開封</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="kyozai-open">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-container" data-feature-key="searchSubject" title="学期によって受講している授業カードのみを表示し、それ以外は非表示にします。また、KU-LMSの授業一覧で選択した講義の絞り込み条件を保存し、KU-LMSを開きなおしても自動的にフィルターを適用します。">
+                        <div class="switch-copy"><span class="switch-label">履修中科目のみ表示</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="search-subject">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-container" data-feature-key="showTime" title="KU-LMS画面の右上に現在時刻を表示し、時間割に合わせて授業開始まで、または授業終了までの残り時間を表示します。また、現在時刻をクリックすると、2-3限連続授業の時間割に切り替えることができます。">
+                        <div class="switch-copy"><span class="switch-label">授業時間表示</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="show-time">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
 
-            <div class="switch-container" title="Ku-LMSのホーム画面で、出席ボタンが存在する授業カードの右端に出席バッジを表示します。">
-                <span class="switch-label">ホーム出席表示</span>
-                <label class="switch">
-                    <input type="checkbox" id="home-attendance-badge">
-                    <span class="slider"></span>
-                </label>
-            </div>
+            <section id="category-attendance" class="feature-category" aria-labelledby="category-attendance-title">
+                <header class="feature-category-header">
+                    <span class="feature-category-index">03</span>
+                    <div>
+                        <h2 id="category-attendance-title">出席・自動化</h2>
+                        <p>出席系統と授業参加を補助する機能</p>
+                    </div>
+                </header>
+                <div class="feature-category-list">
+                    <div class="switch-container" data-feature-key="homeAttendanceBadge" title="KU-LMS上で出席ボタンが存在する授業の授業カード右上に出席バッジを表示します。バッジを押すとホーム画面から出席ポップアップが表示され、出席することが可能です。">
+                        <div class="switch-copy"><span class="switch-label">ホーム出席表示</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="home-attendance-badge">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-container" data-feature-key="attendanceRateDisplay" title="ブラウザ起動後に初めてKU-LMSホームを開いたとき、または更新が押されたときに、KU-PORTから各授業の出席率と最後に教室のカードリーダーにカードをタッチした日を取得して授業カードへ表示します。タブでKU-PORTが開いている場合や取得処理と競合する場合は安全のため処理を中断します。また、更新処理は30秒間のクールタイムがあり、30秒以内に連続して更新することはできません。データ取得処理のため、KU-PORTへアクセスする際にChromeの新しいウィンドウが一時的に生成されます。また、この機能を利用するには、機能「自動ログイン」の有効化が必須です。">
+                        <div class="switch-copy"><span class="switch-label">出席率表示</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="attendance-rate-display">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-container" data-feature-key="autoAttend" title="クォーター・曜日・時限とMeet URLを登録して、KU-LMSホーム画面を開いて放置していると、授業開始3分前に自動的にGoogle Meetに参加します。また、設定に応じて出席ボタンの自動押下もします。この機能を利用する時は、機能「Meetミュート参加」と機能「自動ログアウト無効」を有効にすることをおすすめします。">
+                        <div class="switch-copy"><span class="switch-label">自動出席</span><span class="feature-beta">ベータ版</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="auto-attend">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="inline-options-host" data-options-host="auto-attend-options"></div>
+                    <div class="switch-container" data-feature-key="autoMeet" title="Google Meetの参加画面を開いたときに、カメラとマイクを自動でOFFへ切り替えてから参加します。毎回ミュート状態を確認して切り替える操作を省略できます。※Google Meetの仕様変更により、カメラとマイクの切り替えができない場合があります。">
+                        <div class="switch-copy"><span class="switch-label">Meetミュート参加</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="auto-meet">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
 
-            <div class="switch-container" title="ブラウザ起動後、初めてKu-LMSホームを開いたときだけKu-portから出席率と最終カードタッチ日を取得します。Ku-portが開いている場合は自動取得しません。">
-                <span class="switch-label">出席率表示</span>
-                <label class="switch">
-                    <input type="checkbox" id="attendance-rate-display">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="switch-container" title="教材ページで教材リンクの隣に一括開封のボタンを配置します。それをクリックするとそのリンクの中にある教材を自動で開き、参照済みにします。">
-                <span class="switch-label">教材一括開封</span>
-                <label class="switch">
-                    <input type="checkbox" id="kyozai-open">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="switch-container" title="Ku-LMSで講義絞り込み機能の設定を記憶して自動で適用します。自動で履修中科目のみ表示するチェックボックスが追加されます。">
-                <span class="switch-label">履修中科目のみ表示</span>
-                <label class="switch">
-                    <input type="checkbox" id="search-subject">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="switch-container" title="ku-port の掲示板やシラバスなどのポップアップを枠外クリックで閉じるボタンと同じ挙動で閉じます。">
-                <span class="switch-label">KP枠外簡易閉</span>
-                <label class="switch">
-                    <input type="checkbox" id="kuport-dialog-outside-close">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="switch-container" title="Ku-LMSで右上に現在時刻と、授業開始もしくは終了までの時間が表示されます。">
-                <span class="switch-label">授業時間表示</span>
-                <label class="switch">
-                    <input type="checkbox" id="show-time">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="switch-container" title="Ku-LMSにダークモードのテーマを適用します。">
-                <span class="switch-label">[β] ダークモード</span>
-                <label class="switch">
-                    <input type="checkbox" id="dark-mode">
-                    <span class="slider"></span>
-                </label>
-            </div>
+            <section id="category-display" class="feature-category" aria-labelledby="category-display-title">
+                <header class="feature-category-header">
+                    <span class="feature-category-index">04</span>
+                    <div>
+                        <h2 id="category-display-title">表示・操作</h2>
+                        <p>KU-PORTとKU-LMSの画面操作や外観調整機能</p>
+                        <p>KU-LMSを自分の好きな色にできるテーマカラー変更機能や、KU-LMSの背景に好きな画像を設定できるカスタム画像テーマ機能などはデフォルトで入っていて、KU-LMS右上の歯車設定マーク⚙から設定可能です。</p>
+                    </div>
+                </header>
+                <div class="feature-category-list">
+                    <div class="switch-container" data-feature-key="kuportDialogOutsideClose" title="KU-PORTの掲示板やシラバスなどで開くダイアログを、ポップアップの外側をクリックするだけで閉じられるようにします。小さい画面内の閉じるボタン×までカーソルを移動する必要がなくなります。">
+                        <div class="switch-copy"><span class="switch-label">KP枠外簡易閉</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="kuport-dialog-outside-close">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-container" data-feature-key="darkMode" title="KU-LMSの背景、文字、主要な画面要素へ暗色テーマを適用します。夜間や暗い場所で画面を確認するときの明るさを抑えます。現在はβ機能のため、一部画面には適用されない場合があります。">
+                        <div class="switch-copy"><span class="switch-label">ダークモード</span><span class="feature-beta">ベータ版</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="dark-mode">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
 
             <!--
                 <div class="switch-container" title="-">
@@ -140,6 +260,12 @@
         </div>
 
         <div id="options-panel" class="options-panel">
+
+            <div class="options-panel-heading">
+                <span class="settings-heading-kicker">DETAILS</span>
+                <h2>詳細設定</h2>
+                <p>有効にした機能の追加項目を設定します。</p>
+            </div>
 
             <div id="auto-login-options" class="options-group">
                 <div class="container options-container">
@@ -215,12 +341,22 @@
                         <span class="label">通知機能</span>
                     </label>
                     <label for="homework-webhook-url">Webhook URL</label>
-                    <input type="text" id="homework-webhook-url" placeholder="https://script.google.com/a/macros/g.kogakuin.jp/s/...">
+                    <input type="text" id="homework-webhook-url" placeholder="https://example.com/your-webhook">
                     <a href="../gas/setupgas.html" target="_blank" rel="noopener noreferrer" style="color: rgb(220, 220, 220)">通知機能の有効化方法について</a>
                 </div>
             </div>
         </div>
     </div>
+
+    <footer class="calm-footer">
+        <span>© KLPF</span>
+        <nav aria-label="KLPF関連リンク">
+            <a href="https://sayutim.github.io/KLPF/" target="_blank" rel="noopener noreferrer">KLPF公式ページ</a>
+            <a href="https://github.com/SAYUTIM/KLPF/releases" target="_blank" rel="noopener noreferrer">リリースノート</a>
+            <a href="https://sayutim.github.io/KLPF/privacypolicy/" target="_blank" rel="noopener noreferrer">プライバシーポリシー</a>
+            <a href="https://sayutim.github.io/KLPF/terms/" target="_blank" rel="noopener noreferrer">利用規約</a>
+        </nav>
+    </footer>
 
     <script src="../features/modules/totp.js"></script>
     <script type="module" src="main.js"></script>

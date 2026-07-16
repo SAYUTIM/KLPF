@@ -377,7 +377,7 @@
                     case 'external':
                         return await this._openExternal(material);
                     default:
-                        console.warn('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 未対応の教材タイプ: ' + material.type, material);
+                        console.debug('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] 未対応の教材タイプ: ' + material.type, material);
                         return false;
                 }
             } catch (error) {
@@ -397,7 +397,7 @@
                     logDebug("window.downloadFileでダウンロード:", fileId);
                     return true;
                 } catch (e) {
-                    console.warn('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] window.downloadFileの実行に失敗', e);
+                    console.debug('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] window.downloadFileの実行に失敗', e);
                 }
             }
             logDebug("iframeフォールバックでダウンロード:", fileId);
@@ -415,7 +415,7 @@
                     logDebug("window.openReferenceで参照:", fileId);
                     return true;
                 } catch (e) {
-                    console.warn('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] window.openReferenceの実行に失敗', e);
+                    console.debug('[' + FEATURE_CONSTANTS.FEATURE_NAME + '] window.openReferenceの実行に失敗', e);
                 }
             }
             logDebug("iframeフォールバックで参照:", fileId);
@@ -447,7 +447,7 @@
                     };
 
                     const timeoutId = setTimeout(() => {
-                        console.warn(`トラッキング タイムアウト: ${trackingIframe.src}`);
+                        console.debug(`トラッキング タイムアウト: ${trackingIframe.src}`);
                         cleanupAndResolve(false);
                     }, 5000); // 5秒でタイムアウト
 

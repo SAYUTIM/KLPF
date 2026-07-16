@@ -2,18 +2,7 @@
 // This software is released under the MIT License, see LICENSE.
 
 import { showUpdateNotification } from './ui.js';
-
-/**
- * バージョン文字列（例: "v4.1.3" or "4.1.3"）を数値（例: 413）に変換します。
- * @param {string} versionString - バージョン文字列。
- * @returns {number} バージョンを表す数値。
- */
-function parseVersion(versionString) {
-    if (!versionString) return 0;
-    // 数字以外の文字をすべて削除
-    const numericString = versionString.replace(/\D/g, '');
-    return parseInt(numericString, 10) || 0;
-}
+import { isVersionNewer } from '../../features/modules/version-utils.js';
 
 /**
  * manifest.json から現在の拡張機能のバージョンを取得します。
@@ -46,14 +35,8 @@ export async function checkForUpdates() {
         // 現在インストールされているバージョンを取得
         const currentVersionString = await getCurrentVersion(); // 例: "4.1.3"
 
-        // バージョンを数値に変換して比較
-        const latestVersion = parseVersion(latestVersionString);
-        const currentVersion = parseVersion(currentVersionString);
-
-        //console.log(`現在のバージョン: ${currentVersionString} (${currentVersion}), 最新バージョン: ${latestVersionString} (${latestVersion})`);
-
         // 最新バージョンの方が大きい場合、通知を表示
-        if (latestVersion > currentVersion) {
+        if (isVersionNewer(latestVersionString, currentVersionString)) {
             showUpdateNotification(latestVersionString);
         }
 

@@ -1,6 +1,13 @@
 // Copyright (c) 2024-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
+/**
+ * @file KU-LMS内のKLPF設定、テーマカラー、関連メニューを管理する。
+ *
+ * 静的content scriptとして複数回評価される場合があるため、INSTANCE_KEYを使って
+ * 既存UIを再利用し、メニューやイベントリスナーの重複登録を防いでいる。
+ */
+
 (() => {
     'use strict';
 
@@ -18,8 +25,17 @@
     const THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-theme-menu-item';
     const CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-custom-image-theme-menu-item';
     const ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE = 'data-klpf-attendance-refresh-menu-item';
+    const MANAGED_MENU_ITEMS_SELECTOR = [
+        `#${MENU_ITEM_ID}`,
+        `[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`,
+        `[${THEME_MENU_ITEM_ATTRIBUTE}]`,
+        `[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`,
+        `[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`,
+    ].join(', ');
     const ATTENDANCE_REFRESH_TOAST_ID = 'klpf-attendance-refresh-toast';
     const ATTENDANCE_REFRESH_STYLE_ID = 'klpf-attendance-refresh-menu-style';
+    const AUTO_LOGIN_REQUIRED_MESSAGE = '自動ログインが有効ではないため、出席状況の更新を開始できませんでした。';
+    const HOMEWORK_FEATURE_KEY = 'homework';
     const ATTENDANCE_RATE_FEATURE_KEY = 'attendanceRateDisplay';
     const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
     const ATTENDANCE_RATE_CONSENT_MESSAGE = 'この機能は、ブラウザの起動後、初めてKU-LMSを開いたとき、または「出席状況」の更新ボタンを押したときに、出席情報を取得するためバックグラウンドでKU-PORTへアクセスします。アクセス時にはChromeの新しいウィンドウが一時的に生成されます。KU-PORTがすでに開かれている場合や、通信中にKU-PORTが開かれた場合は処理を中断します。';
@@ -117,6 +133,8 @@
         allDisabled: false,
     };
 
+    // --- Feature definitions and storage state ---
+
     async function loadFeatureDefinitions() {
         const response = await chrome.runtime.sendMessage({ type: 'get-inline-settings-features' });
         if (!response?.success || !Array.isArray(response.features)) {
@@ -153,6 +171,8 @@
             `;
         document.documentElement.classList.toggle('klpf-inline-modal-open', activeScrollLocks.size > 0);
     }
+
+    // --- Theme color data and selector rules ---
 
     function normalizeHexColor(value) {
         if (typeof value !== 'string') return null;
@@ -318,6 +338,8 @@
         if (stored[ALL_DISABLED_KEY]) applyThemeColors({}, []);
         else applyThemeColors(persistedThemeColors, persistedElementRules);
     }
+
+    // --- Theme color panel ---
 
     function ensureThemeRoot() {
         if (themeRootElement?.isConnected && themeShadowRoot) return;
@@ -1449,6 +1471,8 @@
         themeShadowRoot.querySelector('[data-theme-inspect]')?.focus();
     }
 
+    // --- Inline feature settings panel ---
+
     function getFeatureValue(settings, feature) {
         return typeof settings[feature.key] === 'boolean' ? settings[feature.key] : feature.defaultValue;
     }
@@ -1620,6 +1644,27 @@
                 color: var(--klpf-text);
                 font-size: 15px;
                 font-weight: 700;
+            }
+
+            .feature-title {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 7px;
+            }
+
+            .feature-beta {
+                display: inline-flex;
+                align-items: center;
+                min-height: 18px;
+                padding: 1px 6px;
+                border: 1px solid #f4c790;
+                border-radius: 999px;
+                background: #fff4e5;
+                color: #a94a00;
+                font-size: 10px;
+                font-weight: 800;
+                line-height: 1;
             }
 
             .master-desc,
@@ -1845,7 +1890,7 @@
             return `
                 <article class="feature-card">
                     <div>
-                        <p class="feature-title">${feature.label}</p>
+                        <p class="feature-title">${feature.label}${feature.isBeta ? '<span class="feature-beta">ベータ版</span>' : ''}</p>
                         <p class="feature-desc">${feature.defaultValue ? '通常は有効' : '必要なときだけ有効'} / オプションページと同期</p>
                     </div>
                     <label class="switch" aria-label="${feature.label}">
@@ -2069,85 +2114,63 @@
         addPanelListeners();
     }
 
-    function buildMenuItem() {
+    function createSettingsMenuItem({ id, attributeName, labelText, onActivate }) {
         const item = document.createElement('li');
-        item.id = MENU_ITEM_ID;
+        if (id) item.id = id;
+        if (attributeName) item.setAttribute(attributeName, '');
 
         const link = document.createElement('a');
         link.href = '#';
-
         const label = document.createElement('span');
-        label.textContent = 'KLPF 設定';
+        label.textContent = labelText;
 
         link.appendChild(label);
         link.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            openPanel();
+            onActivate(link);
         });
         item.appendChild(link);
         return item;
+    }
+
+    function buildMenuItem() {
+        return createSettingsMenuItem({
+            id: MENU_ITEM_ID,
+            labelText: 'KLPF 設定',
+            onActivate: () => openPanel(),
+        });
     }
 
     function buildThemeMenuItem() {
-        const item = document.createElement('li');
-        item.setAttribute(THEME_MENU_ITEM_ATTRIBUTE, '');
-
-        const link = document.createElement('a');
-        link.href = '#';
-
-        const label = document.createElement('span');
-        label.textContent = 'テーマカラー変更';
-
-        link.appendChild(label);
-        link.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            openThemePanel().catch((error) => {
-                console.warn('[KLPF] サイトテーマ色の設定画面を開けませんでした。', error);
-            });
+        return createSettingsMenuItem({
+            attributeName: THEME_MENU_ITEM_ATTRIBUTE,
+            labelText: 'テーマカラー変更',
+            onActivate: () => {
+                openThemePanel().catch((error) => {
+                    console.warn('[KLPF] サイトテーマ色の設定画面を開けませんでした。', error);
+                });
+            },
         });
-        item.appendChild(link);
-        return item;
     }
 
     function buildHomeEditorMenuItem() {
-        const item = document.createElement('li');
-        item.setAttribute(HOME_EDITOR_MENU_ITEM_ATTRIBUTE, '');
-
-        const link = document.createElement('a');
-        link.href = '#';
-        const label = document.createElement('span');
-        label.textContent = 'ホームの表示を編集';
-        link.appendChild(label);
-        link.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            document.dispatchEvent(new CustomEvent(OPEN_HOME_EDITOR_EVENT));
+        return createSettingsMenuItem({
+            attributeName: HOME_EDITOR_MENU_ITEM_ATTRIBUTE,
+            labelText: 'ホームの表示を編集',
+            onActivate: () => document.dispatchEvent(new CustomEvent(OPEN_HOME_EDITOR_EVENT)),
         });
-        item.appendChild(link);
-        return item;
     }
 
     function buildCustomImageThemeMenuItem() {
-        const item = document.createElement('li');
-        item.setAttribute(CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE, '');
-
-        const link = document.createElement('a');
-        link.href = '#';
-
-        const label = document.createElement('span');
-        label.textContent = 'カスタム画像テーマ';
-
-        link.appendChild(label);
-        link.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            document.dispatchEvent(new CustomEvent(OPEN_CUSTOM_IMAGE_THEME_EVENT));
+        return createSettingsMenuItem({
+            attributeName: CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE,
+            labelText: 'カスタム画像テーマ',
+            onActivate: () => document.dispatchEvent(new CustomEvent(OPEN_CUSTOM_IMAGE_THEME_EVENT)),
         });
-        item.appendChild(link);
-        return item;
     }
+
+    // --- Attendance refresh feedback and cooldown ---
 
     function showAttendanceRefreshError(message) {
         let toast = document.getElementById(ATTENDANCE_REFRESH_TOAST_ID);
@@ -2262,7 +2285,7 @@
             });
             startAttendanceRefreshCooldown(response?.remainingSeconds || 0);
         } catch (error) {
-            console.warn('[KLPF] 出席状況の更新待ち時間を取得できませんでした。', error);
+            console.debug('[KLPF] 出席状況の更新待ち時間を取得できませんでした。', error);
         }
     }
 
@@ -2294,6 +2317,8 @@
                 showAttendanceRefreshError('Ku-portが開いているため、出席状況の更新を中止しました。');
             } else if (response?.status === 'already-running') {
                 showAttendanceRefreshError('出席状況を更新中です。完了までお待ちください。');
+            } else if (response?.status === 'auto-login-disabled') {
+                showAttendanceRefreshError(AUTO_LOGIN_REQUIRED_MESSAGE);
             } else if (['started', 'started-existing-session'].includes(response?.status)) {
                 refreshStarted = true;
                 await syncAttendanceRefreshCooldown();
@@ -2304,7 +2329,7 @@
                 showAttendanceRefreshError('出席状況の更新を開始できませんでした。');
             }
         } catch (error) {
-            console.warn('[KLPF] 出席状況の手動更新を開始できませんでした。', error);
+            console.debug('[KLPF] 出席状況の手動更新を開始できませんでした。', error);
             showAttendanceRefreshError('出席状況の更新中にエラーが発生しました。');
         } finally {
             if (!refreshStarted) attendanceManualRefreshPending = false;
@@ -2316,23 +2341,16 @@
 
     function buildAttendanceRefreshMenuItem() {
         ensureAttendanceRefreshMenuStyle();
-        const item = document.createElement('li');
-        item.setAttribute(ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE, '');
-
-        const link = document.createElement('a');
-        link.href = '#';
-        const label = document.createElement('span');
-        label.textContent = '出席状況🔄️';
-        link.appendChild(label);
-        link.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void handleAttendanceRefreshClick(link);
+        const item = createSettingsMenuItem({
+            attributeName: ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE,
+            labelText: '出席状況🔄️',
+            onActivate: link => void handleAttendanceRefreshClick(link),
         });
-        item.appendChild(link);
         window.requestAnimationFrame(renderAttendanceRefreshCooldown);
         return item;
     }
+
+    // --- KU-LMS settings menu lifecycle ---
 
     function getSettingsMenus() {
         return [...new Set([
@@ -2343,12 +2361,68 @@
             && (element.matches('ul, ol') || element.classList.contains('selectBox'))))];
     }
 
+    function removeDetachedMenuItems(activeMenus) {
+        const activeMenuSet = new Set(activeMenus);
+        document.querySelectorAll(MANAGED_MENU_ITEMS_SELECTOR).forEach((item) => {
+            if (!activeMenuSet.has(item.parentElement)) item.remove();
+        });
+    }
+
+    function removeOptionalMenuItems(menu) {
+        menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+        menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+        menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+        menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+    }
+
+    function placeMenuItemAfter(anchor, item) {
+        if (anchor.nextElementSibling !== item) anchor.insertAdjacentElement('afterend', item);
+    }
+
+    function syncEnabledMenuItems(menu, settingsItem, { canEditHome, canRefreshAttendance }) {
+        let homeEditorItem = menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`);
+        if (canEditHome) {
+            homeEditorItem ||= buildHomeEditorMenuItem();
+            placeMenuItemAfter(settingsItem, homeEditorItem);
+        } else {
+            homeEditorItem?.remove();
+            homeEditorItem = null;
+        }
+
+        const themeItem = menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`)
+            || buildThemeMenuItem();
+        placeMenuItemAfter(homeEditorItem || settingsItem, themeItem);
+
+        let customImageThemeItem = menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`);
+        if (!customImageThemeItem) {
+            customImageThemeItem = buildCustomImageThemeMenuItem();
+            menu.appendChild(customImageThemeItem);
+        }
+
+        let attendanceRefreshItem = menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`);
+        if (!canRefreshAttendance) {
+            attendanceRefreshItem?.remove();
+            return;
+        }
+
+        attendanceRefreshItem ||= buildAttendanceRefreshMenuItem();
+        attendanceRefreshItem.classList.remove('clickableSettei', 'on');
+        placeMenuItemAfter(customImageThemeItem, attendanceRefreshItem);
+    }
+
     function injectMenuItem() {
         const menus = getSettingsMenus();
-        const menuSet = new Set(menus);
-        document.querySelectorAll(`#${MENU_ITEM_ID}, [${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}], [${THEME_MENU_ITEM_ATTRIBUTE}], [${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}], [${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`).forEach((item) => {
-            if (!menuSet.has(item.parentElement)) item.remove();
-        });
+        removeDetachedMenuItems(menus);
+
+        const homeworkFeature = features.find(feature => feature.key === HOMEWORK_FEATURE_KEY);
+        const homeworkEnabled = !!homeworkFeature
+            && getFeatureValue(state.settings, homeworkFeature);
+        const isHomePage = !!document.querySelector('div.lms-menu-column.lms-home');
+        const canEditHome = homeworkEnabled && isHomePage;
+        const attendanceFeature = features.find(feature => feature.key === ATTENDANCE_RATE_FEATURE_KEY);
+        const attendanceEnabled = !!attendanceFeature
+            && getFeatureValue(state.settings, attendanceFeature);
+        const canRefreshAttendance = attendanceEnabled && isHomePage;
 
         for (const menu of menus) {
             let settingsItem = menu.querySelector(`#${MENU_ITEM_ID}`);
@@ -2358,52 +2432,10 @@
             }
 
             if (!hasLoadedState || state.allDisabled) {
-                menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`)?.remove();
-                menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
-                menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
-                menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+                removeOptionalMenuItems(menu);
                 continue;
             }
-
-            const canEditHome = !!document.querySelector('div.lms-menu-column.lms-home');
-            let homeEditorItem = menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`);
-            if (canEditHome) {
-                if (!homeEditorItem) homeEditorItem = buildHomeEditorMenuItem();
-                if (settingsItem.nextElementSibling !== homeEditorItem) {
-                    settingsItem.insertAdjacentElement('afterend', homeEditorItem);
-                }
-            } else {
-                homeEditorItem?.remove();
-                homeEditorItem = null;
-            }
-
-            let themeItem = menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`);
-            if (!themeItem) themeItem = buildThemeMenuItem();
-
-            const themeAnchor = homeEditorItem || settingsItem;
-            if (themeAnchor.nextElementSibling !== themeItem) {
-                themeAnchor.insertAdjacentElement('afterend', themeItem);
-            }
-
-            let customImageThemeItem = menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`);
-            if (!customImageThemeItem) {
-                customImageThemeItem = buildCustomImageThemeMenuItem();
-                menu.appendChild(customImageThemeItem);
-            }
-
-            const attendanceFeature = features.find(feature => feature.key === ATTENDANCE_RATE_FEATURE_KEY);
-            const attendanceEnabled = attendanceFeature
-                && getFeatureValue(state.settings, attendanceFeature);
-            let attendanceRefreshItem = menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`);
-            if (attendanceEnabled) {
-                if (!attendanceRefreshItem) attendanceRefreshItem = buildAttendanceRefreshMenuItem();
-                attendanceRefreshItem.classList.remove('clickableSettei', 'on');
-                if (customImageThemeItem.nextElementSibling !== attendanceRefreshItem) {
-                    customImageThemeItem.insertAdjacentElement('afterend', attendanceRefreshItem);
-                }
-            } else {
-                attendanceRefreshItem?.remove();
-            }
+            syncEnabledMenuItems(menu, settingsItem, { canEditHome, canRefreshAttendance });
         }
     }
 
@@ -2443,8 +2475,14 @@
                 }
             }
 
-            if (!isOpen) return;
-            loadState().then(applyStateToControls);
+            loadState()
+                .then(() => {
+                    injectMenuItem();
+                    if (isOpen) applyStateToControls();
+                })
+                .catch((error) => {
+                    console.debug('[KLPF] 機能設定の変更をKU-LMS内メニューへ反映できませんでした。', error);
+                });
         }
 
         if (area === 'local' && changes[ALL_DISABLED_KEY]) {
@@ -2469,7 +2507,11 @@
     });
 
     chrome.runtime.onMessage.addListener((message) => {
-        if (!attendanceManualRefreshPending || message.type !== 'klpf-attendance-debug') return false;
+        if (message.type !== 'klpf-attendance-debug') return false;
+        if (message.stage === '処理終了' && message.details?.status === 'completed') {
+            void syncAttendanceRefreshCooldown();
+        }
+        if (!attendanceManualRefreshPending) return false;
         if (message.stage === '処理終了') {
             attendanceManualRefreshPending = false;
             if (message.details?.status !== 'completed') {

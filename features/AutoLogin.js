@@ -60,7 +60,7 @@ function handlePreLogin(username) {
         usernameInput.value = username;
         form.submit();
     } else {
-        console.warn("[KLPF] ユーザー名入力フォームが見つかりませんでした。");
+        console.debug("[KLPF] ユーザー名入力フォームが見つかりませんでした。");
     }
 }
 
@@ -76,7 +76,7 @@ function handleLogin(password) {
         passwordInput.value = password;
         form.submit();
     } else {
-        console.warn("[KLPF] パスワード入力フォームが見つかりませんでした。");
+        console.debug("[KLPF] パスワード入力フォームが見つかりませんでした。");
     }
 }
 
@@ -103,7 +103,7 @@ async function handleTotpPage(totpSecret) {
         "input#password_input.onetime_input, input[autocomplete='one-time-code']"
     );
     if (!otpInput) {
-        console.warn("[KLPF] OTP入力フィールドが見つかりませんでした。");
+        console.debug("[KLPF] OTP入力フィールドが見つかりませんでした。");
         return;
     }
 
@@ -127,7 +127,7 @@ async function handleTotpPage(totpSecret) {
     if (form) {
         form.submit();
     } else {
-        console.warn("[KLPF] OTPフォームが見つかりませんでした。");
+        console.debug("[KLPF] OTPフォームが見つかりませんでした。");
     }
 }
 

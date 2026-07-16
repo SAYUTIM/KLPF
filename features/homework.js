@@ -180,7 +180,7 @@ function waitForHomeworkRows(doc, timeout = 30000) {
 
         updateState.reject = reject;
         updateState.timeoutId = setTimeout(() => {
-            console.warn("[KLPF] 要素の待機がタイムアウトしました: tbody tr");
+            console.debug("[KLPF] 要素の待機がタイムアウトしました: tbody tr");
             finish(null);
         }, timeout);
 
@@ -261,10 +261,10 @@ function setupHomeworkClickListener(containerId, sid) {
 }
 
 /**
- * 課題データをGoogle Apps Scriptに送信する。
+ * 課題データを設定済みのWebhookへ送信する。
  * @param {HomeworkItem[]} homeworkData - 送信する課題データの配列。
  */
-function sendHomeworkToGAS(homeworkData) {
+function sendHomeworkToWebhook(homeworkData) {
     if (homeworkData.length === 0) return;
 
     // 日付でソートしてから送信
@@ -486,7 +486,7 @@ async function updateHomeworkList(form, sid) {
     });
 
     const { gasWebhook } = await chrome.storage.sync.get(['gasWebhook']);
-    if (gasWebhook === true) sendHomeworkToGAS(homeworkData);
+    if (gasWebhook === true) sendHomeworkToWebhook(homeworkData);
 }
 
 /**

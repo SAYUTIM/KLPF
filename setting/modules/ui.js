@@ -6,12 +6,22 @@
  * @module modules/ui
  */
 
+import { CONTENT_SCRIPTS_CONFIG } from '../../scripts.config.js';
+
 // --- 定数定義 ---
 const PARTICLE_COUNT = 75;
-const LOADING_SCREEN_DURATION = 1500; // ms
+const LOADING_SCREEN_DURATION = 2000; // ms（進行80%から始まる全画面スイープの完了を待つ）
 const FADE_OUT_DURATION = 1300; // ms
 const STATUS_MESSAGE_DURATION = 3000; // ms
 const ANIMATION_DURATION = 500; // ms, CSSのtransitionと合わせる
+const OPTIONS_VIEW_MODE_STORAGE_KEY = 'optionsViewMode';
+const OPTIONS_VIEW_MODE_VIVID = 'vivid';
+const OPTIONS_VIEW_MODE_CALM = 'calm';
+const OPTIONS_VIEW_COVER_DURATION = 220;
+const OPTIONS_VIEW_REVEAL_DURATION = 440;
+const ALL_FEATURES_DISABLED_KEY = 'klpfInlineAllFeaturesDisabled';
+const PREVIOUS_FEATURE_SETTINGS_KEY = 'klpfInlinePreviousFeatureSettings';
+const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
 
 // --- DOM要素のキャッシュ ---
 const elements = {
@@ -20,6 +30,13 @@ const elements = {
     particleCanvas: null,
     customCursor: null,
     updateNotification: null,
+    updateNotificationTitle: null,
+    optionsViewToggle: null,
+    optionsViewToggleLabel: null,
+    optionsViewTransition: null,
+    allFeaturesToggle: null,
+    allFeaturesToggleStatus: null,
+    settingsHeadingTitle: null,
     // 機能スイッチ
     autoLoginCheckbox: null,
     autoAttendCheckbox: null,
@@ -45,6 +62,15 @@ const elements = {
     totpStatus: null,
 };
 
+let currentOptionsViewMode = null;
+let optionsViewStorageListenerRegistered = false;
+let optionsViewTransitionInProgress = false;
+let calmNavigationInitialized = false;
+let calmNavigationScrollFrame = null;
+let allFeaturesStorageListenerRegistered = false;
+let allFeaturesToggleInProgress = false;
+const featureToggleAnimationCleanups = new WeakMap();
+
 /**
  * DOM要素を一度だけ検索し、キャッシュする。
  */
@@ -54,6 +80,13 @@ function cacheDOMElements() {
     elements.particleCanvas = document.getElementById('particle-canvas');
     elements.customCursor = document.querySelector('.custom-cursor');
     elements.updateNotification = document.getElementById('update-notification');
+    elements.updateNotificationTitle = document.getElementById('update-notification-title');
+    elements.optionsViewToggle = document.getElementById('options-view-toggle');
+    elements.optionsViewToggleLabel = document.getElementById('options-view-toggle-label');
+    elements.optionsViewTransition = document.querySelector('.options-view-transition');
+    elements.allFeaturesToggle = document.getElementById('all-features-toggle');
+    elements.allFeaturesToggleStatus = document.getElementById('all-features-toggle-status');
+    elements.settingsHeadingTitle = document.querySelector('.settings-heading .box_color');
 
     // 機能スイッチ
     elements.autoLoginCheckbox = document.getElementById("auto-login");
@@ -84,6 +117,245 @@ function cacheDOMElements() {
     elements.totpStatus = document.getElementById('totp-status');
 }
 
+function initFeatureMetadata() {
+    document.querySelectorAll('.switch-container[data-feature-key]').forEach((container) => {
+        const copy = container.querySelector('.switch-copy');
+        if (!copy) return;
+
+        const label = copy.querySelector('.switch-label');
+        if (label) label.dataset.toggleText = label.textContent.trim();
+
+        if (!copy.querySelector('.switch-description')) {
+            const description = document.createElement('p');
+            description.className = 'switch-description';
+            description.textContent = container.getAttribute('title') || '';
+            copy.appendChild(description);
+        }
+    });
+}
+
+function getResolvedFeatureSettings(storedSettings = {}) {
+    return CONTENT_SCRIPTS_CONFIG.reduce((settings, feature) => {
+        settings[feature.storageKey] = typeof storedSettings[feature.storageKey] === 'boolean'
+            ? storedSettings[feature.storageKey]
+            : feature.enabledByDefault === true;
+        return settings;
+    }, {});
+}
+
+function applyAllFeaturesDisabledState(disabled) {
+    const isDisabled = disabled === true;
+    document.body.classList.toggle('is-all-features-disabled', isDisabled);
+
+    if (elements.allFeaturesToggle) {
+        elements.allFeaturesToggle.checked = !isDisabled;
+        elements.allFeaturesToggle.setAttribute('aria-checked', String(!isDisabled));
+    }
+    if (elements.allFeaturesToggleStatus) {
+        elements.allFeaturesToggleStatus.textContent = isDisabled ? 'OFF' : 'ON';
+    }
+
+    document.querySelectorAll('.feature-category, #options-panel').forEach((region) => {
+        region.inert = isDisabled;
+        region.setAttribute('aria-disabled', String(isDisabled));
+    });
+}
+
+function playAllFeaturesToggleAnimation(direction) {
+    const title = elements.settingsHeadingTitle;
+    if (!title) return Promise.resolve();
+
+    const animationClass = direction === 'disable'
+        ? 'is-master-disabling'
+        : 'is-master-enabling';
+    const fallbackDuration = direction === 'disable' ? 1550 : 2250;
+    title.classList.remove(
+        'is-master-enabling',
+        'is-master-disabling',
+    );
+    void title.offsetWidth;
+    title.classList.add(animationClass);
+
+    return new Promise((resolve) => {
+        let fallbackTimer = null;
+        let hasFinished = false;
+        const finish = () => {
+            if (hasFinished) return;
+            hasFinished = true;
+            if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+            title.removeEventListener('animationend', finish);
+            title.classList.remove(animationClass);
+            resolve();
+        };
+        title.addEventListener('animationend', finish);
+        fallbackTimer = window.setTimeout(finish, fallbackDuration);
+    });
+}
+
+function playFeatureToggleAnimation(checkbox) {
+    const label = checkbox.closest('.switch-container')?.querySelector('.switch-label');
+    if (!label) return;
+
+    featureToggleAnimationCleanups.get(label)?.();
+    const animationClass = checkbox.checked
+        ? 'is-feature-enabling'
+        : 'is-feature-disabling';
+    const fallbackDuration = checkbox.checked ? 2250 : 1550;
+    let fallbackTimer = null;
+    let hasFinished = false;
+
+    const finish = () => {
+        if (hasFinished) return;
+        hasFinished = true;
+        if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+        label.removeEventListener('animationend', finish);
+        label.classList.remove('is-feature-enabling', 'is-feature-disabling');
+        featureToggleAnimationCleanups.delete(label);
+    };
+
+    label.classList.remove('is-feature-enabling', 'is-feature-disabling');
+    void label.offsetWidth;
+    label.classList.add(animationClass);
+    label.addEventListener('animationend', finish);
+    fallbackTimer = window.setTimeout(finish, fallbackDuration);
+    featureToggleAnimationCleanups.set(label, finish);
+}
+
+async function disableAllFeatures() {
+    const featureKeys = CONTENT_SCRIPTS_CONFIG.map(feature => feature.storageKey);
+    const storedSettings = await chrome.storage.sync.get(featureKeys);
+    const previousSettings = getResolvedFeatureSettings(storedSettings);
+    const disabledSettings = Object.fromEntries(featureKeys.map(key => [key, false]));
+
+    await chrome.storage.local.set({
+        [ALL_FEATURES_DISABLED_KEY]: true,
+        [PREVIOUS_FEATURE_SETTINGS_KEY]: previousSettings,
+    });
+    await chrome.storage.sync.set(disabledSettings);
+}
+
+async function restoreAllFeatures() {
+    const [{ [PREVIOUS_FEATURE_SETTINGS_KEY]: previousSettings = {} }, consentSettings] = await Promise.all([
+        chrome.storage.local.get(PREVIOUS_FEATURE_SETTINGS_KEY),
+        chrome.storage.sync.get(ATTENDANCE_RATE_CONSENT_KEY),
+    ]);
+    const restoredSettings = getResolvedFeatureSettings(previousSettings);
+
+    if (consentSettings[ATTENDANCE_RATE_CONSENT_KEY] !== true) {
+        restoredSettings.attendanceRateDisplay = false;
+    }
+
+    // KU-LMS内の設定画面が復元値を再びOFFへ戻さないよう、停止状態を先に解除する。
+    await chrome.storage.local.set({ [ALL_FEATURES_DISABLED_KEY]: false });
+    await chrome.storage.sync.set(restoredSettings);
+    await chrome.storage.local.set({
+        [PREVIOUS_FEATURE_SETTINGS_KEY]: restoredSettings,
+    });
+}
+
+async function handleAllFeaturesToggle() {
+    if (!elements.allFeaturesToggle || allFeaturesToggleInProgress) return;
+    allFeaturesToggleInProgress = true;
+    elements.allFeaturesToggle.disabled = true;
+    const shouldEnable = elements.allFeaturesToggle.checked;
+
+    try {
+        if (shouldEnable) {
+            await restoreAllFeatures();
+            applyAllFeaturesDisabledState(false);
+            await playAllFeaturesToggleAnimation('enable');
+        } else {
+            const animation = playAllFeaturesToggleAnimation('disable');
+            await disableAllFeatures();
+            applyAllFeaturesDisabledState(true);
+            await animation;
+        }
+    } catch (error) {
+        await chrome.storage.local.set({ [ALL_FEATURES_DISABLED_KEY]: shouldEnable });
+        applyAllFeaturesDisabledState(shouldEnable);
+        document.dispatchEvent(new CustomEvent('settings-error', {
+            detail: '拡張機能全体の状態を変更できませんでした。',
+        }));
+        console.error('拡張機能全体の状態変更に失敗しました。', error);
+    } finally {
+        allFeaturesToggleInProgress = false;
+        elements.allFeaturesToggle.disabled = false;
+    }
+}
+
+async function initAllFeaturesState() {
+    try {
+        const stored = await chrome.storage.local.get({ [ALL_FEATURES_DISABLED_KEY]: false });
+        applyAllFeaturesDisabledState(stored[ALL_FEATURES_DISABLED_KEY] === true);
+    } catch (error) {
+        applyAllFeaturesDisabledState(false);
+        console.error('拡張機能全体の状態を読み込めませんでした。', error);
+    }
+
+    if (allFeaturesStorageListenerRegistered) return;
+    allFeaturesStorageListenerRegistered = true;
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' || !changes[ALL_FEATURES_DISABLED_KEY]) return;
+        applyAllFeaturesDisabledState(changes[ALL_FEATURES_DISABLED_KEY].newValue === true);
+    });
+}
+
+function setActiveCalmNavigation(sectionId) {
+    document.querySelectorAll('.calm-navigation-link').forEach((link) => {
+        const isActive = link.dataset.section === sectionId;
+        link.classList.toggle('is-active', isActive);
+        if (isActive) {
+            link.setAttribute('aria-current', 'location');
+        } else {
+            link.removeAttribute('aria-current');
+        }
+    });
+}
+
+function initCalmNavigation() {
+    if (calmNavigationInitialized) return;
+    calmNavigationInitialized = true;
+
+    const links = [...document.querySelectorAll('.calm-navigation-link[data-section]')];
+    const sections = links
+        .map(link => document.getElementById(link.dataset.section))
+        .filter(Boolean);
+
+    links.forEach((link) => {
+        link.addEventListener('click', (event) => {
+            const section = document.getElementById(link.dataset.section);
+            if (!section) return;
+
+            event.preventDefault();
+            setActiveCalmNavigation(link.dataset.section);
+            section.scrollIntoView({
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                block: 'start',
+            });
+            history.replaceState(null, '', `#${link.dataset.section}`);
+        });
+    });
+
+    const updateActiveSection = () => {
+        calmNavigationScrollFrame = null;
+        const isAtPageBottom = window.scrollY + window.innerHeight
+            >= document.documentElement.scrollHeight - 2;
+        if (isAtPageBottom && sections.length) {
+            setActiveCalmNavigation(sections.at(-1).id);
+            return;
+        }
+        const activeSection = sections.reduce((current, section) => (
+            section.getBoundingClientRect().top <= 130 ? section : current
+        ), sections[0]);
+        if (activeSection) setActiveCalmNavigation(activeSection.id);
+    };
+    window.addEventListener('scroll', () => {
+        if (calmNavigationScrollFrame) return;
+        calmNavigationScrollFrame = requestAnimationFrame(updateActiveSection);
+    }, { passive: true });
+    updateActiveSection();
+}
+
 // --- UI初期化処理 ---
 
 /**
@@ -91,11 +363,10 @@ function cacheDOMElements() {
  */
 function initLoadingScreen() {
     if (!elements.loadingScreen) return;
-    setTimeout(() => {
-        elements.loadingScreen.style.transition = `opacity ${FADE_OUT_DURATION / 1000}s`;
-        elements.loadingScreen.style.opacity = 0;
-        setTimeout(() => {
-            elements.loadingScreen.style.display = 'none';
+    window.setTimeout(() => {
+        elements.loadingScreen.classList.add('is-leaving');
+        window.setTimeout(() => {
+            elements.loadingScreen.hidden = true;
         }, FADE_OUT_DURATION);
     }, LOADING_SCREEN_DURATION);
 }
@@ -104,10 +375,170 @@ function initLoadingScreen() {
  * パーティクルエフェクトを初期化する。
  */
 function initParticleEffect() {
-    if (!elements.particleCanvas) return;
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-        createPowderParticle();
+    if (!elements.particleCanvas || currentOptionsViewMode !== OPTIONS_VIEW_MODE_VIVID) return;
+    const missingParticleCount = Math.max(0, PARTICLE_COUNT - elements.particleCanvas.childElementCount);
+    for (let i = 0; i < missingParticleCount; i++) {
+        createPowderParticle({ randomizeProgress: true });
     }
+}
+
+function normalizeOptionsViewMode(value) {
+    return value === OPTIONS_VIEW_MODE_CALM
+        ? OPTIONS_VIEW_MODE_CALM
+        : OPTIONS_VIEW_MODE_VIVID;
+}
+
+function updateOptionsViewToggle() {
+    const isCalm = currentOptionsViewMode === OPTIONS_VIEW_MODE_CALM;
+    if (elements.optionsViewToggle) {
+        elements.optionsViewToggle.setAttribute('aria-pressed', String(isCalm));
+        elements.optionsViewToggle.title = isCalm
+            ? '旧表示へ戻す'
+            : 'モダン表示へ切り替える';
+    }
+    if (elements.optionsViewToggleLabel) {
+        elements.optionsViewToggleLabel.textContent = isCalm
+            ? '旧表示に戻す'
+            : 'モダン表示に切り替え';
+    }
+}
+
+async function applyOptionsViewMode(mode, { waitForPanelAnimation = true } = {}) {
+    const normalizedMode = normalizeOptionsViewMode(mode);
+    if (currentOptionsViewMode === normalizedMode) {
+        updateOptionsViewToggle();
+        return;
+    }
+
+    currentOptionsViewMode = normalizedMode;
+    document.body.dataset.optionsView = normalizedMode;
+    updateOptionsViewToggle();
+
+    if (normalizedMode === OPTIONS_VIEW_MODE_CALM) {
+        elements.particleCanvas?.replaceChildren();
+    } else {
+        initParticleEffect();
+    }
+    await reorderAndShowPanels({ waitForAnimation: waitForPanelAnimation });
+    requestAnimationFrame(() => window.dispatchEvent(new Event('scroll')));
+}
+
+function waitForOptionsViewTransition(duration) {
+    return new Promise(resolve => setTimeout(resolve, duration));
+}
+
+async function animateOptionsViewOverlay(overlay, keyframes, duration) {
+    const animation = overlay.animate(keyframes, {
+        duration,
+        easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        fill: 'forwards',
+    });
+    await animation.finished;
+    return animation;
+}
+
+async function transitionOptionsViewMode(nextMode) {
+    const normalizedMode = normalizeOptionsViewMode(nextMode);
+    const transitionOverlay = elements.optionsViewTransition;
+    if (!transitionOverlay) {
+        await applyOptionsViewMode(normalizedMode, { waitForPanelAnimation: false });
+        return;
+    }
+
+    const targetClass = normalizedMode === OPTIONS_VIEW_MODE_VIVID
+        ? 'is-options-view-switching-to-vivid'
+        : 'is-options-view-switching-to-calm';
+    document.body.classList.remove(
+        'is-options-view-revealing',
+        'is-options-view-switching-to-vivid',
+        'is-options-view-switching-to-calm',
+    );
+    transitionOverlay.getAnimations().forEach(animation => animation.cancel());
+    transitionOverlay.style.backgroundColor = normalizedMode === OPTIONS_VIEW_MODE_VIVID
+        ? '#000000'
+        : '#ffffff';
+    transitionOverlay.style.opacity = '0';
+    transitionOverlay.style.transition = 'none';
+
+    try {
+        document.body.classList.add('is-options-view-switching', targetClass);
+
+        const coverAnimation = await animateOptionsViewOverlay(
+            transitionOverlay,
+            [{ opacity: 0 }, { opacity: 1 }],
+            OPTIONS_VIEW_COVER_DURATION,
+        );
+        transitionOverlay.style.opacity = '1';
+        coverAnimation.cancel();
+
+        // レイアウトとエフェクトは、画面が完全に覆われている間に準備する。
+        await applyOptionsViewMode(normalizedMode, { waitForPanelAnimation: false });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await waitForOptionsViewTransition(80);
+
+        document.body.classList.add('is-options-view-revealing');
+        const revealAnimation = await animateOptionsViewOverlay(
+            transitionOverlay,
+            [{ opacity: 1 }, { opacity: 0 }],
+            OPTIONS_VIEW_REVEAL_DURATION,
+        );
+        transitionOverlay.style.opacity = '0';
+        revealAnimation.cancel();
+    } finally {
+        document.body.classList.remove(
+            'is-options-view-switching',
+            'is-options-view-revealing',
+            targetClass,
+        );
+        transitionOverlay.getAnimations().forEach(animation => animation.cancel());
+        transitionOverlay.style.removeProperty('background-color');
+        transitionOverlay.style.removeProperty('opacity');
+        transitionOverlay.style.removeProperty('transition');
+    }
+}
+
+async function handleOptionsViewToggle() {
+    if (optionsViewTransitionInProgress) return;
+    optionsViewTransitionInProgress = true;
+    if (elements.optionsViewToggle) elements.optionsViewToggle.disabled = true;
+
+    const previousMode = currentOptionsViewMode || OPTIONS_VIEW_MODE_CALM;
+    const nextMode = previousMode === OPTIONS_VIEW_MODE_CALM
+        ? OPTIONS_VIEW_MODE_VIVID
+        : OPTIONS_VIEW_MODE_CALM;
+
+    try {
+        await transitionOptionsViewMode(nextMode);
+        await chrome.storage.local.set({ [OPTIONS_VIEW_MODE_STORAGE_KEY]: nextMode });
+    } catch (error) {
+        await transitionOptionsViewMode(previousMode);
+        document.dispatchEvent(new CustomEvent('settings-error', {
+            detail: '表示デザインの保存に失敗しました。',
+        }));
+        console.error('表示デザインの保存に失敗しました。', error);
+    } finally {
+        optionsViewTransitionInProgress = false;
+        if (elements.optionsViewToggle) elements.optionsViewToggle.disabled = false;
+    }
+}
+
+async function initOptionsViewMode() {
+    try {
+        const stored = await chrome.storage.local.get({
+            [OPTIONS_VIEW_MODE_STORAGE_KEY]: OPTIONS_VIEW_MODE_CALM,
+        });
+        await applyOptionsViewMode(stored[OPTIONS_VIEW_MODE_STORAGE_KEY], { waitForPanelAnimation: false });
+    } catch (error) {
+        await applyOptionsViewMode(OPTIONS_VIEW_MODE_CALM, { waitForPanelAnimation: false });
+        console.error('表示デザインの読み込みに失敗しました。', error);
+    }
+
+    if (optionsViewStorageListenerRegistered) return;
+    optionsViewStorageListenerRegistered = true;
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' || !changes[OPTIONS_VIEW_MODE_STORAGE_KEY]) return;
+        void applyOptionsViewMode(changes[OPTIONS_VIEW_MODE_STORAGE_KEY].newValue);
+    });
 }
 
 /**
@@ -213,51 +644,70 @@ function handleSettingsLoaded() {
 
 function handleDOMContentLoaded() {
     cacheDOMElements();
+    initFeatureMetadata();
+    initCalmNavigation();
     initLoadingScreen();
-    initParticleEffect();
     initCustomCursor();
     setupInteractions();
     addEventListenersToUI();
     initTotpValidation();
+    void initOptionsViewMode();
+    void initAllFeaturesState();
 }
 
 function addEventListenersToUI() {
     document.addEventListener("settings-saved", handleSettingsSaved);
     document.addEventListener("settings-error", handleSettingsError);
     document.addEventListener("settings-loaded", handleSettingsLoaded);
+    elements.optionsViewToggle?.addEventListener('click', () => void handleOptionsViewToggle());
+    elements.allFeaturesToggle?.addEventListener('change', () => void handleAllFeaturesToggle());
 
     const switches = document.querySelectorAll(".switch-container input[type='checkbox']");
     switches.forEach(checkbox => {
-        checkbox.addEventListener("change", updateSwitchGradientLabels);
+        checkbox.addEventListener('change', () => {
+            updateSwitchGradientLabels();
+            playFeatureToggleAnimation(checkbox);
+        });
     });
 
     elements.autoLoginCheckbox?.addEventListener("change", (e) => updateOptionsOrder('auto-login-options', e.target.checked));
     elements.autoAttendCheckbox?.addEventListener("change", (e) => updateOptionsOrder('auto-attend-options', e.target.checked));
     elements.homeworkSwitch?.addEventListener("change", (e) => updateOptionsOrder('homework-options', e.target.checked));
 
-    // --- Feature Description on Click ---
-    const labels = document.querySelectorAll('.switch-label');
-    labels.forEach(label => {
-        label.addEventListener('click', () => {
-            const title = label.parentElement.getAttribute('title');
-            if (title) {
-                showStatusMessage(title, '#87CEFA', 5000);
-            }
-        });
-    });
-
     // --- Webhook URL Validation ---
-    elements.homeworkNotificationCheckbox?.addEventListener('change', (e) => {
+    elements.homeworkNotificationCheckbox?.addEventListener('change', async (e) => {
         if (e.target.checked) {
-            const url = elements.homeworkWebhookUrlInput.value;
-            if (!url) {
+            e.stopImmediatePropagation();
+            const value = elements.homeworkWebhookUrlInput.value.trim();
+            const webhookUrl = parseWebhookUrl(value);
+            if (!value) {
                 e.target.checked = false;
+                await chrome.storage.sync.set({ gasWebhook: false });
                 showModal("この機能をONにするには環境構築が必要です。");
-            } else if (!url.startsWith('https://script.google.com/')) {
+            } else if (!webhookUrl) {
                 e.target.checked = false;
-                showModal("URLが不正です。正しいURLを入力してください。");
+                await chrome.storage.sync.set({ gasWebhook: false });
+                showModal("HTTPSから始まる正しいWebhook URLを入力してください。");
+            } else if (!await requestWebhookOriginPermission(webhookUrl)) {
+                e.target.checked = false;
+                await chrome.storage.sync.set({ gasWebhook: false });
+                showModal("Webhookへの接続が許可されなかったため、通知機能を有効にできませんでした。");
+            } else {
+                await chrome.storage.sync.set({ gasWebhook: true });
             }
         }
+    });
+    elements.homeworkWebhookUrlInput?.addEventListener('change', async () => {
+        if (!elements.homeworkNotificationCheckbox?.checked) return;
+
+        const webhookUrl = parseWebhookUrl(elements.homeworkWebhookUrlInput.value.trim());
+        if (webhookUrl && await requestWebhookOriginPermission(webhookUrl)) return;
+
+        elements.homeworkNotificationCheckbox.checked = false;
+        await chrome.storage.sync.set({ gasWebhook: false });
+        showModal(webhookUrl
+            ? "新しいWebhookへの接続が許可されなかったため、通知機能をOFFにしました。"
+            : "Webhook URLが不正なため、通知機能をOFFにしました。");
     });
 
     // --- Modal Listeners ---
@@ -289,13 +739,24 @@ function hideModal() {
  * @param {string} newVersion - 表示する新しいバージョン文字列。
  */
 export function showUpdateNotification(newVersion) {
-    if (!elements.updateNotification) return;
-
-    elements.updateNotification.innerHTML = `
-        新しいバージョン ( ${newVersion} ) が利用可能です！<br>
-        <a href="https://sayutim.github.io/KLPF/#download" target="_blank" rel="noopener noreferrer">アップデートはこちら</a>
-    `;
+    if (!elements.updateNotification || !elements.updateNotificationTitle) return;
+    elements.updateNotificationTitle.textContent = `KLPF ${newVersion} を利用できます`;
     elements.updateNotification.classList.add('visible');
+}
+
+function parseWebhookUrl(value) {
+    try {
+        const url = new URL(value);
+        if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return null;
+        return url;
+    } catch {
+        return null;
+    }
+}
+
+function requestWebhookOriginPermission(url) {
+    const originPattern = `${url.protocol}//${url.hostname}/*`;
+    return chrome.permissions.request({ origins: [originPattern] });
 }
 
 function updateSwitchGradientLabels() {
@@ -358,7 +819,7 @@ function flipAnimate(items, moveAndUpdate) {
 /**
  * オプションパネルの順序をストレージに保存されている順序に基づいて再配置し、表示を更新する。
  */
-async function reorderAndShowPanels() {
+async function reorderAndShowPanels({ waitForAnimation = true } = {}) {
     const { optionsOrder } = await chrome.storage.sync.get({ optionsOrder: [] });
     const panel = elements.optionsPanel;
     if (!panel) return;
@@ -380,20 +841,38 @@ async function reorderAndShowPanels() {
     });
 
     // アニメーションが落ち着くのを待つ
-    await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION));
+    if (waitForAnimation) {
+        await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION));
+    }
 
-    // FLIPアニメーションで並べ替え
+    // 表示モードに合わせて、詳細設定を対応機能の直下または従来パネルへ配置する。
     flipAnimate(allPanelElements, () => {
+        if (currentOptionsViewMode === OPTIONS_VIEW_MODE_CALM) {
+            allPanelElements.forEach((element) => {
+                const host = document.querySelector(`[data-options-host="${element.id}"]`);
+                // 入力中のStorage更新では配置は変わらないため、DOMを移動しない。
+                // 同じ要素をappendChildし直すと、入力欄のフォーカスが失われる。
+                if (host && element.parentElement !== host) {
+                    host.appendChild(element);
+                }
+            });
+            return;
+        }
+
         const sortedVisibleElements = optionsOrder
             .map(id => document.getElementById(id))
             .filter(Boolean);
         
         const hiddenElements = allPanelElements.filter(el => !optionsOrder.includes(el.id));
+        const desiredOrder = [...sortedVisibleElements, ...hiddenElements];
+        const currentOrder = [...panel.children].filter(element => allPanelElements.includes(element));
+        const isAlreadyOrdered = desiredOrder.every((element, index) => (
+            element.parentElement === panel && currentOrder[index] === element
+        ));
 
-        // 表示されているものを順序通りに配置
-        sortedVisibleElements.forEach(el => panel.appendChild(el));
-        // 非表示のものを末尾に配置
-        hiddenElements.forEach(el => panel.appendChild(el));
+        if (!isAlreadyOrdered) {
+            desiredOrder.forEach(element => panel.appendChild(element));
+        }
     });
 }
 
@@ -423,8 +902,8 @@ function getRandomRainbowColor() {
     return colors[Math.floor(Math.random() * colors.length)];
 }
 
-function createPowderParticle() {
-    if (!elements.particleCanvas) return;
+function createPowderParticle({ randomizeProgress = false } = {}) {
+    if (!elements.particleCanvas || currentOptionsViewMode !== OPTIONS_VIEW_MODE_VIVID) return;
     const particle = document.createElement('div');
     particle.classList.add('powder-particle');
     particle.style.left = `${Math.floor(Math.random() * window.innerWidth)}px`;
@@ -433,11 +912,16 @@ function createPowderParticle() {
     particle.style.animationDuration = `${duration}s`;
     const drift = Math.random() * 30 + 10;
     particle.style.setProperty('--drift-amount', `${drift}px`);
-    particle.style.animationDelay = `${Math.random() * 5}s`;
+    if (randomizeProgress) {
+        particle.style.bottom = `${Math.random() * window.innerHeight}px`;
+        particle.style.animationDelay = `-${Math.random() * duration}s`;
+    } else {
+        particle.style.animationDelay = `${Math.random() * 5}s`;
+    }
     elements.particleCanvas.appendChild(particle);
     particle.addEventListener('animationend', function() {
         this.remove();
-        createPowderParticle();
+        if (currentOptionsViewMode === OPTIONS_VIEW_MODE_VIVID) createPowderParticle();
     });
 }
 
