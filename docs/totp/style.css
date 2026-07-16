@@ -107,6 +107,21 @@ nav a:hover, nav a.is-active { color: #fff; background: linear-gradient(45deg, r
 .steps h3 { margin: 2px 0 7px; font-size: 20px; }
 .steps p { margin: 0; color: var(--muted); }
 .steps.compact li { padding-bottom: 25px; }
+.setup-flow li { position: relative; --step-color: var(--cyan); --next-step-color: var(--cyan); }
+.setup-flow li:nth-child(1) { --step-color: #0042a1; --next-step-color: #1b449f; }
+.setup-flow li:nth-child(2) { --step-color: #1b449f; --next-step-color: #35469c; }
+.setup-flow li:nth-child(3) { --step-color: #35469c; --next-step-color: #50489a; }
+.setup-flow li:nth-child(4) { --step-color: #50489a; --next-step-color: #6b4a97; }
+.setup-flow li:nth-child(5) { --step-color: #6b4a97; --next-step-color: #854d95; }
+.setup-flow li:nth-child(6) { --step-color: #854d95; --next-step-color: #a04f92; }
+.setup-flow li:nth-child(7) { --step-color: #a04f92; --next-step-color: #bb5190; }
+.setup-flow li:nth-child(8) { --step-color: #bb5190; --next-step-color: #d5538d; }
+.setup-flow li:nth-child(9) { --step-color: #d5538d; --next-step-color: #f0558b; }
+.setup-flow li:nth-child(10) { --step-color: #f0558b; --next-step-color: #f0558b; }
+.setup-flow li:not(:last-child)::after { position: absolute; top: 46px; bottom: 0; left: 22px; width: 1px; background: linear-gradient(var(--step-color), var(--next-step-color)); content: ''; }
+.setup-flow li > span { position: relative; z-index: 1; background: var(--step-color); }
+.setup-flow .import-demo { margin: 24px 0 4px; }
+#klpf, #register { scroll-margin-top: 100px; }
 code { padding: 2px 6px; border-radius: 4px; background: #e7f3f6; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .official-manual { margin: 28px 0 36px; padding: 22px 24px; border-left: 4px solid var(--cyan); background: #f5f7fa; }
 .official-manual h3 { margin: 0 0 8px; font-size: 17px; }
@@ -177,6 +192,7 @@ footer .footer-links a { color: var(--muted); font-size: 13px; white-space: nowr
     .section-number { font-size: 56px; }
     .steps li { grid-template-columns: 42px 1fr; gap: 14px; }
     .steps li > span { width: 38px; height: 38px; }
+    .setup-flow li:not(:last-child)::after { top: 38px; left: 18px; }
     footer { align-items: flex-start; flex-direction: column; gap: 7px; }
     footer p { margin: 0; }
     footer .footer-links { gap: 18px; }

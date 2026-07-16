@@ -20,8 +20,8 @@
             <a class="brand" href="../" aria-label="KLPF ホームへ">KLPF</a>
             <nav aria-label="ページ内ナビゲーション">
                 <a href="#deadline">最終期限</a>
-                <a href="#setup">TOTPの設定方法</a>
-                <a href="#klpf">KLPFへの設定</a>
+                <a href="#prepare">事前準備</a>
+                <a href="#setup">設定手順</a>
             </nav>
         </div>
     </header>
@@ -45,12 +45,10 @@
             <aside class="toc" aria-label="目次">
                 <p>目次</p>
                 <ol>
-                    <li><a href="#overview">TOTPと運用変更</a></li>
-                    <li><a href="#prepare">認証アプリの準備</a></li>
-                    <li><a href="#setup">TOTP利用の有効化</a></li>
-                    <li><a href="#register">認証アプリへの登録</a></li>
-                    <li><a href="#klpf">KLPFへの秘密鍵登録</a></li>
-                    <li><a href="#security">秘密鍵の取り扱い</a></li>
+                    <li><a href="#overview">TOTPと運用変更の概要</a></li>
+                    <li><a href="#prepare">まずはアプリをダウンロード</a></li>
+                    <li><a href="#setup">設定のやり方</a></li>
+                    <li><a href="#security">秘密鍵の取り扱い注意</a></li>
                     <li><a href="#trouble">設定の相談先</a></li>
                 </ol>
             </aside>
@@ -61,7 +59,7 @@
                     <p class="section-kicker">運用変更の要点</p>
                     <h2>TOTPとは何か、何が変わるのか</h2>
                     <p>TOTP（Time-based One-Time Password）とは、現在時刻と秘密鍵を基に、30〜60秒ごとに変化する使い捨てのパスワードを生成する認証方式です。IDとパスワードに加えて確認コードを入力するため、アカウントのセキュリティを大幅に強化できます。多要素認証（MFA）の方式として広く利用されています。</p>
-                    <p>工学院大学の統合認証では、学外からログインするときのTOTP認証が次のように変更されます。</p>
+                    <p>工学院大学の統合認証では、学外からログインするときのTOTP認証が以下のように変更されます。</p>
                     <div class="operation-change">
                         <section>
                             <h3>現在の運用</h3>
@@ -76,79 +74,70 @@
                             </ul>
                         </section>
                     </div>
-                    <p>設定しないまま第2段階を迎えると、自宅などの学外からKu-LMS、Ku-Port、Active!Mail、SSL-VPNなどへログインできなくなります。その場合は、大学の学内ネットワークへ接続して初期設定を行う必要があります。</p>
-                    <p class="note">学内ネットワークからログインする場合、TOTPは要求されません。FIDO認証を使う場合もTOTP入力は不要ですが、大学はTOTPも設定しておくよう案内しています。</p>
+                    <p class="note">設定しないまま第2段階を迎えると、自宅などの学外からKu-LMS、Ku-Port、Active!Mail、SSL-VPNなどへログインできなくなります。<br>その場合は、大学の学内ネットワークへ接続して初期設定を行う必要があります。</p>
+                    <p>学内ネットワークからログインする場合、TOTPは要求されません。FIDO認証を使う場合もTOTP入力は不要ですが、大学はTOTPも設定しておくよう案内しています。</p>
                     <p class="notice">運用日時や対象サービスなどの情報は変更される可能性があります。最新の案内はKu-Portの掲示板で確認してください。</p>
                 </section>
 
                 <section id="prepare" class="article-section observe">
                     <p class="section-number">02</p>
                     <p class="section-kicker">設定前の準備</p>
-                    <h2>確認コードを表示する認証アプリが必要です</h2>
+                    <h2>まずはアプリをダウンロード</h2>
+                    <p class="note"><strong>スマホ</strong>を用意して、<strong>Google Authenticator</strong> または <strong>Microsoft Authenticator</strong> を検索して<strong>ダウンロード</strong>してください。</p>
                     <p>今後、学外からログインするときは、IDとパスワードを入力した後に、6桁の確認コードも入力します。このコードはSMSで届くものではなく、スマホの認証アプリに表示されます。</p>
-                    <p>最初の設定では、大学の認証画面に表示されるQRコードをスマホで読み取ります。読み取り後は、通信環境がない場合でもアプリが30〜60秒ごとに新しいコードを生成します。</p>
-                    <p>まだ認証アプリを利用していない場合は、設定を始める前にスマホへインストールしてください。大学手順書では次のアプリが案内されています。</p>
+                    <p>まだ認証アプリを利用していない場合は、<strong>設定を始める前にスマホにインストールしてください。</strong>大学手順書では以下のアプリが案内されています。</p>
                     <ul class="app-list">
                         <li><strong>Microsoft Authenticator</strong><span>iPhone / Android・大学手順書のおすすめ</span></li>
                         <li><strong>Google Authenticator</strong><span>iPhone</span></li>
                         <li><strong>パスワード</strong><span>iPhone / iPad 標準アプリ</span></li>
                         <li><strong>Google 認証システム</strong><span>Android</span></li>
                     </ul>
-                    <p class="note">設定にはスマホとPCの2台があると簡単です。PCにQRコードを表示し、スマホで読み取ります。</p>
                 </section>
 
                 <section id="setup" class="article-section observe">
                     <p class="section-number">03</p>
-                    <p class="section-kicker">大学側の設定</p>
+                    <p class="section-kicker">設定手順</p>
+                    <h2>設定のやり方</h2>
                     <div class="official-manual">
                         <h3>大学の正式手順書</h3>
                         <a href="https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7" target="_blank" rel="noopener noreferrer">https://www.kogakuin.ac.jp/ict_support/inside/iauth_account.html#7</a>
                         <p>閲覧には、学内Wi-Fiからのアクセスまたは大学VPNへの接続が必要です。</p>
                     </div>
-                    <h2>認証ポータルでQRコードを表示します。</h2>
-                    <ol class="steps">
+                    <ol class="steps setup-flow">
                         <li>
                             <span>1</span>
-                            <div><h3>TOTP利用を有効化</h3><p>学内ネットワークまたはSSL-VPNから<a href="https://user.ccs.kogakuin.ac.jp/" target="_blank" rel="noopener noreferrer">利用者ポータル</a>へ入り、「プロフィールの変更」でTOTPフラグを「1.利用する」にします。反映状況が「正常終了」になるまで確認します。</p></div>
+                            <div><h3>TOTP利用を有効化</h3><p><strong>学内ネットワーク</strong>または<strong>SSL-VPN</strong>に接続した状態で<strong><a href="https://user.ccs.kogakuin.ac.jp/" target="_blank" rel="noopener noreferrer">利用者ポータル</a></strong>へ入り、<br>「<strong>プロフィールの変更</strong>」から<strong>TOTPフラグを「1.利用する」</strong>にします。<br>その後、反映状況が「<strong>正常終了</strong>」になるまで待機します。</p></div>
                         </li>
                         <li>
                             <span>2</span>
-                            <div><h3>認証システムユーザーポータルへログイン</h3><p><a href="https://slink.secioss.com/user/" target="_blank" rel="noopener noreferrer">slink.secioss.com/user/</a> を開きます。初回はテナントIDに <code>kogakuin.ac.jp</code> を入力し、統合認証のIDとパスワードでログインします。</p></div>
+                            <div><h3>工学院大学SSOシステムにログイン</h3><p><a href="https://slink.secioss.com/user/" target="_blank" rel="noopener noreferrer">slink.secioss.com/user</a> を開きます。<br>テナントIDが求められた場合は、 <code>kogakuin.ac.jp</code> を入力し、統合認証のIDとパスワードでログインします。<br>求められずにログイン画面が表示された場合は、ログインをして手順3に進みます。</p></div>
                         </li>
                         <li>
                             <span>3</span>
-                            <div><h3>ワンタイムパスワードの設定を開く</h3><p>画面右上のメニューから「ワンタイムパスワードの設定」を選びます。ログイン済みなら<a href="https://slink.secioss.com/user/index.php?app=qrsecret&amp;st=ga" target="_blank" rel="noopener noreferrer">設定画面を直接開く</a>こともできます。QRコードが表示されたら、この画面を閉じずに次へ進みます。</p></div>
+                            <div><h3>ワンタイムパスワードの設定を開く</h3><p><strong>画面右上のメニュー</strong>から「<strong><a href="https://slink.secioss.com/user/index.php?app=qrsecret&st=ga">ワンタイムパスワードの設定</a></strong>」を開きます。<br>すると、QRコードが表示された画面に遷移します。</p></div>
                         </li>
+                        <li id="klpf">
+                            <span>4</span>
+                            <div>
+                                <h3>KLPFへ秘密鍵を取り込む</h3>
+                                <p><strong>KLPFの「自動ログイン」が有効な状態</strong>でQRコードが表示された画面を開くと、<br><strong>右下</strong>に以下のような確認ウィンドウが表示されます。</p>
+                                <p><strong>KLPFの確認ウィンドウで「設定する」</strong>をクリックして秘密鍵を拡張機能に取り込みます。</p>
+                                <div class="import-demo" aria-hidden="true">
+                                    <p>KLPF · AUTO LOGIN</p>
+                                    <strong>このQRコードから<br>秘密鍵を設定しますか？</strong>
+                                    <div><b>設定する</b><i>今はしない</i></div>
+                                </div>
+                            </div>
+                        </li>
+                        <li id="register"><span>5</span><div><h3>認証アプリでQRコードを読み取る</h3><p>スマホにインストールした<strong>認証アプリの「QRコードをスキャン」</strong>などを選び、<strong>PCに表示されているQRコードを読み取ります。</strong></p></div></li>
+                        <li><span>6</span><div><h3>サイトの下にある「次へ」をクリック</h3><p>PC側のQRコードが表示されているサイトを下にスクロールして<strong>「次へ」</strong>を押します。</p></div></li>
+                        <li><span>7</span><div><h3>リセット用メールアドレスを入力</h3><p>画面が遷移したら、<strong>リセット用メールアドレス</strong>に任意のメールアドレスを入力します。</p></div></li>
+                        <li><span>8</span><div><h3>ワンタイムパスワードを入力</h3><p><strong>認証アプリ</strong>に表示された<strong>6桁のコード</strong>を<strong>ワンタイムパスワード</strong>に入力し「<strong>登録</strong>」を押します。<br>「<strong>設定が完了しました</strong>」という画面に遷移することを確認します。KLPF設定の「TOTP 秘密鍵」に「有効な鍵です」と表示されれば取込完了です。</p></div></li>
+                        <li><span>9</span><div><h3>取込完了の確認</h3><p>KLPFの設定画面で「<strong>TOTP 秘密鍵</strong>」に「<strong>有効な鍵です</strong>」と表示されれば<strong>取込に成功</strong>しています。</p></div></li>
+                        <li><span>10</span><div><h3>Congratulations🎉</h3><p>お疲れ様でした。以上で全ての設定が終了しました😁👍</p></div></li>
                     </ol>
                 </section>
 
-                <section id="register" class="article-section observe">
-                    <p class="section-number">04</p>
-                    <p class="section-kicker">スマホへ登録</p>
-                    <h2>認証アプリに大学アカウントを登録します。</h2>
-                    <ol class="steps compact">
-                        <li><span>1</span><div><h3>認証アプリでQRコードを読み取る</h3><p>認証アプリの「QRコードをスキャン」などを選び、PCに表示されたQRコードを読み取ります。</p></div></li>
-                        <li><span>2</span><div><h3>大学画面で「次へ」</h3><p>QR画面を閉じず「次へ」を押します。リセット用メールアドレスを確認してください。</p></div></li>
-                        <li><span>3</span><div><h3>6桁コードを入力して登録</h3><p>スマホに表示された6桁のコードを入力し「登録」を押します。「設定が完了しました」まで確認します。</p></div></li>
-                    </ol>
-                </section>
-
-                <section id="klpf" class="article-section klpf-section observe">
-                    <p class="section-number">05</p>
-                    <p class="section-kicker">KLPF自動ログイン</p>
-                    <h2>同じQR画面からKLPFへ秘密鍵を取り込めます。</h2>
-                    <p>KLPFの「自動ログイン」が有効な状態でQRコードの画面を開くと、右下に確認ウィンドウが表示されます。</p>
-                    <div class="import-demo" aria-hidden="true">
-                        <p>KLPF · AUTO LOGIN</p>
-                        <strong>このQRコードから<br>秘密鍵を設定しますか？</strong>
-                        <div><b>設定する</b><i>今はしない</i></div>
-                    </div>
-                    <ol class="steps compact">
-                        <li><span>1</span><div><h3>スマホでQRコードを読み取る</h3><p>先に認証アプリへ登録します。KLPFだけへ保存しても、大学側のTOTP設定は完了しません。</p></div></li>
-                        <li><span>2</span><div><h3>「設定する」を押す</h3><p>QRコードの生成データから秘密鍵を取り出し、Chrome拡張機能のローカル保存領域へ保存します。</p></div></li>
-                        <li><span>3</span><div><h3>大学側の登録を最後まで完了</h3><p>「次へ」以降へ進み、6桁コードを登録します。KLPF設定の「TOTP 秘密鍵」に「有効な鍵です」と表示されれば取込完了です。</p></div></li>
-                    </ol>
-                </section>
             </article>
         </div>
 
