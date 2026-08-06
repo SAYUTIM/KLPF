@@ -270,10 +270,7 @@
     }
 
     function injectStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-        const style = document.createElement('style');
-        style.id = STYLE_ID;
-        style.textContent = `
+        ensureStyleElement(STYLE_ID, `
             .${RATE_CLASS} {
                 --klpf-attendance-rate-color: #007eb4;
                 display: flex;
@@ -357,8 +354,7 @@
                     animation: none !important;
                 }
             }
-        `;
-        (document.head || document.documentElement).appendChild(style);
+        `);
     }
 
     function formatUpdatedAt(value) {

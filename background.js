@@ -1,23 +1,41 @@
 // Copyright (c) 2024-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
-import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
-import { isVersionNewer } from './features/modules/version-utils.js';
+/**
+ * @file Manifest V3 Service Workerのエントリーポイント。
+ * 出席率取得のライフサイクルとChromeイベントを結び、独立した登録・更新・URL検証
+ * モジュールへ処理を委譲する。
+ */
 
-const SUBJECT_FILTER_STORAGE_KEY = 'klpf-course-filter-settings';
+import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
+import {
+    CONTENT_SCRIPT_BY_STORAGE_KEY,
+    applyAutoAttendDependency,
+    enableAutomaticSubjectFilter,
+    initializeScripts,
+    registerContentScript,
+    unregisterContentScript,
+} from './background/modules/content-scripts.js';
+import { queueHomeUpdateNoticeClaim } from './background/modules/update-notice.js';
+import { assertKuportUrl, isAllowedWebhookUrl } from './background/modules/url-utils.js';
+import {
+    ATTENDANCE_FETCH_JOB_KEY,
+    checkManualRefreshCooldown,
+    clearAttendanceFetchJob,
+    createFormBody,
+    getAttendanceFetchJob,
+    getManualRefreshCooldownRemaining,
+    recordAttendanceRefreshCooldown,
+    throwIfAttendanceFetchAborted,
+} from './background/modules/attendance-state.js';
+
 const ATTENDANCE_CACHE_KEY = 'klpf-attendance-rate-cache';
 const ATTENDANCE_CACHE_VERSION = 3;
-const ATTENDANCE_FETCH_JOB_KEY = 'klpf-attendance-fetch-job';
 const ATTENDANCE_BROWSER_SESSION_KEY = 'klpf-attendance-browser-session';
-const ATTENDANCE_MANUAL_REFRESH_KEY = 'klpf-attendance-manual-refresh';
 const ATTENDANCE_RATE_FEATURE_KEY = 'attendanceRateDisplay';
 const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
 const ATTENDANCE_FETCH_JOB_TIMEOUT_MS = 2 * 60 * 1000;
-const ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
 const ATTENDANCE_BACKGROUND_JOB_TAB_ID = -1;
-const HOME_UPDATE_CHECK_KEY = 'klpf-home-update-check';
-const HOME_UPDATE_NOTICE_DISABLED_KEY = 'hideHomeUpdateNotification';
-const LATEST_RELEASE_API_URL = 'https://api.github.com/repos/SAYUTIM/KLPF/releases/latest';
 const KUPORT_ENTRY_URL = 'https://ku-port.sc.kogakuin.ac.jp/';
 const KUPORT_URL_PATTERN = 'https://ku-port.sc.kogakuin.ac.jp/*';
 const ATTENDANCE_PARSER_PATH = 'offscreen/attendanceParser.html';
@@ -34,61 +52,6 @@ const KUPORT_TRANSITION_HOSTS = new Set([
 let creatingAttendanceParser = null;
 const startingBackgroundAttendanceTabs = new Set();
 let attendanceFetchAbortController = null;
-let lastAttendanceRefreshAt = 0;
-let homeUpdateNoticeQueue = Promise.resolve();
-
-function getLocalDateKey(date = new Date()) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-async function claimHomeUpdateNotice() {
-    const noticePreference = await chrome.storage.sync.get(HOME_UPDATE_NOTICE_DISABLED_KEY);
-    if (noticePreference[HOME_UPDATE_NOTICE_DISABLED_KEY] === true) {
-        return { status: 'disabled' };
-    }
-
-    const today = getLocalDateKey();
-    const stored = await chrome.storage.local.get(HOME_UPDATE_CHECK_KEY);
-    let updateState = stored[HOME_UPDATE_CHECK_KEY] || {};
-
-    if (updateState.checkedDate !== today) {
-        const response = await fetch(LATEST_RELEASE_API_URL, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`GitHub Release API: ${response.status}`);
-        const latestRelease = await response.json();
-        const latestVersion = String(latestRelease.tag_name || '').trim();
-        const currentVersion = chrome.runtime.getManifest().version;
-        updateState = {
-            checkedDate: today,
-            latestVersion,
-            updateAvailable: isVersionNewer(latestVersion, currentVersion),
-            notifiedDate: updateState.notifiedDate || '',
-        };
-        await chrome.storage.local.set({ [HOME_UPDATE_CHECK_KEY]: updateState });
-    }
-
-    if (!updateState.updateAvailable || !updateState.latestVersion) {
-        return { status: 'up-to-date' };
-    }
-    if (updateState.notifiedDate === today) {
-        return { status: 'already-notified' };
-    }
-
-    updateState.notifiedDate = today;
-    await chrome.storage.local.set({ [HOME_UPDATE_CHECK_KEY]: updateState });
-    return {
-        status: 'update-available',
-        latestVersion: updateState.latestVersion,
-    };
-}
-
-function queueHomeUpdateNoticeClaim() {
-    const queuedClaim = homeUpdateNoticeQueue.then(claimHomeUpdateNotice);
-    homeUpdateNoticeQueue = queuedClaim.catch(() => undefined);
-    return queuedClaim;
-}
 
 async function reportAttendanceDebug(stage, details = {}) {
     const message = {
@@ -105,15 +68,6 @@ async function reportAttendanceDebug(stage, details = {}) {
             // 対象タブでcontent scriptが準備中の場合はService Workerのログだけ残す。
         }
     }));
-}
-
-async function getAttendanceFetchJob() {
-    const stored = await chrome.storage.session.get(ATTENDANCE_FETCH_JOB_KEY);
-    return stored[ATTENDANCE_FETCH_JOB_KEY] || null;
-}
-
-async function clearAttendanceFetchJob() {
-    await chrome.storage.session.remove(ATTENDANCE_FETCH_JOB_KEY);
 }
 
 async function closeCreatedAttendanceContext(job) {
@@ -198,29 +152,6 @@ async function parseKuportDocument(type, payload) {
         throw new Error(response?.error || 'Ku-portのHTMLを解析できませんでした。');
     }
     return response.data;
-}
-
-function createFormBody(fields) {
-    const body = new URLSearchParams();
-    for (const [name, value] of fields || []) {
-        if (typeof name === 'string' && typeof value === 'string') body.append(name, value);
-    }
-    return body;
-}
-
-function assertKuportUrl(value) {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.hostname !== 'ku-port.sc.kogakuin.ac.jp') {
-        throw new Error('Ku-port以外への通信を拒否しました。');
-    }
-    return url.href;
-}
-
-function throwIfAttendanceFetchAborted(signal) {
-    if (!signal?.aborted) return;
-    const error = new Error('Ku-portが別タブで開かれたため取得を中断しました。');
-    error.name = 'AbortError';
-    throw error;
 }
 
 async function fetchKuportAttendanceInBackground(bootstrap, signal) {
@@ -528,48 +459,6 @@ async function tryManualRefreshFromBackgroundSession() {
     }
 }
 
-async function checkManualRefreshCooldown() {
-    const requestedAt = Date.now();
-    const memoryElapsed = requestedAt - lastAttendanceRefreshAt;
-    if (memoryElapsed < ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS) {
-        return Math.ceil((ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS - memoryElapsed) / 1000);
-    }
-    lastAttendanceRefreshAt = requestedAt;
-
-    const stored = await chrome.storage.session.get(ATTENDANCE_MANUAL_REFRESH_KEY);
-    const lastRequestedAt = stored[ATTENDANCE_MANUAL_REFRESH_KEY]?.requestedAt;
-    const elapsed = Number.isFinite(lastRequestedAt) ? requestedAt - lastRequestedAt : Infinity;
-    if (elapsed < ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS) {
-        lastAttendanceRefreshAt = lastRequestedAt;
-        return Math.ceil((ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS - elapsed) / 1000);
-    }
-    await recordAttendanceRefreshCooldown(requestedAt);
-    return 0;
-}
-
-async function recordAttendanceRefreshCooldown(requestedAt = Date.now()) {
-    lastAttendanceRefreshAt = requestedAt;
-    await chrome.storage.session.set({
-        [ATTENDANCE_MANUAL_REFRESH_KEY]: { requestedAt },
-    });
-}
-
-async function getManualRefreshCooldownRemaining() {
-    const stored = await chrome.storage.session.get(ATTENDANCE_MANUAL_REFRESH_KEY);
-    const storedRequestedAt = stored[ATTENDANCE_MANUAL_REFRESH_KEY]?.requestedAt;
-    const lastRequestedAt = Math.max(
-        lastAttendanceRefreshAt,
-        Number.isFinite(storedRequestedAt) ? storedRequestedAt : 0
-    );
-    if (!lastRequestedAt) return 0;
-    return Math.max(
-        0,
-        Math.ceil(
-            (ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS - (Date.now() - lastRequestedAt)) / 1000
-        )
-    );
-}
-
 async function requestAttendanceRateRefresh({ manual = false } = {}) {
     const attendanceSettings = await chrome.storage.sync.get([
         ATTENDANCE_RATE_FEATURE_KEY,
@@ -707,135 +596,6 @@ async function continueAttendanceFetch(tabId, changeInfo, tab) {
     }
 }
 
-async function enableAutomaticSubjectFilter() {
-    const result = await chrome.storage.local.get(SUBJECT_FILTER_STORAGE_KEY);
-    let settings = {};
-
-    try {
-        const parsed = result[SUBJECT_FILTER_STORAGE_KEY]
-            ? JSON.parse(result[SUBJECT_FILTER_STORAGE_KEY])
-            : {};
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            settings = parsed;
-        }
-    } catch (error) {
-        console.debug('[KLPF] 既存の講義フィルター設定を読み込めなかったため初期化します。', error);
-    }
-
-    settings.isAutoActive = true;
-    await chrome.storage.local.set({
-        [SUBJECT_FILTER_STORAGE_KEY]: JSON.stringify(settings),
-    });
-}
-
-function isAllowedWebhookUrl(value) {
-    if (typeof value !== 'string') return false;
-
-    try {
-        const url = new URL(value);
-        return url.protocol === 'https:'
-            && !!url.hostname
-            && !url.username
-            && !url.password;
-    } catch {
-        return false;
-    }
-}
-
-/**
- * コンテンツスクリプトを登録する。
- * @param {ContentScriptConfig} config - 登録するスクリプトの設定。
- */
-async function registerContentScript(config) {
-    try {
-        const registration = {
-            id: config.id,
-            js: config.js,
-            matches: config.matches,
-            runAt: config.runAt,
-        };
-        if (Array.isArray(config.css) && config.css.length > 0) {
-            registration.css = config.css;
-        }
-
-        await chrome.scripting.registerContentScripts([registration]);
-        console.log(`[KLPF] スクリプト登録: ${config.id}`);
-    } catch (error) {
-        console.error(`[KLPF] スクリプト登録失敗: ${config.id}`, error);
-    }
-}
-
-/**
- * コンテンツスクリプトの登録を解除する。
- * @param {string} scriptId - 解除するスクリプトのID。
- */
-async function unregisterContentScript(scriptId) {
-    try {
-        const scripts = await chrome.scripting.getRegisteredContentScripts({ ids: [scriptId] });
-        if (scripts.length > 0) {
-            await chrome.scripting.unregisterContentScripts({ ids: [scriptId] });
-            console.log(`[KLPF] スクリプト解除: ${scriptId}`);
-        }
-    } catch (error) {
-        console.error(`[KLPF] スクリプト解除失敗: ${scriptId}`, error);
-    }
-}
-
-async function replaceContentScriptRegistration(config) {
-    await unregisterContentScript(config.id);
-    await registerContentScript(config);
-}
-
-async function applyAutoAttendDependency(isEnabled) {
-    const meetConfig = CONTENT_SCRIPTS_CONFIG.find(config => config.storageKey === 'autoMeet');
-    if (!meetConfig) return;
-
-    if (isEnabled) {
-        await replaceContentScriptRegistration(meetConfig);
-    } else {
-        await unregisterContentScript(meetConfig.id);
-    }
-}
-
-/**
- * 全機能の状態をストレージから読み込み、必要に応じてスクリプトを登録/解除する。
- */
-async function initializeScripts() {
-    console.log('[KLPF] 拡張機能の初期化...');
-    const storageKeys = [
-        ...CONTENT_SCRIPTS_CONFIG.map(config => config.storageKey),
-        ATTENDANCE_RATE_CONSENT_KEY,
-    ];
-
-    const result = await chrome.storage.sync.get(storageKeys);
-    if (chrome.runtime.lastError) {
-        console.error('[KLPF] ストレージ読み込み失敗:', chrome.runtime.lastError);
-        return;
-    }
-
-    const hasAttendanceConsent = result[ATTENDANCE_RATE_CONSENT_KEY] === true;
-    if (!hasAttendanceConsent && result[ATTENDANCE_RATE_FEATURE_KEY] === true) {
-        result[ATTENDANCE_RATE_FEATURE_KEY] = false;
-        await chrome.storage.sync.set({ [ATTENDANCE_RATE_FEATURE_KEY]: false });
-    }
-
-    for (const config of CONTENT_SCRIPTS_CONFIG) {
-        const isEnabled = result[config.storageKey] !== undefined
-            ? result[config.storageKey]
-            : !!config.enabledByDefault;
-        await unregisterContentScript(config.id); // 念のため既存のスクリプトを解除
-
-        if (isEnabled) {
-            await registerContentScript(config);
-
-            // 「自動出席」が有効な場合、「Meet自動参加」も有効にする依存関係を処理
-            if (config.storageKey === 'autoAttend') {
-                await applyAutoAttendDependency(true);
-            }
-        }
-    }
-}
-
 // --- イベントリスナーの登録 ---
 
 /**
@@ -887,7 +647,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
     }
 
     for (const [key, { newValue }] of Object.entries(changes)) {
-        const config = CONTENT_SCRIPTS_CONFIG.find(c => c.storageKey === key);
+        const config = CONTENT_SCRIPT_BY_STORAGE_KEY.get(key);
         if (!config) continue;
 
         if (newValue) {
@@ -903,8 +663,8 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
                 await enableAutomaticSubjectFilter();
             }
 
-            // 重複エラーを防ぐため、登録前に必ず解除する
-            await replaceContentScriptRegistration(config);
+            // 登録内容が同一ならモジュール側でChrome API呼び出しを省略する。
+            await registerContentScript(config);
 
             // 「自動出席」が有効な場合、「Meet自動参加」も有効にする依存関係を処理
             if (key === 'autoAttend') {

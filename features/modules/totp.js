@@ -74,3 +74,10 @@ async function generateTOTP(secret, { period = 30, digits = 6, algorithm = 'SHA-
         return null;
     }
 }
+
+// classic content scriptとしての既存の関数名を維持しつつ、テストや将来の機能から
+// 明示的な名前空間でも再利用できるようにする。
+globalThis.KLPFTotp = Object.freeze({
+    base32Decode,
+    generateTOTP,
+});

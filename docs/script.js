@@ -1,3 +1,10 @@
+// Copyright (c) 2024-2026 SAYU
+// This software is released under the MIT License, see LICENSE.
+
+/**
+ * @file KLPF公式サイトのナビゲーション、表示演出、Release情報取得を管理する。
+ */
+
 class ModernKLPFSite {
     constructor() {
         this.observer = null;
@@ -399,7 +406,9 @@ class ModernKLPFSite {
         const MIN_MS = 1000;
         const elapsed = performance.now() - (this._loaderStart || performance.now());
         const wait = Math.max(0, MIN_MS - elapsed);
-        await new Promise(r => setTimeout(r, wait));
+        await new Promise((resolve) => {
+            setTimeout(resolve, wait);
+        });
 
         const revealVisibleElements = () => {
             this._revealDone = true;

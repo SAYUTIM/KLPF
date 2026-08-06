@@ -236,17 +236,6 @@
         hasAbortListenersBound = true;
     }
 
-    function serializeFormFields(form) {
-        const fields = {};
-        const formData = new FormData(form);
-
-        for (const [key, value] of formData.entries()) {
-            fields[key] = typeof value === 'string' ? value : '';
-        }
-
-        return fields;
-    }
-
     function buildRequestBody(formFields, courseId) {
         const params = new URLSearchParams();
         const mergedFields = { ...formFields, kougiId: courseId };
@@ -264,7 +253,7 @@
 
     function buildProbeContext(homeForm) {
         return {
-            formFields: serializeFormFields(homeForm),
+            formFields: globalThis.KLPFFormUtils.serializeFormObject(homeForm),
             linkKougiUrl: buildLinkKougiUrl(homeForm.action),
         };
     }
@@ -272,11 +261,7 @@
     // ---- UI / クリック / ポップアップ ----
 
     function injectStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-
-        const style = document.createElement('style');
-        style.id = STYLE_ID;
-        style.textContent = `
+        ensureStyleElement(STYLE_ID, `
             .${CARD_INFO_CLASS} {
                 position: relative;
                 padding-right: 68px;
@@ -314,8 +299,7 @@
                 opacity: 0.75;
                 cursor: wait;
             }
-        `;
-        document.head.appendChild(style);
+        `);
     }
 
     function injectPageBridge() {

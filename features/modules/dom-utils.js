@@ -17,7 +17,8 @@ function waitForElement(selector, root = document, timeout = 5000) {
         // すでに要素が存在すれば即座に解決
         const element = root.querySelector(selector);
         if (element) {
-            return resolve(element);
+            resolve(element);
+            return;
         }
 
         let timeoutId = null;
@@ -77,6 +78,30 @@ function safeQuerySelectorAll(selector, root = document) {
 }
 
 /**
+ * 同じIDのstyle要素を重複させずにCSSを注入する。
+ * 動的content scriptが設定変更などで再実行されても、同一スタイルを増やさないために使う。
+ * @param {string} styleId - style要素へ設定する一意なID。
+ * @param {string} cssText - 注入するCSS。
+ * @param {HTMLElement} [root] - style要素の追加先。
+ * @returns {HTMLStyleElement|null} 既存または新規のstyle要素。
+ */
+function ensureStyleElement(
+    styleId,
+    cssText,
+    root = document.head || document.documentElement,
+) {
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle instanceof HTMLStyleElement) return existingStyle;
+    if (!root) return null;
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = cssText;
+    root.appendChild(style);
+    return style;
+}
+
+/**
  * URLからセッションID (SID) を取得する。
  * @returns {string | null} SID。見つからない場合はnull。
  */
@@ -84,3 +109,12 @@ function getSid() {
     const match = window.location.href.match(SID_REGEX);
     return match ? match[1] : null;
 }
+
+// 従来のトップレベル関数を維持しながら、追加機能では名前空間経由で依存を明示できる。
+globalThis.KLPFDomUtils = Object.freeze({
+    waitForElement,
+    safeQuerySelector,
+    safeQuerySelectorAll,
+    ensureStyleElement,
+    getSid,
+});

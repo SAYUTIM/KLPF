@@ -1,6 +1,10 @@
 // Copyright (c) 2025-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
+/**
+ * @file GAS通知機能のセットアップガイドで、目次移動とコードコピーを補助する。
+ */
+
 const HEADER_OFFSET_EXTRA = 22;
 const COPY_FEEDBACK_DURATION_MS = 1800;
 

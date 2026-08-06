@@ -7,9 +7,7 @@
  */
 
 import { loadAndApplySettings } from './settings.js';
-
-const EXPORT_APP_NAME = 'KLPF';
-const EXPORT_SCHEMA_VERSION = 1;
+import { createExportPayload, validateImportPayload } from './backup-format.js';
 
 const elements = {
     exportButton: null,
@@ -41,10 +39,6 @@ function dispatchErrorMessage(message) {
     document.dispatchEvent(new CustomEvent('settings-error', { detail: message }));
 }
 
-function isPlainObject(value) {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function padNumber(value) {
     return value.toString().padStart(2, '0');
 }
@@ -62,13 +56,7 @@ async function buildExportPayload() {
         chrome.storage.local.get(null),
     ]);
 
-    return {
-        app: EXPORT_APP_NAME,
-        schemaVersion: EXPORT_SCHEMA_VERSION,
-        exportedAt: new Date().toISOString(),
-        sync: syncData,
-        local: localData,
-    };
+    return createExportPayload(syncData, localData);
 }
 
 function downloadExportFile(payload) {
@@ -116,24 +104,6 @@ async function handleExport() {
     } catch (error) {
         console.error('[KLPF] 設定のエクスポートに失敗しました。', error);
         dispatchErrorMessage('設定のエクスポートに失敗しました。');
-    }
-}
-
-function validateImportPayload(payload) {
-    if (!isPlainObject(payload)) {
-        throw new Error('JSONの形式が不正です。');
-    }
-
-    if (payload.app !== EXPORT_APP_NAME) {
-        throw new Error('KLPF用のバックアップファイルではありません。');
-    }
-
-    if (payload.schemaVersion !== EXPORT_SCHEMA_VERSION) {
-        throw new Error('対応していないバックアップ形式です。');
-    }
-
-    if (!isPlainObject(payload.sync) || !isPlainObject(payload.local)) {
-        throw new Error('バックアップファイルに必要なデータが不足しています。');
     }
 }
 

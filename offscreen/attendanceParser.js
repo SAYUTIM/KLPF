@@ -12,12 +12,14 @@
     'use strict';
 
     const attendanceUtils = globalThis.KLPFAttendanceUtils;
-    if (!attendanceUtils) {
-        console.error('[KLPF] 出席表解析モジュールを読み込めませんでした。');
+    const formUtils = globalThis.KLPFFormUtils;
+    if (!attendanceUtils || !formUtils) {
+        console.error('[KLPF] 出席表またはフォーム解析モジュールを読み込めませんでした。');
         return;
     }
 
     const { normalizeText, parseAttendanceRecords } = attendanceUtils;
+    const { resolveFormAction, serializeFormEntries } = formUtils;
     const MESSAGE_TARGET = 'attendance-parser';
     const ATTENDANCE_FORM_ID = 'funcForm';
     const ATTENDANCE_TERM_SELECT_ID = 'funcForm:kaikoNendoGakki_input';
@@ -26,15 +28,6 @@
 
     function parseDocument(html, mimeType = 'text/html') {
         return new DOMParser().parseFromString(String(html || ''), mimeType);
-    }
-
-    function serializeFormFields(form) {
-        return Array.from(new FormData(form).entries())
-            .filter(([name, value]) => typeof name === 'string' && typeof value === 'string');
-    }
-
-    function resolveFormAction(form, baseUrl) {
-        return new URL(form.getAttribute('action') || baseUrl, baseUrl).href;
     }
 
     function getRequiredForm(parsedDocument, formId, errorMessage) {
@@ -46,7 +39,7 @@
     function createFormResult(form, baseUrl) {
         return {
             action: resolveFormAction(form, baseUrl),
-            fields: serializeFormFields(form),
+            fields: serializeFormEntries(form),
         };
     }
 
@@ -117,6 +110,14 @@
         'parse-menu-bootstrap': message => parseMenuBootstrap(message.html, message.baseUrl),
         'parse-auto-navigation-form': message => parseAutoNavigationForm(message.html, message.baseUrl),
         'parse-attendance-records': message => parseAttendanceRecordResponse(message.html),
+    });
+
+    // Offscreenのmessage契約は維持しつつ、解析規則をDOM回帰テストから直接検証できるようにする。
+    globalThis.KLPFAttendanceParser = Object.freeze({
+        parseAttendanceForm,
+        parseMenuBootstrap,
+        parseAutoNavigationForm,
+        parseAttendanceRecordResponse,
     });
 
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

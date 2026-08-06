@@ -1,6 +1,11 @@
 // Copyright (c) 2024-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
+/**
+ * @file Ku-LMSの背景画像、ぼかし、明るさ、各領域の透過表示を管理する。
+ * document_startで再注入される場合があるため、INSTANCE_KEYで初期化を一度に保つ。
+ */
+
 (() => {
     'use strict';
 

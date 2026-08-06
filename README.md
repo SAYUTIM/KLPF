@@ -92,6 +92,8 @@ Ku-LMSホームでは、右上のユーザーメニューにある **「KLPF 設
 KLPF/
 ├─ manifest.json
 ├─ background.js
+├─ background/
+│  └─ modules/
 ├─ scripts.config.js
 ├─ features/
 │  ├─ modules/
@@ -128,6 +130,9 @@ KLPF/
 │  ├─ privacypolicy/
 │  ├─ terms/
 │  └─ totp/
+├─ tests/
+├─ tools/
+├─ package.json
 └─ README.md
 ```
 
@@ -138,8 +143,9 @@ KLPF/
 `features/pageWorld/` 配下のような page world 用スクリプトをページへ注入するときも、ここで公開設定が必要です。
 
 #### `background.js`
-拡張機能全体の制御役です。`scripts.config.js` を読み、各機能の有効/無効に応じて content script を動的登録します。  
-初回インストール時のデフォルト設定保存、右クリックメニュー、GAS送信、設定変更時の再登録に加え、Ku-portへの一時ログイン画面、出席情報のバックグラウンド取得、競合時の中断処理もここが担当します。
+Manifest V3 Service Worker のエントリーポイントです。初回設定、右クリックメニュー、GAS送信、Ku-portへの一時ログイン画面、出席情報のバックグラウンド取得、競合時の中断をChromeイベントへ接続します。
+
+動的content script登録、出席取得状態、更新通知、外部URL検証は`background/modules/`へ分離されています。登録内容が変わっていない場合は不要な解除・再登録を行いません。
 
 #### `scripts.config.js`
 機能一覧の定義ファイルです。  
@@ -200,6 +206,8 @@ Ku-LMS / ku-port / Meet 上で動く実装本体です。基本的には「1機�
   `waitForElement`、`safeQuerySelector` などの DOM ユーティリティ。
 - `attendance-utils.js`
   科目名の正規化、出席率、最終カードタッチ日の解析をまとめた共通処理。KU-PORTのcontent scriptとOffscreen Documentの両方から同じ実装を読み込みます。
+- `form-utils.js`
+  フォーム項目の直列化とaction URL解決をまとめた共通処理。ホーム出席表示とOffscreen Documentで、従来の戻り値形式を維持して再利用します。
 - `totp.js`
   自動ログインで使う TOTP 関連処理。
 
@@ -317,7 +325,7 @@ OSS コントリビュータ向けの追加テンプレートです。
 - 機能追加の入口を知りたい  
   → `scripts.config.js`
 - 機能の登録や初期化の流れを知りたい  
-  → `background.js`
+  → `background.js` と `background/modules/`
 - 設定画面を触りたい  
   → `setting/options.html` と `setting/modules/settings.js`
 - Ku-LMS ホーム系の実装を見たい  
@@ -385,6 +393,30 @@ OSS コントリビュータ向けの追加テンプレートです。
 5. 必要なら `features/modules/` や `features/pageWorld/` に分離する
 
 つまり、最初は「コメントアウトを戻す」「名前を置換する」「JS の中身を書く」の 3 ステップで始められる状態にしています。
+
+## 開発時の検証
+
+Node.jsのActive LTSとnpmを用意し、リポジトリ直下で次を実行します。
+
+```powershell
+npm ci
+npm run check
+```
+
+`npm run check`は、first-party JavaScriptの構文検査、ESLint、CSS検査、HTML構造検査、Node標準テストを順に実行します。`vendor/`、画像、ローカルのブラウザ操作データは検査対象外です。pushとPull RequestではGitHub Actionsでも同じ検査を実行します。
+
+自動テストでは、Manifestと設定ファイルの参照整合性、動的scriptのIDと保存キー、TOTP既知ベクトル、出席表とフォームの解析、URL許可、バックアップschemaVersion 1、content scriptの差分登録を確認します。
+
+### 実サービスの手動回帰確認
+
+認証情報や大学サービスへの接続が必要な機能はCIから実行しません。リリース前にテスト用アカウントまたは自身の環境で、次を確認してください。
+
+1. 拡張機能をパッケージ化せず読み込み、Service Workerに起動時エラーがない。
+2. 設定画面で各機能のON/OFF、並び順、バックアップのエクスポート・再インポートが維持される。
+3. Ku-LMSで自動ログイン、課題、科目絞り込み、出席バッジ、出席率、テーマ、ホーム編集が重複表示されない。
+4. ku-portで自動ログイン、出席率取得、枠外クリックが従来どおり動作する。
+5. Google Meetのミュート参加、自動出席、教材一括開封を個別に確認する。
+6. GASセットアップとWebhook通知をテストデータで確認し、実際の認証情報をIssueやログへ残さない。
 
 ## 更新方法
 　前バージョンを削除してファイルを置き換えるか、上書き保存してください。

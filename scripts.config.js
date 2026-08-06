@@ -18,6 +18,7 @@ const MODULES = {
   CONSTANTS: `${PATHS.MODULES}constants.js`,
   DOM_UTILS: `${PATHS.MODULES}dom-utils.js`,
   ATTENDANCE_UTILS: `${PATHS.MODULES}attendance-utils.js`,
+  FORM_UTILS: `${PATHS.MODULES}form-utils.js`,
   TOTP: `${PATHS.MODULES}totp.js`,
 };
 
@@ -43,6 +44,8 @@ const URLS = {
  * @typedef {Object} ContentScriptConfig
  * @property {string} id - スクリプトの一意なID。
  * @property {string} storageKey - この機能の有効/無効を保存するchrome.storage.syncのキー。
+ * @property {string} displayName - 設定画面へ表示する機能名。
+ * @property {number} displayOrder - 設定画面での並び順。
  * @property {string[]} js - 注入するJavaScriptファイルのパスの配列。
  * @property {string[]} [css] - 注入するCSSファイルのパスの配列。
  * @property {string[]} matches - スクリプトを注入するURLパターン。
@@ -152,7 +155,7 @@ export const CONTENT_SCRIPTS_CONFIG = [
         storageKey: 'homeAttendanceBadge',
         displayName: 'ホーム出席表示',
         displayOrder: 60,
-        js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}homeAttendance.js`],
+        js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, MODULES.FORM_UTILS, `${PATHS.FEATURES}homeAttendance.js`],
         matches: [URLS.KOGAKUIN_LMS_HOME, URLS.KOGAKUIN_LMS_HOME_BACK, URLS.KOGAKUIN_LMS_HOME_KLIL_BACK],
         runAt: 'document_start',
         enabledByDefault: true,

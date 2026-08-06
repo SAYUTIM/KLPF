@@ -424,7 +424,9 @@ async function applyOptionsViewMode(mode, { waitForPanelAnimation = true } = {})
 }
 
 function waitForOptionsViewTransition(duration) {
-    return new Promise(resolve => setTimeout(resolve, duration));
+    return new Promise((resolve) => {
+        setTimeout(resolve, duration);
+    });
 }
 
 async function animateOptionsViewOverlay(overlay, keyframes, duration) {
@@ -473,7 +475,9 @@ async function transitionOptionsViewMode(nextMode) {
 
         // レイアウトとエフェクトは、画面が完全に覆われている間に準備する。
         await applyOptionsViewMode(normalizedMode, { waitForPanelAnimation: false });
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+        });
         await waitForOptionsViewTransition(80);
 
         document.body.classList.add('is-options-view-revealing');
@@ -842,7 +846,9 @@ async function reorderAndShowPanels({ waitForAnimation = true } = {}) {
 
     // アニメーションが落ち着くのを待つ
     if (waitForAnimation) {
-        await new Promise(resolve => setTimeout(resolve, ANIMATION_DURATION));
+        await new Promise((resolve) => {
+            setTimeout(resolve, ANIMATION_DURATION);
+        });
     }
 
     // 表示モードに合わせて、詳細設定を対応機能の直下または従来パネルへ配置する。

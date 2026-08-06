@@ -1,3 +1,8 @@
+/*
+ * KLPFホームダッシュボードの配置、編集UI、課題カレンダーを定義する。
+ * LMS既存スタイルとの競合を避けるため、klpf固有クラス配下へ限定する。
+ */
+
 :root {
     --klpf-dashboard-accent: #b43f46;
     --klpf-dashboard-ink: #20242a;

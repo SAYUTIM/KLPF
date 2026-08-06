@@ -1,3 +1,10 @@
+// Copyright (c) 2024-2026 SAYU
+// This software is released under the MIT License, see LICENSE.
+
+/**
+ * @file TOTP秘密鍵の設定ガイドで、スクロール表示と目次状態を管理する。
+ */
+
 (() => {
     'use strict';
 

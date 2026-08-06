@@ -1,7 +1,23 @@
 // Copyright (c) 2025 SAYU
 // This software is released under the MIT License, see LICENSE.
 
+/**
+ * @file Google Apps Scriptエディター上でKLPF通知スクリプトの設定を補助する。
+ * DOM操作部分と、エディターへ貼り付けるGASコードは異なる実行環境で動作する。
+ */
+
 let isAutomationCancelled = false;
+
+/**
+ * 自動操作の各画面遷移を待つ共通処理。
+ * @param {number} milliseconds - 待機時間。
+ * @returns {Promise<void>}
+ */
+function sleep(milliseconds) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, milliseconds);
+    });
+}
 
 function showOverlay() {
     const existingOverlay = document.getElementById('automation-overlay');
@@ -159,7 +175,7 @@ async function renameProject(newName) {
     dialogInput.value = newName;
     dialogInput.dispatchEvent(new Event('input', { bubbles: true }));
     
-    await new Promise(resolve => setTimeout(resolve, 500)); 
+    await sleep(500);
     
     const confirmButton = await waitForElement('div[role="dialog"] button[data-mdc-dialog-action="ok"]');
     if (confirmButton && !confirmButton.disabled) simulateClick(confirmButton);
@@ -180,7 +196,7 @@ async function deployWebApp() {
     if (isAutomationCancelled) throw new Error('Cancelled by user');
     const deployButton = await waitForElement('div[data-tt="このプロジェクトをデプロイ"] div[role="button"]');
     simulateClick(deployButton);
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await sleep(delay);
     
     if (isAutomationCancelled) throw new Error('Cancelled by user');
     const newDeploymentButton = await waitForElement('span[aria-label="新しいデプロイ"]');
@@ -188,16 +204,16 @@ async function deployWebApp() {
     
     if (isAutomationCancelled) throw new Error('Cancelled by user');
     const enableTypesButton = await waitForElement('div[role="button"][aria-label="デプロイタイプを有効にする"]', 15000);
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await sleep(delay);
     
     if (isAutomationCancelled) throw new Error('Cancelled by user');
     simulateClick(enableTypesButton);
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await sleep(delay);
     
     if (isAutomationCancelled) throw new Error('Cancelled by user');
     const webAppButton = await waitForElement('span[aria-label="ウェブアプリ"]');
     simulateClick(webAppButton);
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await sleep(delay);
     
     if (isAutomationCancelled) throw new Error('Cancelled by user');
     const finalDeployButton = await waitForButtonByText('デプロイ');
@@ -248,7 +264,7 @@ async function runAutomation() {
         await renameProject('KLPF課題リマインダー');
         
         if (isAutomationCancelled) throw new Error('Cancelled by user');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await sleep(3000);
         
         const myCode =`
   try {
@@ -509,21 +525,21 @@ function clearAllDataAndTriggers() {
         pasteCodeIntoEditor(myCode);
         
         if (isAutomationCancelled) throw new Error('Cancelled by user');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await sleep(3000);
         await deployWebApp();
         
         if (isAutomationCancelled) throw new Error('Cancelled by user');
         console.log('デプロイプロセスが完了しました。メイン画面に戻るのを待ちます...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await sleep(2000);
 
         if (isAutomationCancelled) throw new Error('Cancelled by user');
         console.log('「実行」ボタンを探しています...');
-        await new Promise(resolve => setTimeout(resolve, 1000)); 
+        await sleep(1000);
         console.log('「実行」ボタンをクリックします。');
         const buttons = document.querySelectorAll('button[aria-label="選択した関数を実行"]');
         if (buttons.length > 0) buttons.forEach((button) => {button.click() });
 
-        await new Promise(resolve => setTimeout(resolve, 1000)); 
+        await sleep(1000);
 
         hideOverlay();
         alert('1分以内に「権限を確認」をクリックして権限を与えてください。');

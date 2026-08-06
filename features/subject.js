@@ -32,11 +32,7 @@
     }
 
     function injectStyles() {
-        if (document.getElementById(STYLE_ID)) return;
-
-        const style = document.createElement('style');
-        style.id = STYLE_ID;
-        style.textContent = `
+        ensureStyleElement(STYLE_ID, `
             .lms-weekly-area { visibility: hidden; }
             .${SUBJECT_HIGHLIGHT_CLASS} {
                 border: 2px solid #d9534f !important;
@@ -64,8 +60,7 @@
             .klpf-search-button-notice.is-visible {
                 display: block;
             }
-        `;
-        document.head.appendChild(style);
+        `);
     }
 
     function readFilterSettings(form, normalizeSearchText = false) {

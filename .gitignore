@@ -1,0 +1,5 @@
+# Development dependencies.
+node_modules/
+
+# Test and coverage output.
+coverage/

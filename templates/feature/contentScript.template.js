@@ -22,7 +22,7 @@
     }
 
     function injectStyles() {
-        // TODO: 必要なら style を注入する
+        // TODO: 必要なら ensureStyleElement('一意なID', `CSS`) で重複なく注入する
     }
 
     async function loadSettings() {
