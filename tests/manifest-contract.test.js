@@ -38,7 +38,7 @@ test('manifest and package versions stay aligned', async () => {
         readJson('manifest.json'),
         readJson('package.json'),
     ]);
-    assert.equal(manifest.version, '4.4.2');
+    assert.equal(manifest.version, '4.5.0');
     assert.equal(packageJson.version, manifest.version);
     assert.equal(manifest.manifest_version, 3);
 });
