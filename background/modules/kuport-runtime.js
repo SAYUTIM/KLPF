@@ -161,21 +161,56 @@ export async function closeKuportParser() {
 }
 
 /**
+ * 同じジョブの終了処理を共有し、タブ削除などの通知による二重実行を防ぐ。
+ * @param {Function} finish - ジョブIDと終了状態を受け取る非同期の終了処理。
+ * @returns {Function} 同じIDの終了処理が進行中なら、そのPromiseを返す関数。
+ */
+export function createKuportJobFinisher(finish) {
+    const finishing = new Map();
+    return (id, ...args) => {
+        if (finishing.has(id)) return finishing.get(id);
+        const operation = Promise.resolve().then(() => finish(id, ...args)).finally(() => {
+            finishing.delete(id);
+        });
+        finishing.set(id, operation);
+        return operation;
+    };
+}
+
+/**
  * 拡張機能が作成したウィンドウと所有タブだけを閉じる。ユーザーのウィンドウ全体は閉じない。
  * @param {object} job - 要求ID・所有タブ・取得状態を持つジョブ情報。
- * @returns {Promise<void>} 処理の完了を待つPromise。
+ * @returns {Promise<void>} 所有する画面の終了。
+ * @throws {Error} 終了操作に失敗し、所有画面がまだ残っている場合。
  */
 export async function closeKuportLoginContext(job) {
+    let closeError = null;
+    let failedWindowId = null;
+    const failedTabIds = new Set();
     if (Number.isInteger(job?.createdWindowId)) {
         try { await chrome.windows.remove(job.createdWindowId); }
-        catch { /* すでに閉じられているため、残っている所有タブだけを後続で削除する。 */ }
+        catch (error) {
+            closeError = error;
+            failedWindowId = job.createdWindowId;
+        }
     }
     const tabIds = new Set(job?.tabIds || []);
     if (Number.isInteger(job?.helperTabId)) tabIds.add(job.helperTabId);
     for (const tabId of tabIds) {
         if (!Number.isInteger(tabId)) continue;
         try { await chrome.tabs.remove(tabId); }
-        catch { /* ウィンドウと同時に閉じたか、ユーザーによってすでに削除されている。 */ }
+        catch (error) {
+            closeError = error;
+            failedTabIds.add(tabId);
+        }
+    }
+    if (closeError) {
+        // 既に閉じている場合と、本当に終了操作が失敗した場合を区別する。
+        const remainingTabs = await chrome.tabs.query({});
+        if (remainingTabs.some(tab => failedTabIds.has(tab.id)
+            || (Number.isInteger(failedWindowId) && tab.windowId === failedWindowId))) {
+            throw closeError;
+        }
     }
 }
 

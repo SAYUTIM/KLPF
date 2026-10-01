@@ -211,6 +211,8 @@ KLPF/
 #### `background.js`
 Manifest V3 Service Worker のエントリーポイントです。初回設定、右クリックメニュー、GAS送信、Ku-portへの一時ログイン画面、出席情報のバックグラウンド取得、競合時の中断をChromeイベントへ接続します。シラバス・掲示板の通信は`background/kuport/`、共通の画面・解析管理は`background/modules/kuport-runtime.js`へ分離しています。
 
+取得ジョブの期限は`background/modules/kuport-job-timeouts.js`で監視します。認証待ちも含めた開始時刻を保存し、Service Workerの起動時に監視を復元します。Chromeアラームの利用に必要な`alarms`権限を宣言しています。
+
 動的content script登録、出席取得状態、更新通知、外部URL検証は`background/modules/`へ分離されています。登録内容が変わっていない場合は不要な解除・再登録を行いません。
 
 #### `background/modules/` と `background/kuport/`

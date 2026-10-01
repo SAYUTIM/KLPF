@@ -9,6 +9,7 @@
 | `background/kuport/syllabus.js` | シラバスのJSF通信。進捗通知とジョブ確認は呼び出し元から渡す |
 | `background/kuport/bulletin.js` | 掲示一覧、全表示、詳細の直列通信。認証後の補助的なセッション確認 |
 | `background/modules/kuport-runtime.js` | 専用ログイン画面、既存タブ検出、フォーム・ヘッダー、offscreenの作成・終了 |
+| `background/modules/kuport-job-timeouts.js` | 保存済みの開始時刻とChromeアラームによる取得ジョブの期限監視 |
 | `background/modules/kuport-form.js` | 文字列フォームをURLSearchParamsにする |
 | `features/syllabus.js`, `features/bulletinBoard.js` | KU-LMS上のボタン、一覧、キャッシュ表示、ダイアログ |
 | `features/syllabusSessionBridge.js`, `features/bulletinSessionBridge.js` | 所有確認済みの認証用Ku-Portタブから必要なフォームを読む |
@@ -33,6 +34,18 @@ Ku-Portの通常タブを読み取ったり通信に再利用したりしない�
 
 offscreenの終了中に次の解析が始まった場合は、終了完了を待ってから新しい解析ページを用意する。
 解析中の呼び出しが残っている場合は終了処理を省略する。
+
+### 認証画面の終了とタイムアウト
+
+取得ジョブは認証待ちを含め、開始から2分の期限を設ける。
+`chrome.alarms`を使うため、manifestで`alarms`権限を宣言する。
+Service Workerの起動時には保存済みジョブの開始時刻を読み、期限監視を復元する。
+アラームはPCのスリープなどで遅れる場合があり、復帰後に期限切れの処理を行う。
+
+認証画面のIDはジョブ終了まで保持する。終了操作に失敗して画面が残った場合は、
+ジョブを削除せずに再試行する。同じジョブの終了処理は共有し、画面を閉じたときの
+タブ削除通知による二重実行を防ぐ。出席率の開始処理は、ジョブ保存前の失敗でも
+作成済みの認証画面を終了対象にする。
 
 ## 優先順位とキャッシュ
 

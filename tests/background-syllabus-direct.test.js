@@ -125,6 +125,12 @@ test('syllabus direct communication posts JSF menu, timetable and dialog request
     };
     const chrome = {
         runtime,
+        alarms: {
+            onAlarm: createEvent(),
+            async get() {},
+            async create() {},
+            async clear() {},
+        },
         storage: {
             session,
             sync,

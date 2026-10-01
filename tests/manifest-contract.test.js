@@ -51,6 +51,7 @@ test('permissions and remote origins remain on the reviewed compatibility contra
         'scripting',
         'offscreen',
         'contextMenus',
+        'alarms',
     ]);
     assert.deepEqual(manifest.host_permissions, [
         'https://study.ns.kogakuin.ac.jp/*',

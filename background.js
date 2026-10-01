@@ -10,6 +10,7 @@
 import { createSyllabusTransport } from './background/kuport/syllabus.js';
 import { createBulletinTransport, BULLETIN_MAX_ITEMS } from './background/kuport/bulletin.js';
 import { createPriorityQueue } from './background/modules/priority-queue.js';
+import { registerKuportJobTimeouts } from './background/modules/kuport-job-timeouts.js';
 
 import {
     isKuportUrl,
@@ -17,6 +18,7 @@ import {
     parseKuportDocument,
     createKuportLoginContext,
     closeKuportLoginContext,
+    createKuportJobFinisher,
     closeKuportParser,
 } from './background/modules/kuport-runtime.js';
 
@@ -124,10 +126,11 @@ async function setSyllabusLookupJob(job) {
  * @param {string|object} [options.message=""] - 表示する案内文、または受信した機能メッセージ。
  * @returns {Promise<boolean>} 対応するジョブを終了した場合はtrue。
  */
-async function finishSyllabusLookup(requestId, { ok = false, result = null, message = '' } = {}) {
+const finishSyllabusLookup = createKuportJobFinisher(async (requestId, { ok = false, result = null, message = '' } = {}) => {
     const job = await getSyllabusLookupJob();
     if (!job || job.requestId !== requestId) return false;
     syllabusFetchAbortController?.abort();
+    await closeKuportLoginContext(job);
     await chrome.storage.session.remove(SYLLABUS_LOOKUP_JOB_KEY);
     try {
         await chrome.tabs.sendMessage(job.sourceTabId, {
@@ -140,9 +143,8 @@ async function finishSyllabusLookup(requestId, { ok = false, result = null, mess
     } catch {
         // 元のKU-LMSタブが閉じられている場合も取得用ウィンドウは閉じる。
     }
-    await closeKuportLoginContext(job);
     return true;
-}
+});
 
 /**
  * シラバス取得の中断が要求されていればAbortErrorを投げる。
@@ -331,18 +333,16 @@ async function startSyllabusDirectFetch(requestId, suppliedBootstrap = null) {
         const helperJob = job;
         const directJob = {
             ...job,
-            createdWindowId: null,
-            windowIds: [],
-            helperTabId: null,
-            tabIds: [],
             awaitingSession: false,
             phase: 'opening-student-schedule',
             lastProgressAt: Date.now(),
         };
         await setSyllabusLookupJob(directJob);
+        // 認証画面のIDは終了まで保持し、終了操作に失敗した場合も閉じ直せるようにする。
         if (Number.isInteger(helperJob.createdWindowId) || Number.isInteger(helperJob.helperTabId)) {
             await closeKuportLoginContext(helperJob);
         }
+        await ensureSyllabusJobActive(requestId, abortController.signal);
         const result = await fetchKuportSyllabusInBackground(
             requestId,
             bootstrap,
@@ -459,6 +459,8 @@ async function beginSyllabusLookup({ sourceTabId, requestId, course }) {
         await finishSyllabusLookup(requestId, {
             message: error.message || 'シラバス取得を開始できませんでした。',
         });
+    }).catch(error => {
+        console.error('[KLPF] シラバス取得の終了処理に失敗しました。', error);
     });
     return { status: 'started', phase: 'opening-kuport', transport: 'direct-fetch' };
 }
@@ -610,6 +612,8 @@ async function cancelSyllabusLookupForExternalKuport(tab) {
 async function cancelSyllabusLookupForRemovedTab(tabId) {
     const job = await getSyllabusLookupJob();
     if (!job || (job.sourceTabId !== tabId && !job.tabIds?.includes(tabId))) return false;
+    // 認証完了後に自分で閉じた補助タブの通知では、直接通信を中止しない。
+    if (job.sourceTabId !== tabId && job.awaitingSession === false) return false;
     await finishSyllabusLookup(job.requestId, {
         message: job.sourceTabId === tabId
             ? 'KU-LMSの授業画面が閉じられたため、シラバス取得を中止しました。'
@@ -626,6 +630,7 @@ async function cancelSyllabusLookupForRemovedTab(tabId) {
  */
 async function injectSyllabusSessionBridge(tabId, tab) {
     let job = await getSyllabusLookupJob();
+    if (job?.awaitingSession === false) return;
     if (!job?.tabIds?.includes(tabId)) {
         job = await trackSyllabusLookupChildTab(job, tab);
     }
@@ -748,10 +753,11 @@ async function reportBulletinPhase(requestId, phase) {
  * @param {string|object} [options.message=""] - 表示する案内文、または受信した機能メッセージ。
  * @returns {Promise<boolean>} 対応するジョブを終了した場合はtrue。
  */
-async function finishBulletinFetch(requestId, { ok = false, result = null, message = '' } = {}) {
+const finishBulletinFetch = createKuportJobFinisher(async (requestId, { ok = false, result = null, message = '' } = {}) => {
     const job = await getBulletinFetchJob();
     if (!job || job.requestId !== requestId) return false;
     bulletinFetchAbortController?.abort();
+    await closeKuportLoginContext(job);
     await chrome.storage.session.remove(BULLETIN_FETCH_JOB_KEY);
     try {
         await chrome.tabs.sendMessage(job.sourceTabId, {
@@ -764,9 +770,8 @@ async function finishBulletinFetch(requestId, { ok = false, result = null, messa
     } catch {
         // 元のKU-LMSタブが閉じられている場合も取得用ウィンドウは閉じる。
     }
-    await closeKuportLoginContext(job);
     return true;
-}
+});
 
 /**
  * 掲示板の認証準備または直接取得を開始し、結果をキャッシュへ保存する。
@@ -859,11 +864,6 @@ async function startBulletinDirectFetch(requestId, suppliedBootstrap = null) {
         const helperJob = job;
         await setBulletinFetchJob({
             ...job,
-            createdWindowId: null,
-            windowIds: [],
-            helperTabId: null,
-            tabId: null,
-            tabIds: [],
             awaitingSession: false,
             phase: 'opening-bulletin-board',
             lastProgressAt: Date.now(),
@@ -871,6 +871,7 @@ async function startBulletinDirectFetch(requestId, suppliedBootstrap = null) {
         if (Number.isInteger(helperJob.createdWindowId) || Number.isInteger(helperJob.helperTabId)) {
             await closeKuportLoginContext(helperJob);
         }
+        await ensureBulletinJobActive(requestId, abortController.signal);
         const result = await fetchKuportBulletinInBackground(requestId, bootstrap, abortController.signal);
         await ensureBulletinJobActive(requestId, abortController.signal);
         await chrome.storage.local.set({
@@ -990,6 +991,8 @@ async function beginBulletinFetch({ sourceTabId, requestId } = {}) {
         await finishBulletinFetch(requestId, {
             message: error.message || '掲示板取得を開始できませんでした。',
         });
+    }).catch(error => {
+        console.error('[KLPF] 掲示板取得の終了処理に失敗しました。', error);
     });
     return { status: 'started', phase: 'opening-kuport', transport: 'direct-fetch' };
 }
@@ -1018,6 +1021,7 @@ function startQueuedRequestBulletinFetch(options) {
 async function continueBulletinFetch(tabId, changeInfo, tab) {
     const job = await getBulletinFetchJob();
     if (!job || job.tabId !== tabId || changeInfo.status !== 'complete') return;
+    if (job.awaitingSession === false) return;
     const url = changeInfo.url || tab.url || '';
     let hostname = '';
     try {
@@ -1045,13 +1049,17 @@ async function continueBulletinFetch(tabId, changeInfo, tab) {
             type: 'klpf-bulletin-session-bootstrap',
         });
         if (response?.status === 'session-ready') {
-            void startBulletinDirectFetch(job.requestId, response);
+            void startBulletinDirectFetch(job.requestId, response).catch(error => {
+                console.error('[KLPF] 掲示板取得の終了処理に失敗しました。', error);
+            });
             return;
         }
         if (response?.status === 'menu-not-ready') {
             // ログイン後にメニュー画面が表示された場合は、画面内に掲示カードが
             // なくてもService Worker側で掲示板URLを直接確認する。
-            void startBulletinDirectFetch(job.requestId);
+            void startBulletinDirectFetch(job.requestId).catch(error => {
+                console.error('[KLPF] 掲示板取得の終了処理に失敗しました。', error);
+            });
             return;
         }
         await finishBulletinFetch(job.requestId, {
@@ -1087,6 +1095,8 @@ async function cancelBulletinFetchForExternalKuport(tab) {
 async function cancelBulletinFetchForRemovedTab(tabId) {
     const job = await getBulletinFetchJob();
     if (!job || (job.sourceTabId !== tabId && !job.tabIds?.includes(tabId))) return false;
+    // 認証完了後に自分で閉じた補助タブの通知では、直接通信を中止しない。
+    if (job.sourceTabId !== tabId && job.awaitingSession === false) return false;
     await finishBulletinFetch(job.requestId, {
         message: job.sourceTabId === tabId
             ? 'KU-LMSのホーム画面が閉じられたため、掲示板取得を中止しました。'
@@ -1108,7 +1118,8 @@ async function reportAttendanceDebug(stage, details = {}) {
         details,
         timestamp: Date.now(),
     };
-    const tabs = await chrome.tabs.query({ url: LMS_HOME_URL_PATTERNS });
+    // 診断通知の失敗によって、認証画面の終了などの本処理を止めない。
+    const tabs = await chrome.tabs.query({ url: LMS_HOME_URL_PATTERNS }).catch(() => []);
     await Promise.all(tabs.map(async tab => {
         try {
             await chrome.tabs.sendMessage(tab.id, message);
@@ -1125,15 +1136,7 @@ async function reportAttendanceDebug(stage, details = {}) {
  */
 async function closeCreatedAttendanceContext(job) {
     if (!job?.createdByExtension) return;
-    if (Number.isInteger(job.createdWindowId)) {
-        try {
-            await chrome.windows.remove(job.createdWindowId);
-            return;
-        } catch {
-            // ウィンドウが先に閉じられた場合はタブ側の削除も試す。
-        }
-    }
-    await chrome.tabs.remove(job.tabId);
+    await closeKuportLoginContext({ ...job, helperTabId: job.tabId });
 }
 
 /**
@@ -1142,10 +1145,14 @@ async function closeCreatedAttendanceContext(job) {
  * @param {*} status - 処理の終了状態。
  * @returns {Promise<void>} 処理の完了を待つPromise。
  */
-async function finishAttendanceFetch(tabId, status) {
+const finishAttendanceFetch = createKuportJobFinisher(async (tabId, status) => {
     const job = await getAttendanceFetchJob();
     if (!job || job.tabId !== tabId) return;
+    attendanceFetchAbortController?.abort();
 
+    // 通信開始時の終了操作が失敗していても、処理段階にかかわらず閉じ直す。
+    // 終了操作に失敗した場合はジョブを保持し、期限監視から再試行できるようにする。
+    await closeCreatedAttendanceContext(job);
     if (status === 'completed' && !job.manual) {
         await recordAttendanceRefreshCooldown();
     }
@@ -1154,18 +1161,11 @@ async function finishAttendanceFetch(tabId, status) {
         status,
         finishedAt: Date.now(),
     });
-    if (job.createdByExtension && job.phase !== 'background-fetch') {
-        try {
-            await closeCreatedAttendanceContext(job);
-        } catch (error) {
-            console.debug('[KLPF] 出席率取得用の一時画面を閉じられませんでした。', error);
-        }
-    }
     await reportAttendanceDebug('処理終了', {
         status,
         academicYear: job.academicYear,
     });
-}
+});
 
 /**
  * 入力を有効な4桁の年度文字列へそろえる。
@@ -1548,25 +1548,25 @@ async function prepareAttendanceRefreshJob() {
 
     const isExpired = !Number.isFinite(currentJob.startedAt)
         || Date.now() - currentJob.startedAt > ATTENDANCE_FETCH_JOB_TIMEOUT_MS;
-    if (!isExpired && currentJob.phase === 'background-fetch') {
+    if (isExpired) {
+        await finishAttendanceFetch(currentJob.tabId, 'timeout');
+        return null;
+    }
+    if (currentJob.phase === 'background-fetch') {
         return {
             status: 'already-running',
             academicYear: currentJob.academicYear,
         };
     }
     try {
-        if (!isExpired) {
-            await chrome.tabs.get(currentJob.tabId);
-            return {
-                status: 'already-running',
-                academicYear: currentJob.academicYear,
-            };
-        }
-        if (currentJob.createdByExtension) await closeCreatedAttendanceContext(currentJob);
+        await chrome.tabs.get(currentJob.tabId);
+        return {
+            status: 'already-running',
+            academicYear: currentJob.academicYear,
+        };
     } catch {
-        // 既に閉じられている場合もジョブ情報だけ削除する。
+        await finishAttendanceFetch(currentJob.tabId, 'login-tab-closed');
     }
-    await clearAttendanceFetchJob();
     return null;
 }
 
@@ -1625,34 +1625,55 @@ async function startAttendanceLoginFlow({
     await ensureKuportFeatureAvailable(ATTENDANCE_RATE_FEATURE_KEY);
     const createdContext = await createKuportLoginContext();
     const tab = createdContext.tab;
-    await setAttendanceFetchJob(tab.id, {
-        createdByExtension: true,
-        createdWindowId: createdContext.createdWindowId,
-        manual,
-        academicYear,
-    });
+    let started = false;
     try {
-        await ensureKuportFeatureAvailable(ATTENDANCE_RATE_FEATURE_KEY);
+        if (!Number.isInteger(tab?.id)) throw new Error('Ku-Portのログイン用画面を作成できませんでした。');
+        await setAttendanceFetchJob(tab.id, {
+            createdByExtension: true,
+            createdWindowId: createdContext.createdWindowId,
+            manual,
+            academicYear,
+        });
+        try {
+            await ensureKuportFeatureAvailable(ATTENDANCE_RATE_FEATURE_KEY);
+        } catch (error) {
+            await finishAttendanceFetch(tab.id, 'feature-disabled');
+            await clearAttendanceBrowserSessionYear(academicYear);
+            return { status: 'feature-disabled', message: error.message };
+        }
+        if (abortIfKuportOpen) {
+            const existingTabs = await chrome.tabs.query({ url: KUPORT_URL_PATTERN });
+            if (existingTabs.length > 0) {
+                await cancelAttendanceFetchForUserKuport(existingTabs[0].id);
+                return { status: 'kuport-open' };
+            }
+        }
+        await reportAttendanceDebug(
+            createdContext.displayMode === 'minimized-window'
+                ? 'Ku-port最小化ウィンドウで自動ログイン開始'
+                : 'Ku-port非アクティブタブで自動ログイン開始'
+        );
+        const currentJob = await getAttendanceFetchJob();
+        if (currentJob?.tabId !== tab.id) return { status: 'cancelled' };
+        await chrome.tabs.update(tab.id, { url: KUPORT_ENTRY_URL });
+        started = true;
+        return { status: 'started' };
     } catch (error) {
-        await finishAttendanceFetch(tab.id, 'feature-disabled');
-        await clearAttendanceBrowserSessionYear(academicYear);
-        return { status: 'feature-disabled', message: error.message };
-    }
-    if (abortIfKuportOpen) {
-        const existingTabs = await chrome.tabs.query({ url: KUPORT_URL_PATTERN });
-        if (existingTabs.length > 0) {
-            await cancelAttendanceFetchForUserKuport(existingTabs[0].id);
-            return { status: 'kuport-open' };
+        try {
+            if (Number.isInteger(tab?.id)) await finishAttendanceFetch(tab.id, 'start-error');
+        } catch (cleanupError) {
+            console.error('[KLPF] 出席率取得の開始失敗を処理できませんでした。', cleanupError);
+        }
+        throw error;
+    } finally {
+        if (!started) {
+            // ジョブ保存前の失敗でも、作成済みの画面を必ず終了対象にする。
+            await closeKuportLoginContext({
+                createdWindowId: createdContext.createdWindowId,
+                helperTabId: tab?.id,
+            });
         }
     }
-
-    await reportAttendanceDebug(
-        createdContext.displayMode === 'minimized-window'
-            ? 'Ku-port最小化ウィンドウで自動ログイン開始'
-            : 'Ku-port非アクティブタブで自動ログイン開始'
-    );
-    await chrome.tabs.update(tab.id, { url: KUPORT_ENTRY_URL });
-    return { status: 'started' };
 }
 
 /**
@@ -1799,18 +1820,7 @@ async function cancelAttendanceFetchForUserKuport(tabId) {
     if (!job || job.tabId === tabId) return false;
 
     attendanceFetchAbortController?.abort();
-    await clearAttendanceFetchJob();
-    if (job.createdByExtension && job.phase !== 'background-fetch') {
-        try {
-            await closeCreatedAttendanceContext(job);
-        } catch {
-            // ログイン用画面が既に閉じられている場合は無視する。
-        }
-    }
-    await setAttendanceBrowserSessionYear(job.academicYear, {
-        status: 'cancelled-kuport-opened',
-        finishedAt: Date.now(),
-    });
+    await finishAttendanceFetch(job.tabId, 'cancelled-kuport-opened');
     await reportAttendanceDebug('Ku-portが別タブで開かれたため出席状況の取得中止', {
         academicYear: job.academicYear,
     });
@@ -1991,12 +2001,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
         await cancelBulletinFetchForRemovedTab(tabId);
         const job = await getAttendanceFetchJob();
         if (job?.tabId !== tabId || job.phase === 'background-fetch') return;
-        await clearAttendanceFetchJob();
-        await setAttendanceBrowserSessionYear(job.academicYear, {
-            status: 'login-tab-closed',
-            finishedAt: Date.now(),
-        });
-    })();
+        await finishAttendanceFetch(tabId, 'login-tab-closed');
+    })().catch(error => {
+        console.error('[KLPF] タブ終了後のKu-Port取得を片付けられませんでした。', error);
+    });
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
@@ -2019,18 +2027,20 @@ chrome.tabs.onCreated.addListener((tab) => {
 chrome.windows.onRemoved.addListener((windowId) => {
     void (async () => {
         const job = await getSyllabusLookupJob();
-        if (job?.windowIds?.includes(windowId)) {
+        if (job?.awaitingSession !== false && job?.windowIds?.includes(windowId)) {
             await finishSyllabusLookup(job.requestId, {
                 message: 'Ku-Portの取得用ウィンドウが閉じられたため、シラバス取得を中止しました。',
             });
         }
         const bulletinJob = await getBulletinFetchJob();
-        if (bulletinJob?.windowIds?.includes(windowId)) {
+        if (bulletinJob?.awaitingSession !== false && bulletinJob?.windowIds?.includes(windowId)) {
             await finishBulletinFetch(bulletinJob.requestId, {
                 message: 'Ku-Portの取得用ウィンドウが閉じられたため、掲示板取得を中止しました。',
             });
         }
-    })();
+    })().catch(error => {
+        console.error('[KLPF] ウィンドウ終了後のKu-Port取得を片付けられませんでした。', error);
+    });
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -2287,15 +2297,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const job = await getSyllabusLookupJob();
             if (!job || job.requestId !== message.requestId
                 || !job.tabIds?.includes(sender.tab.id)
+                || job.awaitingSession === false
                 || job.transport !== 'direct-fetch') {
                 sendResponse({ status: 'stale' });
                 return;
             }
-            await setSyllabusLookupJob({ ...job, phase: 'opening-student-schedule' });
             void startSyllabusDirectFetch(job.requestId, {
                 status: 'session-ready',
                 action: message.action,
                 fields: message.fields,
+            }).catch(error => {
+                console.error('[KLPF] シラバス取得の終了処理に失敗しました。', error);
             });
             sendResponse({ status: 'accepted' });
         })().catch((error) => {
@@ -2328,11 +2340,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const job = await getBulletinFetchJob();
             if (!job || job.requestId !== message.requestId
                 || !job.tabIds?.includes(sender.tab.id)
+                || job.awaitingSession === false
                 || job.transport !== 'direct-fetch') {
                 sendResponse({ status: 'stale' });
                 return;
             }
-            await setBulletinFetchJob({ ...job, phase: 'opening-bulletin-board' });
             void startBulletinDirectFetch(job.requestId, {
                 status: 'session-ready',
                 action: message.action,
@@ -2340,6 +2352,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 bulletinSource: message.bulletinSource,
                 bulletinExecute: message.bulletinExecute,
                 bulletinRender: message.bulletinRender,
+            }).catch(error => {
+                console.error('[KLPF] 掲示板取得の終了処理に失敗しました。', error);
             });
             sendResponse({ status: 'accepted' });
         })().catch((error) => {
@@ -2405,7 +2419,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return;
             }
             await finishAttendanceFetch(sender.tab.id, 'auto-login-unavailable');
-        })();
+        })().catch(error => {
+            console.error('[KLPF] 自動ログイン停止時の取得を片付けられませんでした。', error);
+        });
         sendResponse({ status: 'accepted' });
         return;
     }
@@ -2417,3 +2433,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     return false;
 });
+
+// 登録済みジョブの開始時刻を使い、認証待ちの間も期限監視を継続する。
+registerKuportJobTimeouts([
+    {
+        key: ATTENDANCE_FETCH_JOB_KEY,
+        timeoutMs: ATTENDANCE_FETCH_JOB_TIMEOUT_MS,
+        async finish(job) {
+            await finishAttendanceFetch(job.tabId, 'timeout');
+        },
+    },
+    {
+        key: SYLLABUS_LOOKUP_JOB_KEY,
+        timeoutMs: SYLLABUS_LOOKUP_TIMEOUT_MS,
+        finish: job => finishSyllabusLookup(job.requestId, { message: 'シラバス取得が時間切れになりました。' }),
+    },
+    {
+        key: BULLETIN_FETCH_JOB_KEY,
+        timeoutMs: BULLETIN_FETCH_TIMEOUT_MS,
+        finish: job => finishBulletinFetch(job.requestId, { message: '掲示板取得が時間切れになりました。' }),
+    },
+]);
