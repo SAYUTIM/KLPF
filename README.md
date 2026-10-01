@@ -129,7 +129,7 @@ Chromeに統合認証の情報を保存している場合は、パスワード�
 
 ### 全体の階層
 
-主要なファイルを抜粋しています。共通部品の詳細は各フォルダの説明と開発資料を参照してください。
+主要なファイルを抜粋しています。共通部品の詳細は各フォルダの説明を参照してください。
 
 ```text
 KLPF/
@@ -186,8 +186,7 @@ KLPF/
 ├─ docs/
 │  ├─ privacypolicy/
 │  ├─ terms/
-│  ├─ totp/
-│  └─ development/
+│  └─ totp/
 ├─ templates/
 ├─ vendor/
 ├─ tests/
@@ -432,7 +431,7 @@ OSS コントリビュータ向けの追加テンプレートです。
 - Ku-LMSホームのUIを見たい
   → `features/homework.js`, `features/homeDashboard.js`, `features/lmsInlineSettings.js`
 - Ku-Port取得と認証条件を変更したい
-  → `background/kuport/`, `background/modules/kuport-runtime.js`, `background/modules/auth-access.js`, [Ku-Port取得の構成](docs/development/kuport.md)
+  → `background/kuport/`, `background/modules/kuport-runtime.js`, `background/modules/auth-access.js`
 - page world が絡む実装を見たい  
   → `features/homeAttendance.js` と `features/pageWorld/homeAttendance.js`
 
@@ -541,7 +540,3 @@ npm run check
 ## OSS License
 
 ソースコードは[MITライセンス](LICENSE)、WebサイトのコンテンツはCC BY 4.0です。
-
-## 開発資料
-
-[Ku-Port取得の構成と安全条件](docs/development/kuport.md)を参照してください。
