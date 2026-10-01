@@ -242,4 +242,5 @@ export const CONTEXT_MENU_ID = 'openOptions';
 export const FEATURE_SETTINGS_CONFIG = [
     ...CONTENT_SCRIPTS_CONFIG,
     { storageKey: 'syllabusLookupEnabled', displayName: 'シラバス表示', displayOrder: 66, enabledByDefault: true },
+    { storageKey: 'bulletinBoardEnabled', displayName: '掲示板表示', displayOrder: 67, enabledByDefault: true },
 ];

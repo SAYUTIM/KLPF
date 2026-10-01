@@ -67,6 +67,19 @@
         "https://study.ns.kogakuin.ac.jp/lms/klmsKlil/doBack*"
       ],
       "js": [
+        "features/modules/kuport-access.js",
+        "features/bulletinBoard.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://study.ns.kogakuin.ac.jp/lms/homeHoml/*",
+        "https://study.ns.kogakuin.ac.jp/lms/tpicTpic/doBack*",
+        "https://study.ns.kogakuin.ac.jp/lms/tpicTpil/doBack*",
+        "https://study.ns.kogakuin.ac.jp/lms/klmsKlil/doBack*"
+      ],
+      "js": [
         "features/modules/dom-utils.js",
         "features/lmsUpdateNotice.js"
       ],

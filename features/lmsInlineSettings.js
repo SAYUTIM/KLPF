@@ -2543,20 +2543,71 @@
      * 掲示板表示の有効状態を切り替えて保存する。
      * @returns {Promise<void>} 処理の完了を待つPromise。
      */
+    async function handleBulletinBoardToggle() {
+        if (state.allDisabled || !hasLoadedState) return;
 
+        const previousValue = state.bulletinBoardEnabled;
+        state.bulletinBoardEnabled = !previousValue;
+        injectMenuItem();
+        try {
+            await storageSet('sync', {
+                [BULLETIN_BOARD_ENABLED_KEY]: state.bulletinBoardEnabled,
+            });
+        } catch (error) {
+            state.bulletinBoardEnabled = previousValue;
+            injectMenuItem();
+            console.warn('[KLPF] 掲示板表示の設定を保存できませんでした。', error);
+        }
+    }
 
     /**
      * 掲示板表示を切り替えるメニュー項目を作る。
      * @returns {HTMLLIElement} 掲示板切り替えのメニュー項目。
      */
-
+    function buildBulletinBoardMenuItem() {
+        const item = createSettingsMenuItem({
+            attributeName: BULLETIN_BOARD_MENU_ITEM_ATTRIBUTE,
+            labelText: '掲示板表示',
+            onActivate: () => void handleBulletinBoardToggle(),
+        });
+        const link = item.querySelector('a');
+        const stateLabel = document.createElement('span');
+        stateLabel.className = 'klpf-bulletin-board-menu-state';
+        stateLabel.setAttribute('aria-hidden', 'true');
+        link?.appendChild(stateLabel);
+        updateBulletinBoardMenuItem(item);
+        return item;
+    }
 
     /**
      * 掲示板表示の設定状態をメニュー表示へ反映する。
      * @param {object} item - 処理する掲示情報または課題要素。
      * @returns {void} 戻り値はない。
      */
-
+    function updateBulletinBoardMenuItem(item) {
+        const enabled = state.bulletinBoardEnabled && !state.allDisabled;
+        const link = item.querySelector('a');
+        const stateLabel = item.querySelector('.klpf-bulletin-board-menu-state');
+        item.classList.remove('clickableSettei', 'on');
+        item.dataset.klpfEnabled = String(enabled);
+        link?.setAttribute('aria-pressed', String(enabled));
+        if (stateLabel) {
+            const nextLabel = enabled ? 'ON' : 'OFF';
+            if (stateLabel.textContent !== nextLabel) stateLabel.textContent = nextLabel;
+            Object.assign(stateLabel.style, {
+                display: 'inline-block',
+                marginLeft: '5px',
+                padding: '2px 4px',
+                borderRadius: '999px',
+                background: enabled ? '#e8f5ee' : '#f1f3f5',
+                color: enabled ? '#176b4d' : '#667085',
+                fontSize: '10px',
+                fontWeight: '700',
+                lineHeight: '1',
+                verticalAlign: 'middle',
+            });
+        }
+    }
 
     // 出席率更新の案内と待機時間
 
@@ -2907,6 +2958,15 @@
             syllabusLookupItem?.remove();
         }
 
+        let bulletinBoardItem = menu.querySelector(`[${BULLETIN_BOARD_MENU_ITEM_ATTRIBUTE}]`);
+        if (canToggleSyllabusLookup) {
+            if (!bulletinBoardItem) bulletinBoardItem = buildBulletinBoardMenuItem();
+            updateBulletinBoardMenuItem(bulletinBoardItem);
+            placeMenuItemAfter(syllabusLookupItem || customImageThemeItem, bulletinBoardItem);
+        } else {
+            bulletinBoardItem?.remove();
+        }
+
         let attendanceRefreshItem = menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`);
         if (!canRefreshAttendance) {
             attendanceRefreshItem?.remove();
@@ -2915,7 +2975,7 @@
 
         attendanceRefreshItem ||= buildAttendanceRefreshMenuItem();
         attendanceRefreshItem.classList.remove('clickableSettei', 'on');
-        placeMenuItemAfter(syllabusLookupItem || customImageThemeItem, attendanceRefreshItem);
+        placeMenuItemAfter(bulletinBoardItem || syllabusLookupItem || customImageThemeItem, attendanceRefreshItem);
     }
 
     /**
@@ -2995,7 +3055,10 @@
             injectMenuItem();
         }
 
-
+        if (area === 'sync' && changes[BULLETIN_BOARD_ENABLED_KEY]) {
+            state.bulletinBoardEnabled = changes[BULLETIN_BOARD_ENABLED_KEY].newValue !== false;
+            injectMenuItem();
+        }
 
         if (area === 'sync' && featureKeys.some((key) => changes[key])) {
             if (state.allDisabled) {
