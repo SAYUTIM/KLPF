@@ -9,6 +9,7 @@
 
 import { createSyllabusTransport } from './background/kuport/syllabus.js';
 import { createBulletinTransport, BULLETIN_MAX_ITEMS } from './background/kuport/bulletin.js';
+import { createPriorityQueue } from './background/modules/priority-queue.js';
 
 import {
     isKuportUrl,
@@ -437,24 +438,90 @@ async function beginSyllabusLookup({ sourceTabId, requestId, course }) {
     return { status: 'started', phase: 'opening-kuport', transport: 'direct-fetch' };
 }
 
+// 待機中は出席率、掲示板、シラバスの順に優先する。実行中の通信には割り込まない。
+const queueKuportOperation = createPriorityQueue(waitForKuportIdle);
+const cancelledQueuedKuportRequests = new Set();
+const waitingKuportRequests = new Map();
+
+/**
+ * 要求元が一致する待機中のKu-Port取得要求にキャンセルを記録する。
+ * @param {string} requestId - 処理と結果を対応付ける取得要求ID。
+ * @param {number} sourceTabId - 要求元のKU-LMSタブID。
+ * @returns {void} 戻り値はない。
+ */
+function cancelQueuedKuportRequest(requestId, sourceTabId) {
+    if (waitingKuportRequests.get(requestId) === sourceTabId) {
+        cancelledQueuedKuportRequests.add(requestId);
+    }
+}
+
+/**
+ * 3機能の取得ジョブがなくなるまで待ち、次の通信を開始できる状態にする。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
+async function waitForKuportIdle() {
+    for (;;) {
+        const attendance = await prepareAttendanceRefreshJob();
+        const syllabus = await getSyllabusLookupJob();
+        if (syllabus && (!Number.isFinite(syllabus.startedAt)
+            || Date.now() - syllabus.startedAt > SYLLABUS_LOOKUP_TIMEOUT_MS)) {
+            await finishSyllabusLookup(syllabus.requestId, { message: 'シラバス取得が時間切れになりました。' });
+            continue;
+        }
+        const bulletin = await hasActiveBulletinFetch();
+        if (!attendance && !syllabus && !bulletin) return;
+        await new Promise(resolve => { setTimeout(resolve, 300); });
+    }
+}
+
+/**
+ * Ku-Port取得要求を優先順位付きキューに登録し、待機中の取消を反映する。
+ * @param {object|object[]} options - 呼び出し時の設定、または年度学期の選択肢一覧。
+ * @param {Function} start - 待機後に取得を開始する処理。
+ * @param {number} priority - 小さい値を先に実行する優先順位。
+ * @returns {Promise<object>} キュー内で取得開始処理を実行した結果。
+ */
+function enqueueKuportRequest(options, start, priority) {
+    const requestId = options?.requestId;
+    if (typeof requestId === 'string') waitingKuportRequests.set(requestId, options.sourceTabId);
+    return queueKuportOperation(priority, async () => {
+        waitingKuportRequests.delete(requestId);
+        if (cancelledQueuedKuportRequests.delete(requestId)) return { status: 'cancelled' };
+        if (Number.isInteger(options?.sourceTabId)) {
+            try { await chrome.tabs.get(options.sourceTabId); }
+            catch { return { status: 'cancelled' }; }
+        }
+        return start(options);
+    }).finally(() => {
+        waitingKuportRequests.delete(requestId);
+        cancelledQueuedKuportRequests.delete(requestId);
+    });
+}
+
 /**
  * シラバス取得要求を共通キューへ登録する。
  * @param {object|object[]} options - 呼び出し時の設定、または年度学期の選択肢一覧。
  * @returns {Promise<object>} シラバス取得の開始結果。
  */
-function requestSyllabusLookup(options) { return startQueuedRequestSyllabusLookup(options); }
+function requestSyllabusLookup(options) {
+    return enqueueKuportRequest(options, startQueuedRequestSyllabusLookup, 3);
+}
 /**
  * 掲示板取得要求を共通キューへ登録する。
  * @param {object|object[]} options - 呼び出し時の設定、または年度学期の選択肢一覧。
  * @returns {Promise<object>} 掲示板取得の開始結果。
  */
-function requestBulletinFetch(options) { return startQueuedRequestBulletinFetch(options); }
+function requestBulletinFetch(options) {
+    return enqueueKuportRequest(options, startQueuedRequestBulletinFetch, 2);
+}
 /**
  * 出席率更新要求を共通キューへ登録する。
  * @param {object|object[]} [options] - 呼び出し時の設定、または年度学期の選択肢一覧。
  * @returns {Promise<object>} 出席率更新の開始結果。
  */
-function requestAttendanceRateRefresh(options = {}) { return startQueuedRequestAttendanceRateRefresh(options); }
+function requestAttendanceRateRefresh(options = {}) {
+    return enqueueKuportRequest(options, startQueuedRequestAttendanceRateRefresh, 1);
+}
 
 /**
  * シラバス開始処理を共有し、同時に到着した要求の二重開始を防ぐ。
@@ -1907,6 +1974,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     })();
 });
 
+chrome.tabs.onCreated.addListener((tab) => {
+    void (async () => {
+        const job = await getSyllabusLookupJob();
+        if (job?.tabIds?.includes(tab.openerTabId) && Number.isInteger(tab.id)) {
+            const tabIds = Array.from(new Set([...job.tabIds, tab.id]));
+            await setSyllabusLookupJob({ ...job, tabIds });
+        }
+        if (isKuportUrl(tab.pendingUrl || tab.url || '')) {
+            await cancelAttendanceFetchForUserKuport(tab.id);
+            await cancelSyllabusLookupForExternalKuport(tab);
+            await cancelBulletinFetchForExternalKuport(tab);
+        }
+    })().catch((error) => {
+        console.debug('[KLPF] シラバス取得で開いたKu-Port画面を追跡できませんでした。', error);
+    });
+});
+
 chrome.windows.onRemoved.addListener((windowId) => {
     void (async () => {
         const job = await getSyllabusLookupJob();
@@ -2113,10 +2197,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (!job.tabIds?.includes(sender.tab.id)
                 && job.tabIds?.includes(sender.tab.openerTabId)) {
                 const tabIds = Array.from(new Set([...job.tabIds, sender.tab.id]));
-                const windowIds = Number.isInteger(sender.tab.windowId)
-                    ? Array.from(new Set([...(job.windowIds || []), sender.tab.windowId]))
-                    : (job.windowIds || []);
-                job = { ...job, tabIds, windowIds };
+                // 子タブの通常ウィンドウは所有対象へ加えず、タブだけ追跡する。
+                job = { ...job, tabIds };
                 await setSyllabusLookupJob(job);
             }
             sendResponse({
@@ -2153,6 +2235,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === 'cancel-syllabus-lookup' && sender.tab?.id) {
+        cancelQueuedKuportRequest(message.requestId, sender.tab.id);
         getSyllabusLookupJob().then(async (job) => {
             if (!job || job.requestId !== message.requestId || job.sourceTabId !== sender.tab.id) {
                 sendResponse({ status: 'stale' });
@@ -2196,6 +2279,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === 'cancel-bulletin-board-fetch' && sender.tab?.id) {
+        cancelQueuedKuportRequest(message.requestId, sender.tab.id);
         getBulletinFetchJob().then(async (job) => {
             if (!job || job.requestId !== message.requestId || job.sourceTabId !== sender.tab.id) {
                 sendResponse({ status: 'stale' });
