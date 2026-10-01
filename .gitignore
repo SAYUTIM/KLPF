@@ -4,5 +4,5 @@ node_modules/
 # Test and coverage output.
 coverage/
 
-# Local browser diagnostics can contain session URLs and screenshots.
+# ローカルのブラウザ操作データはセッションURLや画像を含むため公開しない。
 .playwright-cli/

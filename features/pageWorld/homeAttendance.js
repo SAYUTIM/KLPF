@@ -20,11 +20,20 @@
 
     let popupObserver = null;
 
+    /**
+     * ページ側の出席ダイアログが表示中か判定する。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isPopupVisible(detail) {
         const frameContainer = document.querySelector(detail.iframeSelector);
         return !!frameContainer && frameContainer.style.display !== 'none';
     }
 
+    /**
+     * 出席ダイアログの状態監視を停止する。
+     * @returns {void} 戻り値はない。
+     */
     function disconnectPopupObserver() {
         if (!popupObserver) {
             return;
@@ -34,6 +43,10 @@
         popupObserver = null;
     }
 
+    /**
+     * 操作を遮る出席ダイアログの残留背景を取り除く。
+     * @returns {void} 戻り値はない。
+     */
     function cleanupBlockingBackdrops() {
         const candidates = document.querySelectorAll(BACKDROP_SELECTORS);
         candidates.forEach((element) => {
@@ -49,6 +62,10 @@
         document.body.style.pointerEvents = '';
     }
 
+    /**
+     * 遅れて残る背景も片付けられるよう複数回清掃を予約する。
+     * @returns {void} 戻り値はない。
+     */
     function cleanupBlockingBackdropsRepeatedly() {
         cleanupBlockingBackdrops();
         window.setTimeout(cleanupBlockingBackdrops, 0);
@@ -56,6 +73,11 @@
         window.setTimeout(cleanupBlockingBackdrops, 150);
     }
 
+    /**
+     * ダイアログが閉じた状態を追加要素と背景へ反映する。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {void} 戻り値はない。
+     */
     function syncPopupClosedState(detail) {
         if (isPopupVisible(detail)) {
             return;
@@ -65,6 +87,11 @@
         disconnectPopupObserver();
     }
 
+    /**
+     * 出席ダイアログの開閉を監視する。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {void} 戻り値はない。
+     */
     function watchPopupLifecycle(detail) {
         disconnectPopupObserver();
 
@@ -80,6 +107,11 @@
         });
     }
 
+    /**
+     * ページ固有の処理で出席ダイアログを閉じ、残留背景を片付ける。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {void} 戻り値はない。
+     */
     function closeAttendancePopup(detail) {
         const frameContainer = document.querySelector(detail.iframeSelector);
         const form = document.querySelector(detail.formSelector);
@@ -110,12 +142,22 @@
         cleanupBlockingBackdropsRepeatedly();
     }
 
+    /**
+     * 出席ダイアログの表示後に必要なページ側処理を登録する。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {void} 戻り値はない。
+     */
     function installPostprocess(detail) {
         window.Postprocess = function() {
             closeAttendancePopup(detail);
         };
     }
 
+    /**
+     * 出席ダイアログの追加要素と閉じる操作を用意する。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {object} 出席ポップアップと背景などの操作要素。
+     */
     function ensureAttendancePopupElements(detail) {
         let frameContainer = document.querySelector(detail.iframeSelector);
         let frame = document.getElementById(detail.iframeId);
@@ -157,6 +199,11 @@
         return { frameContainer, frame, form };
     }
 
+    /**
+     * ページ固有の関数で出席ダイアログを表示する。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {void} 戻り値はない。
+     */
     function openAttendancePopup(detail) {
         const { frameContainer, frame, form } = ensureAttendancePopupElements(detail);
 

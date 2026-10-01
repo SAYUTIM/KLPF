@@ -1,7 +1,10 @@
 // Copyright (c) 2025 SAYU
 // This software is released under the MIT License, see LICENSE.
 
-/** @file GitHub Releasesと現在の拡張機能バージョンを比較して更新を案内する。 */
+/**
+ * @file GitHub Releasesと現在の拡張機能バージョンを比較して更新を案内する。
+ * GitHubのリリースAPIを読み、共通バージョン比較処理で設定画面へ更新の有無を表示する。
+ */
 
 import { showUpdateNotification } from './ui.js';
 import { isVersionNewer } from '../../features/modules/version-utils.js';

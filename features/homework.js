@@ -66,6 +66,10 @@ function submitKyozaiForm(sid, kyozaiId, kyozaiSyCd) {
     }
 }
 
+/**
+ * ホーム出席確認の通信が落ち着くまで課題への遷移を待機する。
+ * @returns {Promise<void>} 出席確認の通信が終了するまで待つPromise。
+ */
 function waitForHomeAttendanceIdle() {
     document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG] = 'true';
 
@@ -100,6 +104,11 @@ function waitForHomeAttendanceIdle() {
     });
 }
 
+/**
+ * 課題への遷移に必要な一覧画面のフォーム状態を復元する。
+ * @param {string} sid - KU-LMSの画面遷移に使うセッションID。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function restoreHomeworkListContext(sid) {
     const response = await fetch(`/lms/klmsKlil/;SID=${sid}`, {
         method: 'GET',
@@ -115,6 +124,14 @@ async function restoreHomeworkListContext(sid) {
     await response.text();
 }
 
+/**
+ * 出席確認との競合を調整してから対象課題へ遷移する。
+ * @param {string} sid - KU-LMSの画面遷移に使うセッションID。
+ * @param {string} kyozaiId - 対象教材のID。
+ * @param {string} kyozaiSyCd - 対象教材の種別コード。
+ * @param {object} item - 処理する掲示情報または課題要素。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function navigateToHomework(sid, kyozaiId, kyozaiSyCd, item) {
     if (homeworkNavigationInProgress) return;
 
@@ -136,6 +153,11 @@ async function navigateToHomework(sid, kyozaiId, kyozaiSyCd, item) {
     }
 }
 
+/**
+ * 課題一覧の取得状態とタイマーを片付ける。
+ * @param {object} updateState - 課題取得中の監視とタイマーを持つ状態。
+ * @returns {void} 戻り値はない。
+ */
 function cleanupHomeworkUpdate(updateState) {
     if (!updateState) return;
 
@@ -149,6 +171,10 @@ function cleanupHomeworkUpdate(updateState) {
     }
 }
 
+/**
+ * 実行中の課題一覧更新を中断する。
+ * @returns {void} 戻り値はない。
+ */
 function abortActiveHomeworkUpdate() {
     hasHomeworkUserInteracted = true;
 
@@ -160,6 +186,12 @@ function abortActiveHomeworkUpdate() {
     reject?.(error);
 }
 
+/**
+ * 課題行がDOMへ描画されるまで監視し、期限まで待つ。
+ * @param {Document} doc - 課題行を検索する文書。
+ * @param {number} [timeout=30000] - 待機を打ち切るまでの時間（ミリ秒）。
+ * @returns {Promise<Element|null>} 見つかった課題行。タイムアウト時はnull、中断時は拒否される。
+ */
 function waitForHomeworkRows(doc, timeout = 30000) {
     return new Promise((resolve, reject) => {
         const existingRow = safeQuerySelector("tbody tr", doc);
@@ -219,6 +251,12 @@ function isUrgentHomeworkDeadline(deadlineText, now = new Date()) {
     return remainingDays >= 0 && remainingDays <= HOMEWORK_URGENT_THRESHOLD_DAYS;
 }
 
+/**
+ * 期限に応じて課題の表示クラスと案内を設定する。
+ * @param {HTMLElement} deadlineElement - 期限の表示状態を反映する要素。
+ * @param {string} deadlineText - 課題の期限文字列。
+ * @returns {void} 戻り値はない。
+ */
 function applyHomeworkDeadlineState(deadlineElement, deadlineText) {
     const isUrgent = isUrgentHomeworkDeadline(deadlineText);
     deadlineElement.classList.add(HOMEWORK_DEADLINE_CLASS);
@@ -357,6 +395,11 @@ function renderHomework(homeworkData) {
     return container;
 }
 
+/**
+ * 課題一覧コンテナへ必要な表示スタイルを適用する。
+ * @param {Element} container - 対象の表や一覧を含む要素。
+ * @returns {void} 戻り値はない。
+ */
 function applyHomeworkContainerStyles(container) {
     Object.assign(container.style, {
         border: "1px solid #ccc",
@@ -416,18 +459,35 @@ function manageLoadingIndicator(show) {
     };
 }
 
+/**
+ * 課題一覧更新の中断が要求されていれば例外を投げる。
+ * @returns {void} 戻り値はない。
+ */
 function throwIfHomeworkUpdateAborted() {
     if (hasHomeworkUserInteracted) {
         throw new DOMException('Homework update aborted.', 'AbortError');
     }
 }
 
+/**
+ * 取得した課題一覧をホームの表示コンテナへ置き換える。
+ * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+ * @param {string} sid - KU-LMSの画面遷移に使うセッションID。
+ * @param {Element} container - 対象の表や一覧を含む要素。
+ * @returns {void} 戻り値はない。
+ */
 function replaceHomeworkContainer(form, sid, container) {
     document.getElementById(HOMEWORK_CONTAINER_ID)?.remove();
     form.insertAdjacentElement('afterend', container);
     setupHomeworkClickListener(HOMEWORK_CONTAINER_ID, sid);
 }
 
+/**
+ * 保存済みの課題一覧をホームへ復元する。
+ * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+ * @param {string} sid - KU-LMSの画面遷移に使うセッションID。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function restoreCachedHomework(form, sid) {
     try {
         const result = await chrome.storage.local.get(HOMEWORK_CACHE_STORAGE_KEY);
@@ -446,6 +506,11 @@ async function restoreCachedHomework(form, sid) {
     }
 }
 
+/**
+ * 課題一覧ページを取得し、表示に使うデータを読み取る。
+ * @param {string} sid - KU-LMSの画面遷移に使うセッションID。
+ * @returns {Promise<HomeworkItem[]>} 課題一覧ページから解析した科目・課題・期限情報。
+ */
 async function fetchHomeworkData(sid) {
     hasHomeworkUserInteracted = false;
 
@@ -476,6 +541,12 @@ async function fetchHomeworkData(sid) {
     return parseHomeworkData(iframeDocument);
 }
 
+/**
+ * 課題一覧を取得し、ホーム表示とキャッシュを更新する。
+ * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+ * @param {string} sid - KU-LMSの画面遷移に使うセッションID。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function updateHomeworkList(form, sid) {
     const homeworkData = await fetchHomeworkData(sid);
     const newHomeworkContainer = renderHomework(homeworkData);

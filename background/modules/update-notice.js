@@ -26,6 +26,10 @@ export function getLocalDateKey(date = new Date()) {
     return `${year}-${month}-${day}`;
 }
 
+/**
+ * 日次のリリース確認を行い、未通知の更新があれば本日の通知権を記録して返す。
+ * @returns {Promise<object>} 通知可否のstatusと、更新がある場合のlatestVersion。
+ */
 async function claimHomeUpdateNotice() {
     const noticePreference = await chrome.storage.sync.get(HOME_UPDATE_NOTICE_DISABLED_KEY);
     if (noticePreference[HOME_UPDATE_NOTICE_DISABLED_KEY] === true) {

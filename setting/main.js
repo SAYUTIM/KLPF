@@ -4,6 +4,7 @@
 /**
  * @file 設定ページの初期化を行うエントリーポイント
  * @module main
+ * 設定画面のモジュールを読み込み、DOM初期化とストレージ変更後の再読み込みを結び付ける。
  */
 
 import { loadAndApplySettings, addEventListenersToSettings, getSettingsStorageKeys } from './modules/settings.js';
@@ -32,6 +33,10 @@ async function main() {
     await checkForUpdates();
 }
 
+/**
+ * 拡張機能のマニフェストに記載されたバージョンを設定画面へ表示する。
+ * @returns {void} 戻り値はない。
+ */
 function displayManifestVersion() {
     const versionElement = document.getElementById('manifest-version');
     if (!versionElement) return;
@@ -49,12 +54,22 @@ main();
 const settingsStorageKeys = getSettingsStorageKeys();
 let settingsReloadTimer = null;
 
+/**
+ * ストレージ変更が設定画面の再読み込み対象か判定する。
+ * @param {object} changes - ストレージキーごとの変更内容。
+ * @param {string} area - 読み書きまたは変更通知のストレージ領域名。
+ * @returns {boolean} 条件を満たす場合はtrue。
+ */
 function isSettingsChange(changes, area) {
     const targetKeys = settingsStorageKeys[area];
     if (!targetKeys) return false;
     return Object.keys(changes).some((key) => targetKeys.has(key));
 }
 
+/**
+ * 連続したストレージ変更をまとめ、設定画面の再読み込みを予約する。
+ * @returns {void} 戻り値はない。
+ */
 function scheduleSettingsReload() {
     if (settingsReloadTimer) {
         clearTimeout(settingsReloadTimer);

@@ -16,20 +16,36 @@
 
     const FEATURE_NAME = 'KLPF';
 
+    /**
+     * 現在のページが機能の実行対象か判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isTargetPage() {
         // TODO: 対象URLやDOM条件を返す
         return true;
     }
 
+    /**
+     * 機能の表示に必要なスタイルをページへ追加する。
+     * @returns {void} 戻り値はない。
+     */
     function injectStyles() {
         // TODO: 必要なら ensureStyleElement('一意なID', `CSS`) で重複なく注入する
     }
 
+    /**
+     * 保存された設定を読み取り、機能内の状態へ反映する。
+     * @returns {Promise<object>} 追加機能で使用する設定。必要な保存キーを実装時に定義する。
+     */
     async function loadSettings() {
         // TODO: chrome.storage.sync / local から設定を読む
         return {};
     }
 
+    /**
+     * 設定と対象ページを確認し、機能の初期化を開始する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function main() {
         if (!isTargetPage()) return;
 

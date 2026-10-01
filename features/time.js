@@ -3,6 +3,7 @@
 
 /**
  * @file ヘッダーに現在時刻と次の授業までの残り時間を表示する機能。
+ * ブラウザの現在日時とタイマーを使い、ページ上の時刻表示を定期更新する。
  */
 
 (async function() {
@@ -33,6 +34,11 @@
      * @returns {string}
      */
     function getFormattedTime(now) {
+        /**
+         * 数字を時刻表示用の2桁文字列へそろえる。
+         * @param {number} num - 2桁に整える数字。
+         * @returns {string} 表示または識別に使う文字列。
+         */
         const pad = (num) => num.toString().padStart(2, '0');
         return `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     }

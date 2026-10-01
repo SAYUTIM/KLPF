@@ -3,21 +3,35 @@
 
 /**
  * @file GAS通知機能のセットアップガイドで、目次移動とコードコピーを補助する。
+ * セットアップ案内ページのDOMで目次、スクロール進捗、コードコピーを提供する。
  */
 
 const HEADER_OFFSET_EXTRA = 22;
 const COPY_FEEDBACK_DURATION_MS = 1800;
 
+/**
+ * 固定ヘッダーの高さを取得し、スクロール位置の補正に使う。
+ * @returns {number} 固定ヘッダーの補正量（ピクセル）。
+ */
 function getHeaderOffset() {
   const header = document.querySelector('.site-header');
   return (header?.getBoundingClientRect().height || 0) + HEADER_OFFSET_EXTRA;
 }
 
+/**
+ * ヘッダーの高さを考慮して指定したセクションへスクロールする。
+ * @param {Element} target - スクロール先のセクション要素。
+ * @returns {void} 戻り値はない。
+ */
 function scrollToSection(target) {
   const top = target.getBoundingClientRect().top + window.scrollY - getHeaderOffset();
   window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
 }
 
+/**
+ * ページ内リンクの滑らかなスクロールを登録する。
+ * @returns {void} 戻り値はない。
+ */
 function initializeSmoothAnchorNavigation() {
   document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
     anchor.addEventListener('click', (event) => {
@@ -32,6 +46,10 @@ function initializeSmoothAnchorNavigation() {
   });
 }
 
+/**
+ * 表示中のセクションに合わせて目次の選択状態を更新する。
+ * @returns {void} 戻り値はない。
+ */
 function initializeTableOfContents() {
   const links = [...document.querySelectorAll('.table-of-contents a[data-section]')];
   const sections = links
@@ -65,10 +83,18 @@ function initializeTableOfContents() {
   window.addEventListener('resize', updateActiveSection);
 }
 
+/**
+ * ページのスクロール量を進捗バーへ反映する監視を登録する。
+ * @returns {void} 戻り値はない。
+ */
 function initializeScrollProgress() {
   const progress = document.querySelector('.scroll-progress');
   if (!progress) return;
 
+  /**
+   * ページのスクロール量を進捗表示へ反映する。
+   * @returns {void} 戻り値はない。
+   */
   const updateProgress = () => {
     const scrollable = document.documentElement.scrollHeight - window.innerHeight;
     const ratio = scrollable > 0 ? Math.min(1, Math.max(0, window.scrollY / scrollable)) : 0;
@@ -80,6 +106,11 @@ function initializeScrollProgress() {
   window.addEventListener('resize', updateProgress);
 }
 
+/**
+ * 指定した文字列をクリップボードへコピーする。
+ * @param {string} text - 表示または照合する文字列。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function copyText(text) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -97,6 +128,10 @@ async function copyText(text) {
   textarea.remove();
 }
 
+/**
+ * コードのコピーボタンを初期化し、操作結果を表示する。
+ * @returns {void} 戻り値はない。
+ */
 function initializeCopyButtons() {
   document.querySelectorAll('[data-copy-target]').forEach((button) => {
     const defaultLabel = button.textContent;

@@ -3,6 +3,8 @@
 
 /**
  * @file DOM操作に関する共通ユーティリティ関数
+ * DOM検索・要素待機・スタイル注入・SID取得をclassic scriptの共通関数とKLPFDomUtilsへ公開する。
+ * 注入順によりconstants.jsの定数を参照するため、ESモジュールとして直接importしない。
  */
 
 /**

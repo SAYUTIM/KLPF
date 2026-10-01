@@ -12,10 +12,20 @@ import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG } from '../scripts.config.js';
 
 const projectRoot = path.resolve(import.meta.dirname, '..');
 
+/**
+ * プロジェクト内のJSONファイルを読み取り、解析する。
+ * @param {string} relativePath - プロジェクトルートからの相対パス。
+ * @returns {Promise<object>} JSONを解析した値。
+ */
 async function readJson(relativePath) {
     return JSON.parse(await readFile(path.join(projectRoot, relativePath), 'utf8'));
 }
 
+/**
+ * 宣言されたリソースが実際に存在することを検査する。
+ * @param {string[]} paths - 存在を確認するリソースのパス一覧。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function assertFilesExist(paths) {
     for (const relativePath of paths) {
         const content = await readFile(path.join(projectRoot, relativePath));

@@ -50,6 +50,11 @@
     let deletedHomeworkKeys = [];
     let selectedEditorDate = null;
 
+    /**
+     * 保存されたホームの表示順と非表示項目を有効な構成へそろえる。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {object} 既定モジュールに対応する表示順と非表示状態。
+     */
     function normalizeLayout(value) {
         const order = Array.isArray(value?.order)
             ? value.order.filter(key => Object.hasOwn(MODULES, key))
@@ -64,6 +69,11 @@
         return { order, hidden: [...new Set(hidden)] };
     }
 
+    /**
+     * 保存された非表示課題の情報を扱いやすい形式へそろえる。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {object[]} 重複を除いた非表示課題の情報一覧。
+     */
     function normalizeHiddenHomework(value) {
         if (!Array.isArray(value)) return [];
         const seen = new Set();
@@ -81,6 +91,10 @@
         }));
     }
 
+    /**
+     * 保存された設定と表示状態を読み取り、機能内の状態へ反映する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function loadState() {
         const result = await chrome.storage.local.get([
             LAYOUT_STORAGE_KEY,
@@ -94,18 +108,37 @@
             : [];
     }
 
+    /**
+     * ホームの表示順と非表示項目を保存する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function saveLayout() {
         await chrome.storage.local.set({ [LAYOUT_STORAGE_KEY]: layoutState });
     }
 
+    /**
+     * 非表示にした課題の情報を保存する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function saveHiddenHomework() {
         await chrome.storage.local.set({ [HIDDEN_HOMEWORK_STORAGE_KEY]: hiddenHomeworkItems });
     }
 
+    /**
+     * 削除扱いにした課題の識別キーを保存する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function saveDeletedHomework() {
         await chrome.storage.local.set({ [DELETED_HOMEWORK_STORAGE_KEY]: deletedHomeworkKeys });
     }
 
+    /**
+     * 表示文・クラス・読み上げラベルを設定したボタンを作る。
+     * @param {string} text - 表示または照合する文字列。
+     * @param {string} className - 作成または更新する要素のCSSクラス。
+     * @param {string} label - 値の検索または読み上げに使うラベル。
+     * @returns {HTMLButtonElement} 作成した操作ボタン。
+     */
     function createButton(text, className, label) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -116,11 +149,20 @@
         return button;
     }
 
+    /**
+     * ホームの表示モジュールに属する要素を取得する。
+     * @param {string} key - 対象の課題・モジュール・操作を識別するキー。
+     * @returns {Element[]} 指定した表示モジュールの要素。
+     */
     function getModuleElements(key) {
         if (!column) return [];
         return MODULE_SELECTORS[key].flatMap(selector => Array.from(column.querySelectorAll(selector)));
     }
 
+    /**
+     * 保存状態に従ってホームの表示順と各モジュールの表示可否を反映する。
+     * @returns {void} 戻り値はない。
+     */
     function applyLayout() {
         if (!column) return;
         column.classList.add('klpf-dashboard-column');
@@ -135,6 +177,11 @@
         });
     }
 
+    /**
+     * 課題を非表示・復元するための識別キーを作る。
+     * @param {HTMLElement} item - 対象課題の表示要素。
+     * @returns {string} 課題の識別キー。
+     */
     function getHomeworkKey(item) {
         const id = item.dataset.kyozaiId || '';
         const type = item.dataset.kyozaiSyCd || '';
@@ -142,6 +189,11 @@
         return `text:${(item.textContent || '').replace(/\s+/g, ' ').trim()}`;
     }
 
+    /**
+     * 課題要素から科目名・件名・期限などの表示情報を読み取る。
+     * @param {HTMLElement} item - 対象課題の表示要素。
+     * @returns {object} 課題の識別子・科目名・件名・期限の情報。
+     */
     function readHomeworkMetadata(item) {
         const content = Array.from(item.children).filter(child => !child.classList.contains('klpf-homework-remove'));
         return {
@@ -152,10 +204,20 @@
         };
     }
 
+    /**
+     * 課題キーが非表示または削除対象として保存されているか判定する。
+     * @param {string} key - 対象の課題・モジュール・操作を識別するキー。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isHomeworkHidden(key) {
         return deletedHomeworkKeys.includes(key) || hiddenHomeworkItems.some(item => item.key === key);
     }
 
+    /**
+     * 課題を非表示として記録し、一覧とカレンダーを更新する。
+     * @param {HTMLElement} item - 対象課題の表示要素。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function hideHomework(item) {
         const metadata = readHomeworkMetadata(item);
         if (!isHomeworkHidden(metadata.key)) {
@@ -167,6 +229,11 @@
         renderRestoredHomeworkList();
     }
 
+    /**
+     * 非表示にした課題を復元し、一覧とカレンダーを更新する。
+     * @param {string} key - 対象の課題・モジュール・操作を識別するキー。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function restoreHomework(key) {
         hiddenHomeworkItems = hiddenHomeworkItems.filter(item => item.key !== key);
         await saveHiddenHomework();
@@ -175,6 +242,11 @@
         renderRestoredHomeworkList();
     }
 
+    /**
+     * 課題を削除対象として記録し、非表示課題の復元一覧から除く。
+     * @param {string} key - 対象の課題・モジュール・操作を識別するキー。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function permanentlyDeleteHomework(key) {
         hiddenHomeworkItems = hiddenHomeworkItems.filter(item => item.key !== key);
         if (!deletedHomeworkKeys.includes(key)) deletedHomeworkKeys.push(key);
@@ -184,6 +256,11 @@
         renderRestoredHomeworkList();
     }
 
+    /**
+     * 課題要素に非表示操作と識別情報を追加する。
+     * @param {HTMLElement} item - 対象課題の表示要素。
+     * @returns {void} 戻り値はない。
+     */
     function decorateHomeworkItem(item) {
         if (item.querySelector(':scope > .klpf-homework-remove')) return;
         const removeButton = createButton('×', 'klpf-homework-remove', 'この課題を非表示');
@@ -200,6 +277,10 @@
         item.appendChild(removeButton);
     }
 
+    /**
+     * 課題の保存状態を一覧の表示可否へ反映する。
+     * @returns {void} 戻り値はない。
+     */
     function applyHomeworkVisibility() {
         const homeworkContainer = column?.querySelector('#homework');
         if (!homeworkContainer) return;
@@ -210,6 +291,11 @@
         }
     }
 
+    /**
+     * 課題の期限文字列をカレンダー用の日付へ解析する。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {object|null} 提出日dateと表示用時刻time。無効な期限ならnull。
+     */
     function parseDeadline(value) {
         const match = value.match(/(\d{4})\s*[\/年.-]\s*(\d{1,2})\s*[\/月.-]\s*(\d{1,2})(?:\s*日)?(?:[^\d]+(\d{1,2}):(\d{2}))?/);
         if (!match) return null;
@@ -229,6 +315,11 @@
             || (rawHour === 24 && minute === 0);
         if (!isValidDate || !isValidTime) return null;
 
+        /**
+         * 数字を時刻表示用の2桁文字列へそろえる。
+         * @param {number} number - 日付表示用に桁をそろえる数字。
+         * @returns {string} 表示または識別に使う文字列。
+         */
         const pad = number => String(number).padStart(2, '0');
         return {
             date: `${year}-${pad(month)}-${pad(day)}`,
@@ -236,6 +327,10 @@
         };
     }
 
+    /**
+     * 課題一覧から期限と科目名をカレンダーの予定へ変換する。
+     * @returns {object[]} FullCalendarへ渡す課題予定。
+     */
     function collectCalendarEvents() {
         const homeworkContainer = column?.querySelector('#homework');
         if (!homeworkContainer) return [];
@@ -264,16 +359,35 @@
             .filter(Boolean);
     }
 
+    /**
+     * カレンダーの日付キーを表示用の文字列へ変換する。
+     * @param {string} dateKey - カレンダーの日付キー。
+     * @returns {string} 表示または識別に使う文字列。
+     */
     function formatCalendarDate(dateKey) {
         const [, month, day] = dateKey.split('-').map(Number);
         return `${month}月${day}日`;
     }
 
+    /**
+     * 日付をカレンダーで扱う日付キーへ変換する。
+     * @param {Date} date - 変換対象の日付。
+     * @returns {string} YYYY-MM-DD形式の日付キー。
+     */
     function dateToCalendarKey(date) {
+        /**
+         * 数字を時刻表示用の2桁文字列へそろえる。
+         * @param {number} number - 日付表示用に桁をそろえる数字。
+         * @returns {string} 表示または識別に使う文字列。
+         */
         const pad = number => String(number).padStart(2, '0');
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     }
 
+    /**
+     * 小型カレンダーの予定印を描画し、4件以上は残り件数で表示する。
+     * @returns {void} 戻り値はない。
+     */
     function renderCompactMarkers() {
         if (!calendarElement) return;
         calendarElement.querySelectorAll('.klpf-compact-event-summary').forEach(element => element.remove());
@@ -313,10 +427,19 @@
         }
     }
 
+    /**
+     * カレンダーの描画に合わせて予定印の更新を予約する。
+     * @returns {void} 戻り値はない。
+     */
     function scheduleCompactMarkers() {
         window.requestAnimationFrame(renderCompactMarkers);
     }
 
+    /**
+     * 編集画面で選択した日付の課題一覧を表示する。
+     * @param {string} dateKey - カレンダーの日付キー。
+     * @returns {void} 戻り値はない。
+     */
     function renderEditorDayDetails(dateKey) {
         if (!editorDayDetailsElement) return;
         selectedEditorDate = dateKey;
@@ -353,6 +476,11 @@
         editorDayDetailsElement.hidden = false;
     }
 
+    /**
+     * 小型表示または編集表示に合わせたFullCalendar設定を作る。
+     * @param {boolean} compact - ホーム用の小型カレンダーとして表示するかどうか。
+     * @returns {object} 表示方式に応じたFullCalendarの設定。
+     */
     function calendarOptions(compact) {
         return {
             initialView: 'dayGridMonth',
@@ -370,28 +498,62 @@
             allDayText: '期限',
             listDayFormat: { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' },
             listDaySideFormat: false,
+            /**
+             * カレンダーの省略された予定数を表す表示内容を作る。
+             * @param {object} info - FullCalendarが渡す日付・予定・描画要素などの情報。
+             * @returns {string} 省略された予定数の表示文。
+             */
             moreLinkContent(info) {
                 return `+${info.num}件`;
             },
+            /**
+             * カレンダーの省略リンクを押した日付の詳細を開く。
+             * @param {object} info - FullCalendarが渡す日付・予定・描画要素などの情報。
+             * @returns {string} FullCalendarで開くポップオーバーの指定。
+             */
             moreLinkClick(info) {
                 const dateKey = info.date ? dateToCalendarKey(info.date) : null;
                 if (!compact && dateKey) renderEditorDayDetails(dateKey);
                 return 'popover';
             },
+            /**
+             * カレンダーの日付セルに表示する内容を作る。
+             * @param {object} info - FullCalendarが渡す日付・予定・描画要素などの情報。
+             * @returns {string} 日付セルの日番号。
+             */
             dayCellContent(info) {
                 return String(info.date.getDate());
             },
             events: collectCalendarEvents(),
+            /**
+             * カレンダーの表示範囲変更に合わせて予定印を更新する。
+             * @returns {void} 戻り値はない。
+             */
             datesSet() {
                 if (compact) scheduleCompactMarkers();
             },
+            /**
+             * カレンダーで選択した日付の詳細を表示する。
+             * @param {object} info - FullCalendarが渡す日付・予定・描画要素などの情報。
+             * @returns {void} 戻り値はない。
+             */
             dateClick(info) {
                 if (!compact) renderEditorDayDetails(info.dateStr.slice(0, 10));
             },
+            /**
+             * カレンダーで選択した課題の詳細を表示する。
+             * @param {object} info - FullCalendarが渡す日付・予定・描画要素などの情報。
+             * @returns {void} 戻り値はない。
+             */
             eventClick(info) {
                 info.jsEvent.preventDefault();
                 if (!compact) renderEditorDayDetails(info.event.startStr.slice(0, 10));
             },
+            /**
+             * 予定の描画後に表示情報と操作を補う。
+             * @param {object} info - FullCalendarが渡す日付・予定・描画要素などの情報。
+             * @returns {void} 戻り値はない。
+             */
             eventDidMount(info) {
                 const homeworkName = info.event.extendedProps.homeworkName || '';
                 const deadlineTime = info.event.extendedProps.deadlineTime || '';
@@ -409,6 +571,10 @@
         };
     }
 
+    /**
+     * ホーム用の小型課題カレンダーを描画する。
+     * @returns {void} 戻り値はない。
+     */
     function renderCompactCalendar() {
         if (!calendarElement || typeof FullCalendar === 'undefined') return;
         compactCalendar?.destroy();
@@ -417,6 +583,10 @@
         scheduleCompactMarkers();
     }
 
+    /**
+     * 編集画面用の課題カレンダーを描画する。
+     * @returns {void} 戻り値はない。
+     */
     function renderEditorCalendar() {
         if (!editorCalendarElement || overlay?.hidden || typeof FullCalendar === 'undefined') return;
         editorCalendar?.destroy();
@@ -425,6 +595,10 @@
         if (selectedEditorDate) renderEditorDayDetails(selectedEditorDate);
     }
 
+    /**
+     * 課題と表示状態に合わせて各カレンダーを更新する。
+     * @returns {void} 戻り値はない。
+     */
     function refreshCalendars() {
         const events = collectCalendarEvents();
         if (compactCalendar) {
@@ -439,6 +613,10 @@
         if (selectedEditorDate) renderEditorDayDetails(selectedEditorDate);
     }
 
+    /**
+     * カレンダーの拡大表示を開く操作要素を作る。
+     * @returns {HTMLElement} カレンダーの操作領域。
+     */
     function createCalendarActions() {
         const actions = document.createElement('div');
         actions.className = 'klpf-home-calendar-actions';
@@ -448,6 +626,10 @@
         return actions;
     }
 
+    /**
+     * ホームへ追加するカレンダーモジュールを作る。
+     * @returns {void} 戻り値はない。
+     */
     function createCalendarModule() {
         const existingModule = column.querySelector('#klpf-home-calendar');
         if (existingModule) {
@@ -470,6 +652,12 @@
         renderCompactCalendar();
     }
 
+    /**
+     * 指定モジュールを表示順の前後へ移動し、保存する。
+     * @param {string} key - 対象の課題・モジュール・操作を識別するキー。
+     * @param {string|number} direction - 移動またはアニメーションの方向。
+     * @returns {void} 戻り値はない。
+     */
     function moveModule(key, direction) {
         const currentIndex = layoutState.order.indexOf(key);
         const nextIndex = currentIndex + direction;
@@ -483,6 +671,11 @@
         renderModuleList();
     }
 
+    /**
+     * 指定モジュールの表示可否を切り替え、保存する。
+     * @param {string} key - 対象の課題・モジュール・操作を識別するキー。
+     * @returns {void} 戻り値はない。
+     */
     function toggleModule(key) {
         const hidden = new Set(layoutState.hidden);
         if (hidden.has(key)) hidden.delete(key);
@@ -493,6 +686,10 @@
         renderModuleList();
     }
 
+    /**
+     * 編集画面へモジュールの表示順と操作ボタンを描画する。
+     * @returns {void} 戻り値はない。
+     */
     function renderModuleList() {
         if (!moduleList) return;
         moduleList.replaceChildren();
@@ -527,6 +724,10 @@
         });
     }
 
+    /**
+     * 編集画面へ非表示課題の復元一覧を描画する。
+     * @returns {void} 戻り値はない。
+     */
     function renderRestoredHomeworkList() {
         if (!restoredList) return;
         restoredList.replaceChildren();
@@ -567,6 +768,10 @@
         }
     }
 
+    /**
+     * ホーム編集画面を閉じ、フォーカスとスクロール状態を復元する。
+     * @returns {void} 戻り値はない。
+     */
     function closeEditor() {
         if (!overlay) return;
         overlay.hidden = true;
@@ -577,6 +782,10 @@
         editorLastFocusedElement = null;
     }
 
+    /**
+     * ホーム編集画面を開き、現在のレイアウトと課題を表示する。
+     * @returns {void} 戻り値はない。
+     */
     function openEditor() {
         if (!overlay) createEditor();
         editorLastFocusedElement = document.activeElement;
@@ -588,6 +797,10 @@
         overlay.querySelector('.klpf-dashboard-editor-close')?.focus();
     }
 
+    /**
+     * ホーム編集画面の見出しと閉じるボタンを作る。
+     * @returns {HTMLElement} ホーム編集画面の見出し領域。
+     */
     function createEditorHeader() {
         const header = document.createElement('header');
         header.className = 'klpf-dashboard-editor-header';
@@ -604,6 +817,10 @@
         return header;
     }
 
+    /**
+     * ホーム編集画面の表示順・表示可否の操作領域を作る。
+     * @returns {HTMLElement} ホーム編集画面の操作領域。
+     */
     function createEditorControls() {
         const controls = document.createElement('div');
         controls.className = 'klpf-dashboard-editor-controls';
@@ -625,6 +842,10 @@
         return controls;
     }
 
+    /**
+     * ホーム編集画面のカレンダープレビューを作る。
+     * @returns {HTMLElement} カレンダーのプレビュー領域。
+     */
     function createEditorCalendarPreview() {
         const preview = document.createElement('section');
         preview.className = 'klpf-dashboard-calendar-preview';
@@ -642,6 +863,10 @@
         return preview;
     }
 
+    /**
+     * ホームの表示構成を既定値へ戻して保存する。
+     * @returns {void} 戻り値はない。
+     */
     function resetDashboardLayout() {
         layoutState = { order: [...DEFAULT_ORDER], hidden: [] };
         void saveLayout();
@@ -649,6 +874,10 @@
         renderModuleList();
     }
 
+    /**
+     * ホーム編集画面の下部操作領域を作る。
+     * @returns {HTMLElement} ホーム編集画面の下部領域。
+     */
     function createEditorFooter() {
         const footer = document.createElement('div');
         footer.className = 'klpf-dashboard-editor-footer';
@@ -660,14 +889,28 @@
         return footer;
     }
 
+    /**
+     * 背景のクリックを検知してホーム編集画面を閉じる。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleEditorOverlayClick(event) {
         if (event.target === overlay) closeEditor();
     }
 
+    /**
+     * キーボード操作に合わせてホーム編集画面を閉じる。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleEditorKeydown(event) {
         if (event.key === 'Escape' && overlay && !overlay.hidden) closeEditor();
     }
 
+    /**
+     * ホーム編集画面の各領域を組み立て、操作イベントを登録する。
+     * @returns {void} 戻り値はない。
+     */
     function createEditor() {
         overlay = document.createElement('div');
         overlay.id = 'klpf-dashboard-editor-overlay';
@@ -691,6 +934,10 @@
         document.body.appendChild(overlay);
     }
 
+    /**
+     * DOM変更が続く場合のレイアウト適用をまとめて予約する。
+     * @returns {void} 戻り値はない。
+     */
     function scheduleApply() {
         if (applyScheduled) return;
         applyScheduled = true;
@@ -702,6 +949,10 @@
         });
     }
 
+    /**
+     * ホームのDOM変更を監視し、課題とレイアウトを更新する。
+     * @returns {void} 戻り値はない。
+     */
     function observeDashboard() {
         observer?.disconnect();
         observer = new MutationObserver(mutations => {
@@ -715,6 +966,10 @@
         observer.observe(column, { childList: true, subtree: true });
     }
 
+    /**
+     * ホーム編集の監視・タイマー・追加要素を片付ける。
+     * @returns {void} 戻り値はない。
+     */
     function cleanupDashboard() {
         observer?.disconnect();
         observer = null;
@@ -722,6 +977,10 @@
         document.removeEventListener('keydown', handleEditorKeydown);
     }
 
+    /**
+     * 設定と対象ページを確認し、機能の初期化を開始する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function main() {
         column = await waitForElement(COLUMN_SELECTOR, document, 10000);
         if (!column) return;

@@ -3,6 +3,8 @@
 
 /**
  * @file KLPF公式サイトのナビゲーション、表示演出、Release情報取得を管理する。
+ * DOM・IntersectionObserver・GitHub APIを使い、公開サイトの表示、モーダル、統計、リリース一覧を更新する。
+ * 拡張機能の取得ジョブやユーザーの設定にはアクセスしない。
  */
 
 class ModernKLPFSite {
@@ -15,6 +17,10 @@ class ModernKLPFSite {
         this.init();
     }
 
+    /**
+     * 表示領域と操作イベントを初期化する。
+     * @returns {void} 戻り値はない。
+     */
     init() {
         this.setupLoader();
         this.setupPageLoadBehavior();
@@ -27,6 +33,10 @@ class ModernKLPFSite {
         this.loadData();
     }
 
+    /**
+     * 公式サイトの読み込み画面を用意する。
+     * @returns {void} 戻り値はない。
+     */
     setupLoader() {
         this._revealDone = false;
         this._deferredCounters = [];
@@ -37,6 +47,10 @@ class ModernKLPFSite {
         }
     }
 
+    /**
+     * ページ読み込み後の表示とスクロール状態を設定する。
+     * @returns {void} 戻り値はない。
+     */
     setupPageLoadBehavior() {
         if ('scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
@@ -44,6 +58,10 @@ class ModernKLPFSite {
         window.scrollTo(0, 0);
     }
 
+    /**
+     * 公式サイトのスクロール進捗表示を登録する。
+     * @returns {void} 戻り値はない。
+     */
     setupScrollProgress() {
         const progressBar = document.createElement('div');
         progressBar.className = 'scroll-progress';
@@ -64,6 +82,10 @@ class ModernKLPFSite {
         });
     }
 
+    /**
+     * 表示領域へ近づいた要素のアニメーション監視を登録する。
+     * @returns {void} 戻り値はない。
+     */
     setupIntersectionObserver() {
         this.observer = this.createRevealObserver(
             this.revealMarginPx,
@@ -72,10 +94,20 @@ class ModernKLPFSite {
         this.stepCardObserver = this.createRevealObserver(this.stepCardRevealMarginPx, '.step-card');
     }
 
+    /**
+     * 表示アニメーションの対象要素を列挙する。
+     * @returns {NodeListOf<Element>} 表示アニメーションの対象要素。
+     */
     getRevealTargets() {
         return document.querySelectorAll(this.revealSelector);
     }
 
+    /**
+     * 指定した余白とセレクターで表示アニメーションの監視を作る。
+     * @param {number} marginPx - 表示アニメーションの判定に使う余白（ピクセル）。
+     * @param {string} selector - 要素を探すCSSセレクター。
+     * @returns {IntersectionObserver} 表示領域への接近を監視するオブザーバー。
+     */
     createRevealObserver(marginPx, selector) {
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry) => {
@@ -102,6 +134,11 @@ class ModernKLPFSite {
         return observer;
     }
 
+    /**
+     * 要素が表示領域の近くにあるか判定する。
+     * @param {Element} el - 表示状態を確認する要素。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     isElementNearViewport(el) {
         const revealMargin = el.classList.contains('step-card')
             ? this.stepCardRevealMarginPx
@@ -111,6 +148,10 @@ class ModernKLPFSite {
             && rect.bottom >= -revealMargin;
     }
 
+    /**
+     * モバイル表示のナビゲーション開閉を登録する。
+     * @returns {void} 戻り値はない。
+     */
     setupMobileMenu() {
         const toggle = document.querySelector('.mobile-toggle');
         const menu = document.querySelector('.nav-menu');
@@ -128,6 +169,10 @@ class ModernKLPFSite {
         });
     }
 
+    /**
+     * 公式サイトの案内モーダルの開閉操作を登録する。
+     * @returns {void} 戻り値はない。
+     */
     setupModals() {
         const modal = document.createElement('div');
         modal.className = 'modal';
@@ -172,6 +217,10 @@ class ModernKLPFSite {
         });
     }
 
+    /**
+     * 公式サイトの背景図形の動きを設定する。
+     * @returns {void} 戻り値はない。
+     */
     setupFloatingShapes() {
         const bgEffects = document.createElement('div');
         bgEffects.className = 'bg-effects';
@@ -189,6 +238,10 @@ class ModernKLPFSite {
         document.body.appendChild(bgEffects);
     }
 
+    /**
+     * ページ内リンクのスクロール操作を登録する。
+     * @returns {void} 戻り値はない。
+     */
     setupSmoothScrolling() {
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', (e) => {
@@ -214,11 +267,19 @@ class ModernKLPFSite {
         });
     }
 
+    /**
+     * 固定ヘッダーの高さを取得し、スクロール位置の補正に使う。
+     * @returns {number} 固定ヘッダーの補正量（ピクセル）。
+     */
     getHeaderOffset() {
         const header = document.querySelector('header');
         return header ? header.offsetHeight + 16 : 0;
     }
 
+    /**
+     * 公式サイトに表示するダウンロード数とリリース情報を読み込む。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async loadData() {
         try {
             const downloads = await this.fetchDownloads();
@@ -231,6 +292,10 @@ class ModernKLPFSite {
         }
     }
 
+    /**
+     * GitHubのリリース情報からダウンロード数を集計する。
+     * @returns {Promise<number>} 集計したダウンロード数。
+     */
     async fetchDownloads() {
         try {
             const repos = ['SAYUTIM/KLPF', 'SAYUTIM/KALI'];
@@ -252,6 +317,10 @@ class ModernKLPFSite {
         }
     }
 
+    /**
+     * GitHubのリリース情報を取得し、サイトへ表示する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async loadReleases() {
         const container = document.getElementById('releases-container');
         if (!container) return;
@@ -281,6 +350,11 @@ class ModernKLPFSite {
         }
     }
 
+    /**
+     * ダウンロード数を公式サイトの統計表示へ反映する。
+     * @param {number} downloads - 集計したダウンロード数。
+     * @returns {void} 戻り値はない。
+     */
     updateStats(downloads) {
         const statsElement = document.getElementById('totaldownload');
         if (statsElement) {
@@ -296,6 +370,11 @@ class ModernKLPFSite {
         }
     }
 
+    /**
+     * リリースのバージョン・説明・リンクを表示するカードを作る。
+     * @param {object} release - GitHub APIから取得したリリース情報。
+     * @returns {HTMLElement} リリース情報を表示するカード要素。
+     */
     createReleaseCard(release) {
         const card = document.createElement('div');
         card.className = 'download-card fade-in';
@@ -374,6 +453,12 @@ class ModernKLPFSite {
         return card;
     }
 
+    /**
+     * 公式サイトの案内モーダルへ見出しと説明を表示する。
+     * @param {string} title - モーダルの見出し。
+     * @param {string} description - モーダルに表示する説明。
+     * @returns {void} 戻り値はない。
+     */
     showModal(title, description) {
         const modal = document.querySelector('.modal');
         const modalTitle = modal.querySelector('.modal-title');
@@ -384,6 +469,11 @@ class ModernKLPFSite {
         modal.classList.add('active');
     }
 
+    /**
+     * 統計の数値を目標値までアニメーションで更新する。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {void} 戻り値はない。
+     */
     animateCounter(element) {
         const target = parseInt(element.dataset.count) || 0;
         if(parseInt(element.textContent) === target) return;
@@ -402,6 +492,10 @@ class ModernKLPFSite {
         updateCounter();
     }
 
+    /**
+     * 読み込み画面を終了し、公式サイトの内容を表示する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async finishLoader() {
         const MIN_MS = 1000;
         const elapsed = performance.now() - (this._loaderStart || performance.now());
@@ -434,6 +528,12 @@ class ModernKLPFSite {
         }
     }
 
+    /**
+     * 呼び出しが続く間は実行を遅らせ、最後の呼び出しだけを処理する関数を作る。
+     * @param {Function} func - 呼び出しをまとめる対象の処理。
+     * @param {number} wait - 最後の呼び出し後に待つ時間（ミリ秒）。
+     * @returns {Function} 指定時間内の連続呼び出しをまとめる関数。
+     */
     debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {

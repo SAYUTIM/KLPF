@@ -60,11 +60,24 @@
     let currentImageDimensions = null;
     let isAllFeaturesDisabled = false;
 
+    /**
+     * 数値を指定範囲内の割合にそろえ、無効値には既定値を使う。
+     * @param {*} value - 検証・変換する入力値。
+     * @param {*} fallback - 入力が無効な場合に使う既定値。
+     * @param {number} [maximum=100] - 割合の上限値。
+     * @returns {number} 指定範囲内の割合。
+     */
     function normalizePercentage(value, fallback, maximum = 100) {
         const number = Number(value);
         return Number.isFinite(number) ? Math.max(0, Math.min(maximum, Math.round(number))) : fallback;
     }
 
+    /**
+     * 画像の表示位置を割合の座標へそろえる。
+     * @param {*} value - 検証・変換する入力値。
+     * @param {*} [fallback] - 入力が無効な場合に使う既定値。
+     * @returns {number} 0〜100にそろえた表示位置。
+     */
     function normalizePosition(value, fallback = DEFAULT_POSITION) {
         const number = Number(value);
         return Number.isFinite(number)
@@ -72,6 +85,11 @@
             : fallback;
     }
 
+    /**
+     * 保存された画像テーマを検証し、表示可能な設定へそろえる。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {object|null} 有効な画像テーマ。保存値が無効ならnull。
+     */
     function normalizeStoredTheme(value) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
         const dataUrl = typeof value.dataUrl === 'string' ? value.dataUrl : '';
@@ -90,6 +108,11 @@
         };
     }
 
+    /**
+     * 背景色の文字列から色成分を読み取る。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {number[]|null} RGBAの色成分。解析できない色や透明な色はnull。
+     */
     function parseBackgroundColor(value) {
         if (typeof value !== 'string') return null;
         const match = value.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i);
@@ -102,6 +125,10 @@
         return [...channels, Math.max(0, Math.min(1, alpha))];
     }
 
+    /**
+     * 画像テーマによる要素の透明化を解除する。
+     * @returns {void} 戻り値はない。
+     */
     function clearElementTransparency() {
         document.querySelectorAll(`[${BACKGROUND_ATTRIBUTE}]`).forEach((element) => {
             element.removeAttribute(BACKGROUND_ATTRIBUTE);
@@ -109,6 +136,10 @@
         });
     }
 
+    /**
+     * 背景を透明化する対象要素を列挙する。
+     * @returns {Element[]} 画像テーマで背景を透明化する対象要素。
+     */
     function getTransparencyElements() {
         const contents = document.querySelector('.lms-contents-wrap');
         if (!contents) return [];
@@ -126,6 +157,12 @@
         ));
     }
 
+    /**
+     * 背景画像が見えるよう対象要素の透明化状態を更新する。
+     * @param {object} [options={}] - この処理に必要な設定と依存処理。
+     * @param {boolean} [options.recalculate=false] - 対象要素や背景の状態を再計算するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     function refreshElementTransparency({ recalculate = false } = {}) {
         const contents = document.querySelector('.lms-contents-wrap');
         if (!contents) return;
@@ -146,6 +183,10 @@
         }
     }
 
+    /**
+     * 画面と画像の寸法に合わせてテーマの表示位置を更新する。
+     * @returns {boolean} 画像と画面の寸法を使って位置を更新できた場合はtrue。
+     */
     function updateThemeGeometry() {
         const contents = document.querySelector('.lms-contents-wrap');
         if (!contents) return false;
@@ -167,6 +208,10 @@
         return true;
     }
 
+    /**
+     * 画面サイズ変更に伴うテーマ位置の更新を予約する。
+     * @returns {void} 戻り値はない。
+     */
     function scheduleGeometryUpdate() {
         if (!currentTheme || geometryFrame !== null) return;
         geometryFrame = requestAnimationFrame(() => {
@@ -175,6 +220,11 @@
         });
     }
 
+    /**
+     * 現在のテーマ画像を読み込み、元画像の寸法を取得する。
+     * @param {object} theme - 画像・配色・表示位置などのテーマ設定。
+     * @returns {void} 戻り値はない。
+     */
     function loadCurrentImageDimensions(theme) {
         if (theme.imageWidth && theme.imageHeight) {
             currentImageDimensions = { width: theme.imageWidth, height: theme.imageHeight };
@@ -191,6 +241,10 @@
         image.src = theme.dataUrl;
     }
 
+    /**
+     * 連続するDOM変更をまとめ、透明化状態の更新を予約する。
+     * @returns {void} 戻り値はない。
+     */
     function scheduleTransparencyRefresh() {
         if (!currentTheme || refreshFrame !== null) return;
         refreshFrame = requestAnimationFrame(() => {
@@ -199,6 +253,10 @@
         });
     }
 
+    /**
+     * ページ要素の追加・変更を監視し、画像テーマを追従させる。
+     * @returns {void} 戻り値はない。
+     */
     function startMutationObserver() {
         if (mutationObserver) return;
         const contents = document.querySelector('.lms-contents-wrap');
@@ -218,6 +276,12 @@
         }
     }
 
+    /**
+     * テーマ用スタイルと対象要素の透明化を適用する。
+     * @param {object} [options={}] - この処理に必要な設定と依存処理。
+     * @param {boolean} [options.recalculate=false] - 対象要素や背景の状態を再計算するかどうか。
+     * @returns {boolean} テーマの対象となるページ内容が用意できた場合はtrue。
+     */
     function activateThemeContents({ recalculate = false } = {}) {
         if (!updateThemeGeometry()) return false;
         refreshElementTransparency({ recalculate });
@@ -225,6 +289,10 @@
         return true;
     }
 
+    /**
+     * テーマの対象となるページ内容が準備されるまで待つ。
+     * @returns {void} 戻り値はない。
+     */
     function waitForThemeContents() {
         if (activateThemeContents({ recalculate: true }) || contentsObserver) return;
         contentsObserver = new MutationObserver(() => {
@@ -235,6 +303,10 @@
         contentsObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
 
+    /**
+     * テーマ用のDOM変更監視を停止する。
+     * @returns {void} 戻り値はない。
+     */
     function stopMutationObserver() {
         mutationObserver?.disconnect();
         mutationObserver = null;
@@ -250,6 +322,11 @@
         recalculateTimer = null;
     }
 
+    /**
+     * 画像テーマの背景・表示位置・透明度に対応するスタイルを用意する。
+     * @param {object} theme - 画像・配色・表示位置などのテーマ設定。
+     * @returns {void} 戻り値はない。
+     */
     function ensureThemeStyle(theme) {
         let style = document.getElementById(STYLE_ID);
         if (!style) {
@@ -289,6 +366,10 @@
         `;
     }
 
+    /**
+     * 適用した画像テーマと透明化を解除する。
+     * @returns {void} 戻り値はない。
+     */
     function removeAppliedTheme() {
         stopMutationObserver();
         document.documentElement.removeAttribute(ACTIVE_ATTRIBUTE);
@@ -300,6 +381,11 @@
         clearElementTransparency();
     }
 
+    /**
+     * 検証した画像テーマをページへ適用する。
+     * @param {object} theme - 画像・配色・表示位置などのテーマ設定。
+     * @returns {void} 戻り値はない。
+     */
     function applyTheme(theme) {
         const normalized = normalizeStoredTheme(theme);
         if (!normalized) {
@@ -323,11 +409,20 @@
         }, 500);
     }
 
+    /**
+     * 保存された画像テーマを読み取り、形式を検証する。
+     * @returns {Promise<object|null>} 検証済みの保存テーマ。未保存または無効ならnull。
+     */
     async function loadStoredTheme() {
         const stored = await chrome.storage.local.get(STORAGE_KEY);
         return normalizeStoredTheme(stored[STORAGE_KEY]);
     }
 
+    /**
+     * 一括停止状態に合わせて画像テーマの適用可否を更新する。
+     * @param {boolean} disabled - 機能または操作を停止するかどうか。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function syncThemeAvailability(disabled) {
         isAllFeaturesDisabled = disabled === true;
         if (isAllFeaturesDisabled) {
@@ -340,6 +435,10 @@
         applyTheme(await loadStoredTheme());
     }
 
+    /**
+     * パネル表示中のスクロール制御用スタイルを用意する。
+     * @returns {void} 戻り値はない。
+     */
     function ensureScrollLockStyle() {
         if (document.getElementById(SCROLL_LOCK_STYLE_ID)) return;
         const style = document.createElement('style');
@@ -354,11 +453,20 @@
         (document.head || document.documentElement).appendChild(style);
     }
 
+    /**
+     * パネル表示中のページスクロールのロックを切り替える。
+     * @param {boolean} locked - 背景のスクロールを止めるかどうか。
+     * @returns {void} 戻り値はない。
+     */
     function setScrollLocked(locked) {
         ensureScrollLockStyle();
         document.documentElement.classList.toggle('klpf-custom-image-theme-open', locked);
     }
 
+    /**
+     * 設定パネルを表示するルート要素を用意する。
+     * @returns {void} 戻り値はない。
+     */
     function ensureRoot() {
         if (rootElement?.isConnected && shadowRoot) return;
         rootElement = document.getElementById(ROOT_ID);
@@ -370,6 +478,10 @@
         shadowRoot = rootElement.shadowRoot || rootElement.attachShadow({ mode: 'open' });
     }
 
+    /**
+     * 設定パネル内で使用するCSSを返す。
+     * @returns {string} パネルのCSS文字列。
+     */
     function getPanelStyles() {
         return `
             :host { all: initial; }
@@ -778,6 +890,10 @@
         `;
     }
 
+    /**
+     * 設定パネルの初期HTMLを返す。
+     * @returns {string} パネルの初期HTML文字列。
+     */
     function getPanelMarkup() {
         return `
             <style>${getPanelStyles()}</style>
@@ -880,6 +996,13 @@
         `;
     }
 
+    /**
+     * 設定パネルへ操作結果またはエラーを表示する。
+     * @param {string|object} message - 表示する案内文、または受信した機能メッセージ。
+     * @param {object} [options={}] - この処理に必要な設定と依存処理。
+     * @param {boolean} [options.error=false] - エラーの表示色を使用するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     function setStatus(message, { error = false } = {}) {
         const status = shadowRoot?.querySelector('[data-status]');
         if (!status) return;
@@ -887,6 +1010,10 @@
         status.classList.toggle('is-error', error);
     }
 
+    /**
+     * 画像プレビューの表示寸法を求める。
+     * @returns {object} プレビューの幅と高さ。
+     */
     function getPreviewDimensions() {
         const contents = document.querySelector('.lms-contents-wrap');
         if (!contents) return { width: 16, height: 9, ratio: 16 / 9 };
@@ -897,6 +1024,10 @@
         return { width, height, ratio: Math.max(.8, Math.min(2.5, width / height)) };
     }
 
+    /**
+     * プレビューに表示する縦横比の案内を更新する。
+     * @returns {void} 戻り値はない。
+     */
     function updateRatioGuide() {
         const preview = shadowRoot?.querySelector('[data-preview]');
         const guide = shadowRoot?.querySelector('[data-ratio-guide]');
@@ -911,6 +1042,10 @@
         guide.style.height = `${guideHeight}px`;
     }
 
+    /**
+     * 編集中の画像テーマをパネルの入力欄とプレビューへ反映する。
+     * @returns {void} 戻り値はない。
+     */
     function renderDraft() {
         if (!shadowRoot) return;
         const preview = shadowRoot.querySelector('[data-preview]');
@@ -972,6 +1107,10 @@
         requestAnimationFrame(updateRatioGuide);
     }
 
+    /**
+     * 編集中の位置・拡大率をプレビュー画像へ反映する。
+     * @returns {void} 戻り値はない。
+     */
     function renderPreviewTransform() {
         if (!shadowRoot) return;
         const previewImage = shadowRoot.querySelector('[data-preview-image]');
@@ -991,6 +1130,12 @@
         applyButton.disabled = !draftDataUrl || !draftIsDirty;
     }
 
+    /**
+     * ポインターの移動量を画像の表示位置へ反映する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @param {object} dragStart - ドラッグ開始時の座標と画像位置。
+     * @returns {void} 戻り値はない。
+     */
     function updateDraftPositionFromDrag(event, dragStart) {
         if (!draftDataUrl || !dragStart) return;
         const preview = shadowRoot?.querySelector('[data-preview]');
@@ -1003,6 +1148,11 @@
         renderPreviewTransform();
     }
 
+    /**
+     * 選択した画像を読み込み、保存用にサイズと形式を調整する。
+     * @param {File} file - 選択された画像ファイル。
+     * @returns {Promise<object>} 保存用の画像URLと寸法。
+     */
     async function optimizeImage(file) {
         if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
             throw new Error('JPEG・PNG・WebP形式の画像を選択してください。');
@@ -1037,6 +1187,11 @@
         throw new Error('画像を保存できる大きさまで圧縮できませんでした。別の画像を選択してください。');
     }
 
+    /**
+     * 選択した画像ファイルを検証し、テーマの編集状態へ取り込む。
+     * @param {File} file - 選択された画像ファイル。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function handleFileSelection(file) {
         if (!(file instanceof File)) return;
         setStatus('画像を読み込んでいます…');
@@ -1057,6 +1212,10 @@
         }
     }
 
+    /**
+     * 設定パネルを閉じ、スクロールやフォーカスを復元する。
+     * @returns {void} 戻り値はない。
+     */
     function closePanel() {
         if (!rootElement) return;
         setScrollLocked(false);
@@ -1067,6 +1226,10 @@
         lastFocusedElement = null;
     }
 
+    /**
+     * 設定パネルの入力・保存・閉じる操作を登録する。
+     * @returns {void} 戻り値はない。
+     */
     function addPanelListeners() {
         const overlay = shadowRoot.querySelector('.overlay');
         const panel = shadowRoot.querySelector('.panel');
@@ -1238,6 +1401,10 @@
         });
     }
 
+    /**
+     * 設定パネルを開き、保存状態を入力欄へ反映する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function openPanel() {
         const disabledState = await chrome.storage.local.get(ALL_DISABLED_KEY);
         if (disabledState[ALL_DISABLED_KEY]) {
@@ -1306,6 +1473,10 @@
     });
 
     globalThis[INSTANCE_KEY] = {
+        /**
+         * 編集対象の状態変更をパネル表示へ反映する。
+         * @returns {void} 戻り値はない。
+         */
         refresh() {
             chrome.storage.local.get(ALL_DISABLED_KEY).then((disabledState) => {
                 return syncThemeAvailability(disabledState[ALL_DISABLED_KEY] === true);

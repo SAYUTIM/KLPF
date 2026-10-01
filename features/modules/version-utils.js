@@ -3,6 +3,7 @@
 
 /**
  * @file 拡張機能とGitHub Releaseのバージョン比較に使う共通処理。
+ * 外部通信やChrome APIに依存せず、バージョン文字列を比較する純粋関数を提供する。
  */
 
 export function parseVersionParts(value) {
@@ -13,6 +14,12 @@ export function parseVersionParts(value) {
     });
 }
 
+/**
+ * バージョン番号を比較し、候補が現在のバージョンより新しいか判定する。
+ * @param {string} candidateVersion - 新しいかどうかを判定する候補のバージョン。
+ * @param {string} currentVersion - 比較の基準となる現在のバージョン。
+ * @returns {boolean} 条件を満たす場合はtrue。
+ */
 export function isVersionNewer(candidateVersion, currentVersion) {
     const candidateParts = parseVersionParts(candidateVersion);
     const currentParts = parseVersionParts(currentVersion);

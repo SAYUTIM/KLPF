@@ -3,6 +3,7 @@
 
 /**
  * @file Google Meetの参加前画面で、カメラとマイクを自動でオフにし、「今すぐ参加」ボタンを自動でクリックする。
+ * MeetのDOMと状態ラベルを監視して操作し、参加済みまたは処理完了時に監視とタイマーを止める。
  */
 
 (function() {
@@ -56,10 +57,20 @@
         });
     }
 
+    /**
+     * 要素の表示文から前後の空白を除き、小文字にそろえる。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {string} 照合用に整えた文字列。
+     */
     function normalizeText(value) {
         return (value || '').trim().toLowerCase();
     }
 
+    /**
+     * 要素が画面上で表示されているか判定する。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isVisible(element) {
         if (!element) return false;
 
@@ -69,14 +80,28 @@
             && element.getClientRects().length > 0;
     }
 
+    /**
+     * ボタンが表示され、操作可能な状態か判定する。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isEnabledButton(element) {
         return isVisible(element) && !element.disabled && element.getAttribute('aria-disabled') !== 'true';
     }
 
+    /**
+     * Meetの状態通知領域から現在の案内文を読み取る。
+     * @returns {string} Meetの状態通知を連結した文字列。
+     */
     function getLiveAnnouncementText() {
         return safeQuerySelectorAll('[aria-live]').map((element) => normalizeText(element.textContent)).join(' ');
     }
 
+    /**
+     * カメラまたはマイクに対応するMeetの操作ボタンを列挙する。
+     * @param {string} kind - 操作対象のカメラまたはマイク。
+     * @returns {Element[]} 対象機能の表示中かつ操作可能なボタン。
+     */
     function getControlButtons(kind) {
         return safeQuerySelectorAll(CONTROL_SELECTORS[kind]).filter((button) => {
             if (!isEnabledButton(button)) return false;
@@ -87,6 +112,11 @@
         });
     }
 
+    /**
+     * Meetの表示とラベルからカメラまたはマイクの現在状態を判定する。
+     * @param {string} kind - 操作対象のカメラまたはマイク。
+     * @returns {object} muted・unmuted・unknownの状態と対応ボタン。
+     */
     function getControlState(kind) {
         const buttons = getControlButtons(kind);
         const liveText = getLiveAnnouncementText();
@@ -124,6 +154,11 @@
         return { state: 'unknown', button: null };
     }
 
+    /**
+     * 指定したカメラまたはマイクがオンならオフにする。
+     * @param {string} kind - 操作対象のカメラまたはマイク。
+     * @returns {boolean} オフにする操作を実行した場合はtrue。
+     */
     function forceMuteControl(kind) {
         const { state, button } = getControlState(kind);
         if (state === 'unmuted' && button) {
@@ -133,6 +168,10 @@
         return false;
     }
 
+    /**
+     * カメラとマイクが両方オフになっているか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function areCameraAndMicMuted() {
         const cameraState = getControlState(CONTROL_KIND.CAMERA).state;
         const micState = getControlState(CONTROL_KIND.MIC).state;
@@ -181,10 +220,18 @@
     }
 
     // すべてのタスクが完了したかチェックする。
+    /**
+     * Meet参加前の自動操作がすべて完了したか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function allTasksCompleted() {
         return isJoinButtonClicked || isInMeeting();
     }
 
+    /**
+     * Meet参加前の自動操作の監視とタイマーを停止する。
+     * @returns {void} 戻り値はない。
+     */
     function stopProcessing() {
         if (intervalId !== null) {
             clearInterval(intervalId);

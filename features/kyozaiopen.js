@@ -7,6 +7,8 @@
  * LMSの教材一覧ページおよび詳細ページに「一括開封ボタン」を追加します。
  * この機能は、複数の教材（ファイル、外部リンクなど）を一度の操作で開き、
  * 自動的に「参照済み」にすることを目的としています。
+ * 講義一覧・教材詳細のDOMと取得HTMLから資料を列挙し、種類に応じて送信・参照・ダウンロードを行う。
+ * 保存した一括処理状態で画面遷移をまたぎ、操作ボタンと処理済み管理で重複操作を抑える。
  */
 (() => {
     'use strict';
@@ -19,21 +21,21 @@
     const FEATURE_CONSTANTS = {
         FEATURE_NAME: 'KLPF',
         SELECTORS: {
-            // Page Detection
+            // ページの種類を判定するための要素
             SRCL_FORM: '#srcl_form',
             MAIN_FORM: '#main_form',
             DETAIL_TABLE: 'table.lms-float-table',
             BACK_BUTTON: 'input[onclick*="bacKyozai"]',
-            // Material Extraction
+            // 教材情報を読み取るための要素
             MATERIAL_ICON: 'i[title="資料"], i[title="ファイル資料"], i.fj-icon-file-outline',
             MATERIAL_CELL: 'td.kyozaititleCell',
             KYOZAI_LINK: 'a[onclick*="kyozaiTitleLink"]',
             DETAIL_MATERIAL_CELL: 'td[data-label="資料名"]',
             DETAIL_TABLE_ROWS: 'table.lms-float-table tbody tr',
             ONCLICK_LINK: 'a[onclick]',
-            // Button Placement
+            // 操作ボタンの配置先
             DETAIL_HEADER_LEFT: '#cs_fullHeadLeft, .lms-srcs-head-adj',
-            // Form Inputs
+            // フォームの送信項目
             FORM_FILE_ID: 'input[name="fileId"]',
             FORM_SYOSAI_ID: 'input[name="syosaiId"]',
             FORM_KYOZAI_ID: '#kyozaiId',
@@ -139,14 +141,29 @@
             this.processedIds = new Set();
         }
 
+        /**
+         * 教材IDがすでに処理済みか判定する。
+         * @param {string} id - 対象を識別するID。
+         * @returns {boolean} 条件を満たす場合はtrue。
+         */
         isProcessed(id) {
             return this.processedIds.has(id);
         }
 
+        /**
+         * 教材IDを処理済みとして記録する。
+         * @param {string} id - 対象を識別するID。
+         * @returns {void} 戻り値はない。
+         */
         markProcessed(id) {
             this.processedIds.add(id);
         }
 
+        /**
+         * 教材一括処理の状態を保存する。
+         * @param {object} data - 保存する処理状態または設定データ。
+         * @returns {void} 戻り値はない。
+         */
         setBulkOperation(data) {
             const now = Date.now().toString();
             localStorage.setItem(FEATURE_CONSTANTS.STORAGE_KEYS.BULK_OPERATION, JSON.stringify(data));
@@ -156,6 +173,10 @@
             sessionStorage.setItem(FEATURE_CONSTANTS.STORAGE_KEYS.SESSION_TIMESTAMP, now);
         }
 
+        /**
+         * 保存されている教材一括処理の状態を読み出す。
+         * @returns {object|null} 保存された教材一括処理の情報。なければnull。
+         */
         getBulkOperation() {
             const stored = localStorage.getItem(FEATURE_CONSTANTS.STORAGE_KEYS.BULK_OPERATION);
             if (!stored) return null;
@@ -168,6 +189,10 @@
             }
         }
 
+        /**
+         * 教材の一括操作がボタンから開始されたか判定する。
+         * @returns {boolean} 条件を満たす場合はtrue。
+         */
         isButtonTriggered() {
             const localFlag = localStorage.getItem(FEATURE_CONSTANTS.STORAGE_KEYS.BUTTON_TRIGGERED);
             const localTimestamp = localStorage.getItem(FEATURE_CONSTANTS.STORAGE_KEYS.TRIGGER_TIMESTAMP);
@@ -182,6 +207,10 @@
             return false;
         }
 
+        /**
+         * 教材一括処理の保存状態を削除する。
+         * @returns {void} 戻り値はない。
+         */
         clearBulkOperation() {
             localStorage.removeItem(FEATURE_CONSTANTS.STORAGE_KEYS.BULK_OPERATION);
             localStorage.removeItem(FEATURE_CONSTANTS.STORAGE_KEYS.BUTTON_TRIGGERED);
@@ -190,11 +219,20 @@
             sessionStorage.removeItem(FEATURE_CONSTANTS.STORAGE_KEYS.SESSION_TIMESTAMP);
         }
 
+        /**
+         * 教材一括処理の完了情報を保存する。
+         * @param {object} data - 保存する処理状態または設定データ。
+         * @returns {void} 戻り値はない。
+         */
         setCompletionData(data) {
             sessionStorage.setItem(FEATURE_CONSTANTS.STORAGE_KEYS.COMPLETED_FLAG, 'true');
             sessionStorage.setItem(FEATURE_CONSTANTS.STORAGE_KEYS.COMPLETION_DATA, JSON.stringify(data));
         }
 
+        /**
+         * 教材一括処理の完了情報を読み出す。
+         * @returns {object|null} 保存された完了情報。なければnull。
+         */
         getCompletionData() {
             if (sessionStorage.getItem(FEATURE_CONSTANTS.STORAGE_KEYS.COMPLETED_FLAG) !== 'true') {
                 return null;
@@ -218,6 +256,10 @@
     // =========================================================================
 
     class PageDetector {
+        /**
+         * 現在のページが教材一覧か教材詳細か判定する。
+         * @returns {string} 現在の教材ページの種類。
+         */
         static detect() {
             const hasSrclForm = !!safeQuerySelector(FEATURE_CONSTANTS.SELECTORS.SRCL_FORM);
             const hasDetailTable = !!safeQuerySelector(FEATURE_CONSTANTS.SELECTORS.DETAIL_TABLE);
@@ -243,6 +285,12 @@
     // =========================================================================
 
     class MaterialParser {
+        /**
+         * 教材詳細のHTMLを取得し、開く対象の資料へ解析する。
+         * @param {string} kyozaiId - 対象教材のID。
+         * @param {string} kyozaiSyCd - 対象教材の種別コード。
+         * @returns {Promise<object[]>} 取得した教材に含まれる資料情報。
+         */
         static async fetchAndParseMaterials(kyozaiId, kyozaiSyCd) {
             const sid = getSid();
             if (!sid) {
@@ -274,6 +322,11 @@
             return this.parseFromHtml(html);
         }
 
+        /**
+         * 教材詳細HTMLからファイル・参照資料・外部リンクを取り出す。
+         * @param {string} html - 解析対象のHTMLまたはJSF部分応答。
+         * @returns {object[]} 教材HTMLから解析した資料情報。
+         */
         static parseFromHtml(html) {
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const materialsMap = new Map();
@@ -292,6 +345,10 @@
             return Array.from(materialsMap.values());
         }
 
+        /**
+         * 現在の教材詳細ページから一括操作の対象資料を取り出す。
+         * @returns {object[]} 表示中の教材詳細から解析した資料情報。
+         */
         static extractFromDetailPage() {
             const materialsMap = new Map();
             safeQuerySelectorAll(FEATURE_CONSTANTS.SELECTORS.DETAIL_TABLE_ROWS).forEach(row => {
@@ -307,6 +364,11 @@
             return Array.from(materialsMap.values());
         }
 
+        /**
+         * 教材の表の1行から資料情報を取り出す。
+         * @param {Element} row - 解析対象の表の行。
+         * @returns {object|null} 行から読み取った資料情報。対象外ならnull。
+         */
         static _extractMaterialFromTableRow(row) {
             const materialCell = safeQuerySelector(FEATURE_CONSTANTS.SELECTORS.DETAIL_MATERIAL_CELL, row);
             if (!materialCell) return null;
@@ -320,6 +382,11 @@
             return this._extractMaterialFromLink(link);
         }
 
+        /**
+         * 教材リンクから資料情報を取り出す。
+         * @param {HTMLElement} link - 対象のリンク要素。
+         * @returns {object|null} リンクから読み取った資料情報。対象外ならnull。
+         */
         static _extractMaterialFromLink(link) {
             const onclick = link.getAttribute('onclick') || '';
             const name = link.textContent.trim();
@@ -366,6 +433,11 @@
     // =========================================================================
 
     class Downloader {
+        /**
+         * 資料の種類に応じてダウンロードまたは参照先の表示を実行する。
+         * @param {object} material - 種類と送信情報を持つ教材の資料情報。
+         * @returns {Promise<boolean>} 資料の種類に対応する操作が成功した場合はtrue。
+         */
         static async processMaterial(material) {
             logDebug("教材処理開始:", material);
             try {
@@ -386,6 +458,12 @@
             }
         }
 
+        /**
+         * 教材ファイルのダウンロードを開始する。
+         * @param {string} fileId - 対象教材ファイルのID。
+         * @param {string} syosaiId - 教材詳細の識別子。
+         * @returns {boolean} 教材ファイルの送信を開始できた場合はtrue。
+         */
         static _downloadFile(fileId, syosaiId) {
             if (this._submitSrclForm(fileId, syosaiId, false)) {
                 logDebug("srcl_formでダウンロード:", fileId);
@@ -404,6 +482,12 @@
             return this._createIframeFormSubmit(fileId, syosaiId, false);
         }
 
+        /**
+         * 参照教材を指定された表示方式で開く。
+         * @param {string} fileId - 対象教材ファイルのID。
+         * @param {boolean} officeFlg - 参照教材の表示方式を指定するフラグ。
+         * @returns {boolean} 参照教材を開く送信を開始できた場合はtrue。
+         */
         static _openReference(fileId, officeFlg) {
             if (this._submitSrclForm(fileId, null, true, officeFlg)) {
                 logDebug("srcl_formで参照:", fileId);
@@ -422,6 +506,11 @@
             return this._createIframeFormSubmit(fileId, null, true, officeFlg);
         }
 
+        /**
+         * 外部教材のURLを開き、処理終了を待つ。
+         * @param {object} material - 種類と送信情報を持つ教材の資料情報。
+         * @returns {Promise<boolean>} 外部教材のアクセス記録が成功した場合はtrue。
+         */
         static _openExternal(material) {
             return new Promise((resolve) => {
                 try {
@@ -524,6 +613,14 @@
             }
         }
 
+        /**
+         * 教材の送信情報をiframe用フォームへ設定して送信する。
+         * @param {string} fileId - 対象教材ファイルのID。
+         * @param {string} syosaiId - 教材詳細の識別子。
+         * @param {boolean} isReference - 参照教材として送信するかどうか。
+         * @param {boolean} officeFlg - 参照教材の表示方式を指定するフラグ。
+         * @returns {boolean} フォーム送信を開始できた場合はtrue。
+         */
         static _createIframeFormSubmit(fileId, syosaiId, isReference, officeFlg) {
             const sid = getSid();
             if (!sid) return false;
@@ -573,6 +670,13 @@
     // =========================================================================
 
     class ActionHandler {
+        /**
+         * 教材一覧の一括操作を受け付け、対象資料の取得と処理を進める。
+         * @param {string} kyozaiId - 対象教材のID。
+         * @param {string} kyozaiSyCd - 対象教材の種別コード。
+         * @param {object} button - 操作するボタン、または解析済みのボタン情報。
+         * @returns {Promise<void>} 処理の完了を待つPromise。
+         */
         static async handleMainPageClick(kyozaiId, kyozaiSyCd, button) {
             const originalText = button.textContent;
             UIManager.updateButtonState(button, FEATURE_CONSTANTS.MESSAGES.FETCHING, true);
@@ -600,6 +704,11 @@
             }
         }
 
+        /**
+         * 教材詳細ページの一括操作を受け付ける。
+         * @param {object} button - 操作するボタン、または解析済みのボタン情報。
+         * @returns {Promise<void>} 処理の完了を待つPromise。
+         */
         static async handleDetailPageClick(button) {
             const originalText = button.textContent;
             UIManager.updateButtonState(button, FEATURE_CONSTANTS.MESSAGES.PROCESSING, true);
@@ -640,6 +749,10 @@
             }
         }
 
+        /**
+         * 保存された一括操作を読み取り、教材詳細ページで自動実行する。
+         * @returns {Promise<void>} 処理の完了を待つPromise。
+         */
         static async executeAutoDownload() {
             if (!state.isButtonTriggered()) {
                 logDebug("ボタン起因の遷移ではないため自動実行をスキップ");
@@ -698,6 +811,15 @@
             }
         }
 
+        /**
+         * 保存した処理状態を使って教材詳細へ移動し、一括操作を継続する。
+         * @param {string} kyozaiId - 対象教材のID。
+         * @param {string} kyozaiSyCd - 対象教材の種別コード。
+         * @param {object[]} materials - 一括操作する資料一覧。
+         * @param {object} button - 操作するボタン、または解析済みのボタン情報。
+         * @param {string} originalText - 処理終了後に復元するボタンの表示文。
+         * @returns {void} 戻り値はない。
+         */
         static _handleNavigationRequired(kyozaiId, kyozaiSyCd, materials, button, originalText) { // ★★★ 修正箇所 ★★★
             const externals = materials.filter(function(m) { return m.type === 'external'; });
         
@@ -728,6 +850,13 @@
             }, CONFIG.NAVIGATION_DELAY);
         }
 
+        /**
+         * 取得済みの資料を現在のページから順番に開く。
+         * @param {object[]} materials - 一括操作する資料一覧。
+         * @param {object} button - 操作するボタン、または解析済みのボタン情報。
+         * @param {string} originalText - 処理終了後に復元するボタンの表示文。
+         * @returns {Promise<void>} 処理の完了を待つPromise。
+         */
         static async _handleDirectOpening(materials, button, originalText) {
             if (materials.length === 0) {
                 UIManager.updateButtonState(button, originalText, false);
@@ -751,6 +880,12 @@
             UIManager.updateButtonState(button, originalText, false);
         }
 
+        /**
+         * 資料を順番に処理し、操作ボタンへ処理状況を反映する。
+         * @param {object[]} materials - 一括操作する資料一覧。
+         * @param {object} [button=null] - 操作するボタン、または解析済みのボタン情報。
+         * @returns {Promise<void>} 処理の完了を待つPromise。
+         */
         static async _processMaterialsInSequence(materials, button = null) {
             for (let i = 0; i < materials.length; i++) {
                 if (button) {
@@ -762,6 +897,12 @@
             }
         }
 
+        /**
+         * 直接取得できない場合に教材詳細ページへ移動する。
+         * @param {string} kyozaiId - 対象教材のID。
+         * @param {string} kyozaiSyCd - 対象教材の種別コード。
+         * @returns {void} 戻り値はない。
+         */
         static _navigateToDetailPageFallback(kyozaiId, kyozaiSyCd) {
             const form = safeQuerySelector(FEATURE_CONSTANTS.SELECTORS.MAIN_FORM);
             const sid = getSid();
@@ -786,6 +927,10 @@
     // =========================================================================
 
     class UIManager {
+        /**
+         * 教材一括操作のボタンと完了表示を初期化する。
+         * @returns {void} 戻り値はない。
+         */
         static initializeUI() {
             const pageType = PageDetector.detect();
             logDebug("ページ種別:", pageType);
@@ -800,6 +945,10 @@
             }
         }
 
+        /**
+         * 教材一覧に一括操作ボタンを追加する。
+         * @returns {void} 戻り値はない。
+         */
         static addBulkOpenButtons() {
             safeQuerySelectorAll(FEATURE_CONSTANTS.SELECTORS.MATERIAL_CELL).forEach(cell => {
                 try {
@@ -833,6 +982,10 @@
             });
         }
 
+        /**
+         * 教材詳細に一括操作ボタンを追加する。
+         * @returns {void} 戻り値はない。
+         */
         static addDetailPageButton() {
             if (safeQuerySelector('.' + FEATURE_CONSTANTS.CLASS_NAMES.DETAIL_BULK_BUTTON)) return;
 
@@ -854,6 +1007,10 @@
             }
         }
 
+        /**
+         * 保存された教材処理の完了情報を確認し、表示へ反映する。
+         * @returns {void} 戻り値はない。
+         */
         static checkForCompletion() {
             const completionData = state.getCompletionData();
             if (completionData) {
@@ -868,6 +1025,10 @@
             }
         }
 
+        /**
+         * 教材一覧のDOM変更を監視し、一括操作ボタンを追加する。
+         * @returns {void} 戻り値はない。
+         */
         static startObserver() {
             const observer = new MutationObserver(mutations => {
                 const hasRelevantChanges = mutations.some(m =>
@@ -889,6 +1050,13 @@
             });
         }
 
+        /**
+         * 教材一括操作の表示文・クラス・識別キーを持つボタンを作る。
+         * @param {string} text - 表示または照合する文字列。
+         * @param {string} className - 作成または更新する要素のCSSクラス。
+         * @param {string} [key=null] - 対象の課題・モジュール・操作を識別するキー。
+         * @returns {HTMLButtonElement} 作成した教材操作ボタン。
+         */
         static _createButton(text, className, key = null) {
             const button = document.createElement('button');
             button.textContent = text;
@@ -920,6 +1088,13 @@
             return button;
         }
 
+        /**
+         * 教材操作ボタンの表示文と操作可否を更新する。
+         * @param {object} button - 操作するボタン、または解析済みのボタン情報。
+         * @param {string} text - 表示または照合する文字列。
+         * @param {boolean} disabled - 機能または操作を停止するかどうか。
+         * @returns {void} 戻り値はない。
+         */
         static updateButtonState(button, text, disabled) {
             if (button) {
                 button.textContent = text;
@@ -935,6 +1110,10 @@
 
     const state = new StateManager();
 
+    /**
+     * 対象ページの要素と操作監視を初期化する。
+     * @returns {void} 戻り値はない。
+     */
     function initialize() {
         try {
             UIManager.initializeUI();

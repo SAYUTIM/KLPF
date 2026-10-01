@@ -3,6 +3,7 @@
 
 /**
  * @file LMSの自動ログアウトを防止する機能を提供する content script
+ * 拡張機能の隔離環境からページ側のスクリプトを注入し、セッション更新処理の呼び出しを委譲する。
  */
 
 (function() {
@@ -16,6 +17,10 @@
         return;
     }
 
+    /**
+     * ページ側のログアウト制御を呼ぶスクリプトを注入する。
+     * @returns {void} 戻り値はない。
+     */
     function injectPageWorldScript() {
         if (document.getElementById(PAGE_WORLD_SCRIPT_ID)) {
             return;

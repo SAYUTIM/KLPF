@@ -4,8 +4,14 @@
 /**
  * @file TOTP (Time-based One-Time Password) 生成モジュール
  * RFC 6238 準拠の実装
+ * Base32の秘密鍵と現在時刻からWeb Crypto APIでTOTPを生成し、共通の名前空間へ公開する。
  */
 
+/**
+ * Base32の秘密鍵をバイト列へ変換する。空白・区切り文字・末尾のパディングは除く。
+ * @param {string} encoded - Base32形式の秘密鍵。
+ * @returns {Uint8Array|null} 復号したバイト列。空文字列または不正な文字を含む場合はnull。
+ */
 function base32Decode(encoded) {
     const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     const cleaned = encoded.replace(/[\s=\-]+/g, '').toUpperCase();
@@ -35,7 +41,11 @@ function base32Decode(encoded) {
 /**
  * TOTPコードを生成する。
  * @param {string} secret - Base32秘密鍵
- * @param {Object} options - オプション (period, digits, algorithm)
+ * @param {object} [options={}] - コードの生成条件。
+ * @param {number} [options.period=30] - コードが切り替わる間隔（秒）。
+ * @param {number} [options.digits=6] - 生成するコードの桁数。
+ * @param {string} [options.algorithm='SHA-1'] - HMACに使用するハッシュアルゴリズム。
+ * @returns {Promise<string|null>} 指定桁数のコード。秘密鍵や暗号処理が無効な場合はnull。
  */
 async function generateTOTP(secret, { period = 30, digits = 6, algorithm = 'SHA-1' } = {}) {
     try {

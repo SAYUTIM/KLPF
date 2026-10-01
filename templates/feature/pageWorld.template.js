@@ -14,6 +14,11 @@
 
     const EVENT_NAME = 'klpf-todo-event-name';
 
+    /**
+     * ページ側で受け取ったイベントの情報を処理する。
+     * @param {object} detail - ページ側の出席操作または通知に渡す情報。
+     * @returns {void} 戻り値はない。
+     */
     function handleEvent(detail) {
         // TODO: ページ関数を使う処理を書く
         void detail;

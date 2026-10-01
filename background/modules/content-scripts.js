@@ -16,6 +16,11 @@ export const CONTENT_SCRIPT_BY_STORAGE_KEY = new Map(
     CONTENT_SCRIPTS_CONFIG.map(config => [config.storageKey, config]),
 );
 
+/**
+ * 機能定義をChromeのコンテンツスクリプト登録形式へ変換する。
+ * @param {object} config - 機能または設定項目の定義。
+ * @returns {object} Chromeの登録APIへ渡すID・ファイル・URL・実行時点。
+ */
 function createRegistration(config) {
     const registration = {
         id: config.id,
@@ -27,6 +32,12 @@ function createRegistration(config) {
     return registration;
 }
 
+/**
+ * 登録済みスクリプトと期待する注入ファイル・URL・実行時点が等しいか判定する。
+ * @param {object} current - 現在登録されているコンテンツスクリプト情報。
+ * @param {object} expected - 機能定義から作成した期待するスクリプト登録。
+ * @returns {boolean} 条件を満たす場合はtrue。
+ */
 function hasSameRegistration(current, expected) {
     return current.id === expected.id
         && current.runAt === expected.runAt
@@ -67,6 +78,10 @@ export async function unregisterContentScript(scriptId) {
     }
 }
 
+/**
+ * 既存の講義フィルター設定を保ったまま自動絞り込みを有効にする。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 export async function enableAutomaticSubjectFilter() {
     const result = await chrome.storage.local.get(SUBJECT_FILTER_STORAGE_KEY);
     let settings = {};
@@ -86,6 +101,11 @@ export async function enableAutomaticSubjectFilter() {
     });
 }
 
+/**
+ * 自動出席の設定に合わせて依存するMeet機能の登録を切り替える。
+ * @param {boolean} isEnabled - 依存機能を有効にするかどうか。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 export async function applyAutoAttendDependency(isEnabled) {
     const meetConfig = CONTENT_SCRIPT_BY_STORAGE_KEY.get('autoMeet');
     if (!meetConfig) return;

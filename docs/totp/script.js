@@ -3,6 +3,7 @@
 
 /**
  * @file TOTP秘密鍵の設定ガイドで、スクロール表示と目次状態を管理する。
+ * 公開ガイドのDOMからページ内移動とスクロール進捗を更新する。認証情報の取り込みは行わない。
  */
 
 (() => {
@@ -16,6 +17,11 @@
     const SCROLL_DURATION_MS = 650;
     let scrollAnimationFrame = null;
 
+    /**
+     * スクロール位置を指定した座標までアニメーションで移動する。
+     * @param {number} targetTop - 移動先のページ先頭からのスクロール位置。
+     * @returns {void} 戻り値はない。
+     */
     function smoothScrollTo(targetTop) {
         if (scrollAnimationFrame !== null) cancelAnimationFrame(scrollAnimationFrame);
 
@@ -23,6 +29,11 @@
         const distance = targetTop - startTop;
         const startTime = performance.now();
 
+        /**
+         * 経過時間に応じてスクロール位置を更新し、次の描画を予約する。
+         * @param {number} now - 経過時間や期限の判定に使う現在時刻。
+         * @returns {void} 戻り値はない。
+         */
         function animateScroll(now) {
             const progress = Math.min(1, (now - startTime) / SCROLL_DURATION_MS);
             const easedProgress = 1 - Math.pow(1 - progress, 3);
@@ -38,6 +49,11 @@
         scrollAnimationFrame = requestAnimationFrame(animateScroll);
     }
 
+    /**
+     * 要素のページ先頭からの位置を取得する。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {number} ページ先頭からの要素位置（ピクセル）。
+     */
     function getDocumentTop(element) {
         let top = 0;
         let current = element;
@@ -64,6 +80,10 @@
         });
     });
 
+    /**
+     * ページのスクロール量を進捗表示へ反映する。
+     * @returns {void} 戻り値はない。
+     */
     function updateProgress() {
         const available = document.documentElement.scrollHeight - window.innerHeight;
         const ratio = available > 0 ? Math.min(1, window.scrollY / available) : 0;

@@ -3,6 +3,8 @@
 
 /**
  * @file ホーム画面の科目カードに出席バッジを表示するモジュール
+ * ホームの講義フォームを直列に取得して出席ボタンを検出し、短期キャッシュからバッジを復元する。
+ * ページ側のダイアログ呼び出しはpageWorld/homeAttendanceへ委譲し、講義・課題への遷移時は通信を調整する。
  */
 
 (function() {
@@ -38,10 +40,18 @@
     let courseNavigationInProgress = false;
     const pendingHomeworkNavigationRequests = new Set();
 
+    /**
+     * 課題画面への遷移要求が待機中か判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isHomeworkNavigationPending() {
         return document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG] === 'true';
     }
 
+    /**
+     * 出席確認の通信終了を待つ課題機能へ遷移可能になったことを通知する。
+     * @returns {void} 戻り値はない。
+     */
     function notifyHomeworkNavigationReady() {
         for (const requestId of pendingHomeworkNavigationRequests) {
             document.dispatchEvent(new CustomEvent(HOMEWORK_NAVIGATION_READY_EVENT, {
@@ -51,6 +61,11 @@
         pendingHomeworkNavigationRequests.clear();
     }
 
+    /**
+     * 課題画面への遷移要求を記録し、出席確認との競合を調整する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleHomeworkNavigationRequest(event) {
         const requestId = event.detail?.requestId;
         if (!requestId) return;
@@ -66,6 +81,10 @@
     document.documentElement.dataset[ATTENDANCE_READY_FLAG] = 'true';
     document.addEventListener(HOMEWORK_NAVIGATION_REQUEST_EVENT, handleHomeworkNavigationRequest);
 
+    /**
+     * 実行中のホーム出席確認が終了または中断するまで待つ。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function waitForActiveProbeToSettle() {
         if (!activeProbePromise) return;
 
@@ -76,6 +95,11 @@
         }
     }
 
+    /**
+     * 講義フォームへ科目IDを設定し、対象の講義へ遷移する。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @returns {void} 戻り値はない。
+     */
     function submitCourseNavigation(courseId) {
         const homeForm = safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
         if (!homeForm) {
@@ -94,6 +118,11 @@
         homeForm.submit();
     }
 
+    /**
+     * 出席確認の通信終了を待ってから対象の講義へ遷移する。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function navigateToCourse(courseId) {
         if (courseNavigationInProgress) return;
 
@@ -109,6 +138,11 @@
         }
     }
 
+    /**
+     * 講義リンクへのポインター操作を検知して自動確認を中断する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleCourseNavigationPointerDown(event) {
         if (!(event.target instanceof Element) || event.target.closest(`.${BADGE_CLASS}`)) {
             return;
@@ -118,6 +152,11 @@
         }
     }
 
+    /**
+     * 講義リンクのクリックを受け付け、通信終了後の遷移へ切り替える。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleCourseNavigationClick(event) {
         if (!(event.target instanceof Element)) return;
         if (event.target.closest(`.${BADGE_CLASS}`)) return;
@@ -136,6 +175,10 @@
     document.addEventListener('pointerdown', handleCourseNavigationPointerDown, true);
     document.addEventListener('click', handleCourseNavigationClick, true);
 
+    /**
+     * 現在のURLが対象のKU-LMSホームか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isHomePage() {
         return window.location.href.startsWith(LMS_HOME_URL)
             || window.location.href.startsWith(LMS_HOME_BACK_URL)
@@ -145,12 +188,21 @@
             || !!safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
     }
 
+    /**
+     * 講義リンクの送信処理から科目IDを取り出す。
+     * @param {HTMLElement} link - 対象のリンク要素。
+     * @returns {string|null} 講義リンクに設定された科目ID。読み取れなければnull。
+     */
     function extractCourseId(link) {
         const onclick = link?.getAttribute('onclick') || '';
         const match = onclick.match(/formSubmit\s*\(\s*'([^']+)'\s*\)/);
         return match ? match[1] : null;
     }
 
+    /**
+     * 授業カードと科目ID・リンクの組を列挙する。
+     * @returns {object[]} 科目IDとカード・リンクの対応一覧。
+     */
     function collectCourseEntries() {
         const entries = new Map();
 
@@ -169,6 +221,11 @@
         return Array.from(entries.values());
     }
 
+    /**
+     * フォームの送信先から講義画面を取得するURLを組み立てる。
+     * @param {string} formAction - 講義フォームの送信先。
+     * @returns {string} 講義画面を取得する絶対URL。
+     */
     function buildLinkKougiUrl(formAction) {
         const actionUrl = new URL(formAction);
         const sidPart = actionUrl.pathname.match(/;SID=.*$/)?.[0] || '';
@@ -177,6 +234,10 @@
 
     // ---- キャッシュ / 出席判定 ----
 
+    /**
+     * ホームの出席ボタン検出結果を保存先から読み出す。
+     * @returns {object|null} 保存された検出結果。読み込みに失敗した場合はnull。
+     */
     function readCache() {
         try {
             const raw = sessionStorage.getItem(CACHE_KEY);
@@ -194,6 +255,13 @@
         }
     }
 
+    /**
+     * 対象科目と出席ボタンの検出結果を時刻付きで保存する。
+     * @param {string} linkKougiUrl - 講義画面を取得する送信先URL。
+     * @param {string[]} courseIds - 確認対象の科目ID一覧。
+     * @param {string[]} detectedCourseIds - 出席ボタンが検出された科目ID一覧。
+     * @returns {void} 戻り値はない。
+     */
     function writeCache(linkKougiUrl, courseIds, detectedCourseIds) {
         try {
             sessionStorage.setItem(CACHE_KEY, JSON.stringify({
@@ -207,6 +275,12 @@
         }
     }
 
+    /**
+     * 対象URL・科目一覧・有効期限が一致する出席ボタン検出結果を取り出す。
+     * @param {string} linkKougiUrl - 講義画面を取得する送信先URL。
+     * @param {string[]} courseIds - 確認対象の科目ID一覧。
+     * @returns {string[]|null} 有効な検出結果の科目ID。キャッシュを使えなければnull。
+     */
     function getCachedDetectedCourseIds(linkKougiUrl, courseIds) {
         const cache = readCache();
         if (!cache) return null;
@@ -215,6 +289,10 @@
         return cache.detectedCourseIds;
     }
 
+    /**
+     * 実行中のホーム出席確認を中断する。
+     * @returns {void} 戻り値はない。
+     */
     function abortActiveProbe() {
         if (activeProbeController) {
             activeProbeController.abort();
@@ -222,11 +300,20 @@
         }
     }
 
+    /**
+     * ユーザー操作を記録し、自動の出席確認を停止する。
+     * @returns {void} 戻り値はない。
+     */
     function markUserInteraction() {
         hasUserInteracted = true;
         abortActiveProbe();
     }
 
+    /**
+     * ユーザー操作が始まった場合に自動確認を中断するイベントを登録する。
+     * @param {HTMLFormElement} homeForm - KU-LMSホームの講義操作用フォーム。
+     * @returns {void} 戻り値はない。
+     */
     function setupAbortOnUserInteraction(homeForm) {
         if (hasAbortListenersBound) {
             return;
@@ -237,6 +324,12 @@
         hasAbortListenersBound = true;
     }
 
+    /**
+     * 講義フォームの送信情報に対象科目IDを加え、確認用のPOST本文を作る。
+     * @param {object} formFields - フォームから読み取った送信フィールド。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @returns {string} 対象科目を設定したURLエンコード済みの送信本文。
+     */
     function buildRequestBody(formFields, courseId) {
         const params = new URLSearchParams();
         const mergedFields = { ...formFields, kougiId: courseId };
@@ -252,6 +345,11 @@
         return params.toString();
     }
 
+    /**
+     * ホームのフォームから出席ボタン確認用のURLと送信フィールドを作る。
+     * @param {HTMLFormElement} homeForm - KU-LMSホームの講義操作用フォーム。
+     * @returns {object} 講義画面のURLと送信フィールド。
+     */
     function buildProbeContext(homeForm) {
         return {
             formFields: globalThis.KLPFFormUtils.serializeFormObject(homeForm),
@@ -261,6 +359,10 @@
 
     // ---- UI / クリック / ポップアップ ----
 
+    /**
+     * 機能の表示に必要なスタイルをページへ追加する。
+     * @returns {void} 戻り値はない。
+     */
     function injectStyles() {
         ensureStyleElement(STYLE_ID, `
             .${CARD_INFO_CLASS} {
@@ -303,6 +405,10 @@
         `);
     }
 
+    /**
+     * ページ固有の出席ダイアログ関数を呼ぶブリッジを注入する。
+     * @returns {void} 戻り値はない。
+     */
     function injectPageBridge() {
         if (document.getElementById(PAGE_BRIDGE_SCRIPT_ID)) {
             return;
@@ -315,6 +421,11 @@
         (document.head || document.documentElement).appendChild(script);
     }
 
+    /**
+     * 出席ダイアログを開くためのフォーム情報を作る。
+     * @param {HTMLFormElement} homeForm - KU-LMSホームの講義操作用フォーム。
+     * @returns {object} 出席ポップアップへ渡すフォームと要素の識別情報。
+     */
     function buildPopupDetail(homeForm) {
         const sid = homeForm.action.match(/;SID=[^/?#]*/)?.[0] || `;SID=${getSid() || ''}`;
         return {
@@ -326,12 +437,24 @@
         };
     }
 
+    /**
+     * ページ側ブリッジへ出席ダイアログの表示を依頼する。
+     * @param {HTMLFormElement} homeForm - KU-LMSホームの講義操作用フォーム。
+     * @returns {void} 戻り値はない。
+     */
     function openAttendancePopupViaPage(homeForm) {
         document.dispatchEvent(new CustomEvent(OPEN_POPUP_EVENT_NAME, {
             detail: buildPopupDetail(homeForm),
         }));
     }
 
+    /**
+     * 対象科目のフォーム状態を現在の出席操作へ設定する。
+     * @param {string} linkKougiUrl - 講義画面を取得する送信先URL。
+     * @param {object} formFields - フォームから読み取った送信フィールド。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function setCurrentCourseContext(linkKougiUrl, formFields, courseId) {
         const response = await fetch(linkKougiUrl, {
             method: 'POST',
@@ -351,6 +474,12 @@
         await response.text();
     }
 
+    /**
+     * 対象科目の画面情報を用意し、出席ダイアログを表示する。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @param {HTMLElement} badge - 対象カードの出席バッジ。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function openAttendancePopupForCourse(courseId, badge) {
         const homeForm = safeQuerySelector(HOME_MAIN_FORM_SELECTOR);
         if (!homeForm) {
@@ -369,6 +498,12 @@
         }
     }
 
+    /**
+     * 対象科目の出席ダイアログ表示を試し、結果に応じてバッジを更新する。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @param {HTMLElement} badge - 対象カードの出席バッジ。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function tryOpenAttendancePopup(courseId, badge) {
         try {
             await openAttendancePopupForCourse(courseId, badge);
@@ -377,6 +512,12 @@
         }
     }
 
+    /**
+     * ポインター操作が指定要素の範囲内か判定する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isEventInsideElement(event, element) {
         const rect = element.getBoundingClientRect();
         return event.clientX >= rect.left
@@ -385,6 +526,11 @@
             && event.clientY <= rect.bottom;
     }
 
+    /**
+     * カード内の出席バッジ操作が講義への遷移を引き起こさないよう処理する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleCardBadgeInteraction(event) {
         const card = event.currentTarget;
         if (!(card instanceof HTMLElement)) {
@@ -412,6 +558,11 @@
         void tryOpenAttendancePopup(courseId, badge);
     }
 
+    /**
+     * カード内の出席バッジ操作を捕捉するイベントを登録する。
+     * @param {HTMLElement} card - 対象授業のカード要素。
+     * @returns {void} 戻り値はない。
+     */
     function setupCardBadgeInterception(card) {
         if (card.dataset.klpfAttendanceInterceptBound === 'true') {
             return;
@@ -422,12 +573,23 @@
         card.dataset.klpfAttendanceInterceptBound = 'true';
     }
 
+    /**
+     * 出席バッジのポインター操作を捕捉し、カード側への伝播を制御する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleAttendanceBadgePointerDown(event) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
     }
 
+    /**
+     * 出席バッジのクリックから対象科目の出席ダイアログを開く。
+     * @param {Event} event - 操作または通知のイベント。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @returns {void} 戻り値はない。
+     */
     function handleAttendanceBadgeClick(event, courseId) {
         event.preventDefault();
         event.stopPropagation();
@@ -441,6 +603,11 @@
         void tryOpenAttendancePopup(courseId, badge);
     }
 
+    /**
+     * 取得した講義HTMLに出席ボタンが含まれるか判定する。
+     * @param {string} htmlText - 解析対象のHTML文字列。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function hasAttendanceButton(htmlText) {
         const doc = new DOMParser().parseFromString(htmlText, 'text/html');
         const buttons = Array.from(doc.querySelectorAll('input[value="出席"]'));
@@ -451,6 +618,14 @@
         });
     }
 
+    /**
+     * 対象科目の講義HTMLを取得し、出席ボタンの有無を調べる。
+     * @param {string} linkKougiUrl - 講義画面を取得する送信先URL。
+     * @param {object} formFields - フォームから読み取った送信フィールド。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @param {AbortSignal} signal - 取得の中断を通知するシグナル。
+     * @returns {Promise<boolean>} 対象科目に出席ボタンがある場合はtrue。
+     */
     async function probeCourseAttendance(linkKougiUrl, formFields, courseId, signal) {
         const response = await fetch(linkKougiUrl, {
             method: 'POST',
@@ -474,11 +649,25 @@
         return hasAttendance;
     }
 
+    /**
+     * 指定した同時実行数で科目を確認し、出席ボタンの検出結果をまとめる。
+     * @param {string} linkKougiUrl - 講義画面を取得する送信先URL。
+     * @param {object} formFields - フォームから読み取った送信フィールド。
+     * @param {string[]} courseIds - 確認対象の科目ID一覧。
+     * @param {number} concurrency - 科目確認を同時に行う上限数。
+     * @param {AbortSignal} signal - 取得の中断を通知するシグナル。
+     * @param {Function} onResult - 科目ごとの確認結果を受け取る処理。
+     * @returns {Promise<string[]>} 出席ボタンが検出された科目ID。
+     */
     async function probeAttendances(linkKougiUrl, formFields, courseIds, concurrency, signal, onResult) {
         const queue = [...courseIds];
         const detectedCourseIds = [];
         const workerCount = Math.min(concurrency, queue.length);
 
+        /**
+         * 未処理の科目を順番に受け取り、出席ボタンの確認結果を通知する。
+         * @returns {Promise<void>} 処理の完了を待つPromise。
+         */
         async function worker() {
             while (queue.length > 0) {
                 if (signal?.aborted || hasUserInteracted || isHomeworkNavigationPending()) return;
@@ -509,6 +698,13 @@
         return detectedCourseIds;
     }
 
+    /**
+     * 授業カードに対象科目の出席バッジを用意する。
+     * @param {HTMLElement} card - 対象授業のカード要素。
+     * @param {HTMLElement} courseInfo - 授業カード内の出席バッジ配置先。
+     * @param {string} courseId - KU-LMSの科目ID。
+     * @returns {HTMLElement} 対象カードに用意した出席バッジ。
+     */
     function ensureBadge(card, courseInfo, courseId) {
         let badge = safeQuerySelector(`.${BADGE_CLASS}`, courseInfo);
         if (badge) return badge;
@@ -527,6 +723,11 @@
         return badge;
     }
 
+    /**
+     * 対象カードの出席バッジと操作用の情報を取り除く。
+     * @param {HTMLElement} courseInfo - 授業カード内の出席バッジ配置先。
+     * @returns {void} 戻り値はない。
+     */
     function cleanupBadge(courseInfo) {
         const badge = safeQuerySelector(`.${BADGE_CLASS}`, courseInfo);
         if (badge) {
@@ -535,6 +736,11 @@
         courseInfo.classList.remove(CARD_INFO_CLASS);
     }
 
+    /**
+     * 指定したカードの出席バッジを表示する。
+     * @param {Element[]} targets - 出席バッジの表示を切り替える要素一覧。
+     * @returns {void} 戻り値はない。
+     */
     function showAttendanceBadge(targets) {
         targets.forEach(({ card, courseInfo }) => {
             const courseId = card.dataset.klpfCourseId || '';
@@ -543,6 +749,11 @@
         });
     }
 
+    /**
+     * 指定したカードの出席バッジを非表示にする。
+     * @param {Element[]} targets - 出席バッジの表示を切り替える要素一覧。
+     * @returns {void} 戻り値はない。
+     */
     function hideAttendanceBadge(targets) {
         targets.forEach(({ card, courseInfo }) => {
             cleanupBadge(courseInfo);
@@ -550,6 +761,12 @@
         });
     }
 
+    /**
+     * 出席ボタンの検出結果をカードのバッジ表示へ反映する。
+     * @param {object} entry - 対象授業のカード・科目ID・表示情報。
+     * @param {boolean} hasAttendance - 対象科目に出席ボタンが存在するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     function applyAttendanceState(entry, hasAttendance) {
         entry.targets.forEach(({ card }) => {
             card.dataset.klpfCourseId = entry.courseId;
@@ -561,6 +778,10 @@
         }
     }
 
+    /**
+     * 設定と対象ページを確認し、機能の初期化を開始する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function main() {
         if (!isHomePage() || isHomeworkNavigationPending()) return;
 

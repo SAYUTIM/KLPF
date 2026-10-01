@@ -3,6 +3,7 @@
 
 /**
  * @file LMSにダークモードのスタイルを適用
+ * KU-LMSのDOMへダークモード用スタイルを追加するコンテンツスクリプトとして実行する。
  */
 (function() {
     'use strict';
@@ -343,6 +344,10 @@ table.cs_table5 th {
     `;
 
     // スタイルをDOMの<head>に注入する。
+    /**
+     * ダークモード用のスタイルをページへ適用する。
+     * @returns {void} 戻り値はない。
+     */
     function applyDarkMode() {
         if (document.getElementById(STYLE_ID)) return;
 

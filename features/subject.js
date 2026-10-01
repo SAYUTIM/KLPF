@@ -3,6 +3,8 @@
 
 /**
  * @file 講義一覧ページのフィルタリング保存と現在の講義のハイライト機能
+ * DOMの講義検索条件とlocalストレージを使い、ページ内の絞り込みと検索条件の復元を行う。
+ * 曜日・時刻・学期による強調表示はタイマーで更新する。
  */
 
 (function() {
@@ -32,6 +34,10 @@
         return;
     }
 
+    /**
+     * 機能の表示に必要なスタイルをページへ追加する。
+     * @returns {void} 戻り値はない。
+     */
     function injectStyles() {
         ensureStyleElement(STYLE_ID, `
             .lms-weekly-area { visibility: hidden; }
@@ -64,6 +70,12 @@
         `);
     }
 
+    /**
+     * 講義検索フォームから学期・曜日・時限などのフィルター設定を読み取る。
+     * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+     * @param {boolean} [normalizeSearchText=false] - 検索文字列の表記もそろえるかどうか。
+     * @returns {object} 学期・曜日・時限・科目名・教員名と自動絞り込み状態。
+     */
     function readFilterSettings(form, normalizeSearchText = false) {
         const normalize = (value) => normalizeSearchText ? value.toLowerCase() : value;
         return {
@@ -76,6 +88,10 @@
         };
     }
 
+    /**
+     * 保存された設定を読み取り、機能内の状態へ反映する。
+     * @returns {Promise<object>} 保存された講義フィルター設定。読み取れなければ空オブジェクト。
+     */
     async function loadSettings() {
         try {
             const result = await chrome.storage.local.get(SUBJECT_FILTER_STORAGE_KEY);
@@ -101,11 +117,21 @@
         }
     }
 
+    /**
+     * 講義検索フォームの条件を保存する。
+     * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+     * @returns {void} 戻り値はない。
+     */
     function saveSettings(form) {
         const settings = readFilterSettings(form);
         chrome.storage.local.set({ [SUBJECT_FILTER_STORAGE_KEY]: JSON.stringify(settings) });
     }
 
+    /**
+     * 授業カードから科目名・教員名・曜日・時限・学期を取り出す。
+     * @param {HTMLElement} card - 対象授業のカード要素。
+     * @returns {object} カードの科目名・教員名・曜日・時限・学期。
+     */
     function extractCardInfo(card) {
         const infoText = (safeQuerySelector('.courseCardInfo', card)?.textContent || '').replace(/\s+/g, ' ');
         const match = infoText.match(/(\d+)限(.*)/);
@@ -123,6 +149,11 @@
         };
     }
 
+    /**
+     * 検索ボタンに付ける自動絞り込みの案内要素を用意する。
+     * @param {HTMLElement} searchButton - 自動絞り込みの案内を付ける検索ボタン。
+     * @returns {HTMLElement} 検索ボタンに付ける説明要素。
+     */
     function getSearchButtonNotice(searchButton) {
         let notice = document.getElementById('klpfSearchButtonNotice');
         if (notice) return notice;
@@ -138,6 +169,11 @@
         return notice;
     }
 
+    /**
+     * 自動絞り込みの状態に合わせて検索ボタンの操作可否を切り替える。
+     * @param {boolean} isAutoActive - 自動絞り込みが有効かどうか。
+     * @returns {void} 戻り値はない。
+     */
     function setSearchButtonDisabled(isAutoActive) {
         const searchButton = safeQuerySelector('button[onclick="submitSearch();"]');
         if (searchButton) {
@@ -157,6 +193,11 @@
         }
     }
 
+    /**
+     * 月を4月始まりのクォーターへ変換する。
+     * @param {number} [month] - クォーターを判定する月（1〜12）。
+     * @returns {number} 月に対応する1〜4Qの番号。
+     */
     function getCurrentQuarter(month = new Date().getMonth() + 1) {
         if (month >= 4 && month <= 5) return 1;
         if (month >= 6 && month <= 7) return 2;
@@ -164,6 +205,12 @@
         return 4;
     }
 
+    /**
+     * 学期表記が指定クォーターに対応するか判定する。
+     * @param {string} semesterText - 授業カードの学期表記。
+     * @param {number} [quarter] - 判定対象のクォーター番号。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function isCurrentSemester(semesterText, quarter = getCurrentQuarter()) {
         const termsByQuarter = [
             ['1Q', '前期', '通年'],
@@ -177,6 +224,11 @@
             || termsByQuarter[quarter - 1].some(term => semesterText.includes(term));
     }
 
+    /**
+     * フォームの条件を使い、ページ上の授業カードを絞り込む。
+     * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+     * @returns {void} 戻り値はない。
+     */
     function applyClientSideFilter(form) {
         const settings = readFilterSettings(form, true);
 
@@ -211,6 +263,10 @@
         });
     }
 
+    /**
+     * 現在の曜日・時刻・学期に合う授業カードを強調表示する。
+     * @returns {void} 戻り値はない。
+     */
     function highlightCurrentClass() {
         safeQuerySelectorAll(`.${SUBJECT_HIGHLIGHT_CLASS}`).forEach(card => card.classList.remove(SUBJECT_HIGHLIGHT_CLASS));
 
@@ -238,6 +294,11 @@
         });
     }
 
+    /**
+     * 自動絞り込みの設定用チェックボックスを追加する。
+     * @param {HTMLElement} targetCell - 自動絞り込みのチェックボックスを配置するセル。
+     * @returns {void} 戻り値はない。
+     */
     function addAutoFilterCheckbox(targetCell) {
         if (document.querySelector(SELECTORS.autoFilter)) return;
 
@@ -267,6 +328,11 @@
         targetCell.prepend(container);
     }
 
+    /**
+     * 検索フォームの入力変更と自動絞り込み操作を登録する。
+     * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+     * @returns {void} 戻り値はない。
+     */
     function setupEventListeners(form) {
         const searchButton = form.querySelector('button[onclick="submitSearch();"]');
         if (searchButton) {
@@ -302,6 +368,12 @@
         }
     }
 
+    /**
+     * 保存された講義検索条件をフォームへ反映する。
+     * @param {HTMLFormElement} form - 読み取りまたは送信の対象フォーム。
+     * @param {object} savedSettings - 保存済みの講義検索条件。
+     * @returns {void} 戻り値はない。
+     */
     function applySavedSettings(form, savedSettings) {
         if (Object.keys(savedSettings).length === 0) return;
 
@@ -317,12 +389,20 @@
         });
     }
 
+    /**
+     * 現在の授業を強調する定期更新を停止する。
+     * @returns {void} 戻り値はない。
+     */
     function stopHighlightTimer() {
         if (!highlightIntervalId) return;
         clearInterval(highlightIntervalId);
         highlightIntervalId = null;
     }
 
+    /**
+     * 設定と対象ページを確認し、機能の初期化を開始する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function main() {
         const form = safeQuerySelector('#homeHomlForm');
         const weeklyArea = safeQuerySelector('.lms-weekly-area');

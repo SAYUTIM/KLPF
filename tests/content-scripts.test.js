@@ -11,6 +11,11 @@ import { JSDOM } from 'jsdom';
 import { CONTENT_SCRIPTS_CONFIG } from '../scripts.config.js';
 import { SETTINGS_CONFIG, getSettingsStorageKeys } from '../setting/modules/settings.js';
 
+/**
+ * スクリプト登録操作を記録するテスト用Chrome APIを作る。
+ * @param {object[]} [initialRegistrations] - テスト開始時のスクリプト登録一覧。
+ * @returns {object} 登録・解除などの呼び出しを記録するChrome APIの模擬環境。
+ */
 function createChromeMock(initialRegistrations = []) {
     const registrations = new Map(initialRegistrations.map(item => [item.id, item]));
     const calls = { registered: [], unregistered: [] };

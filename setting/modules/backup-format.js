@@ -9,6 +9,11 @@
 export const EXPORT_APP_NAME = 'KLPF';
 export const EXPORT_SCHEMA_VERSION = 1;
 
+/**
+ * 値がnullや配列ではないオブジェクトか判定する。
+ * @param {*} value - 検証・変換する入力値。
+ * @returns {boolean} 条件を満たす場合はtrue。
+ */
 export function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

@@ -3,7 +3,9 @@
 /**
  * @file jsdomとChrome APIの模擬環境でKU-LMS側のシラバス操作を検証する。
  * カードへのボタン配置、メッセージ処理、表示年度などを検査し、実サイトには接続しない。
- */import assert from 'node:assert/strict';
+ */
+
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';

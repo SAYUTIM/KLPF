@@ -3,6 +3,7 @@
 
 /**
  * @file KU-LMSホームのヘッダーへ、一日一回だけ更新通知を表示する。
+ * Service Workerへ日次の通知権を問い合わせ、ヘッダーの余白に応じて更新案内をDOMへ追加する。
  */
 
 (function initializeLmsUpdateNotice() {
@@ -19,6 +20,12 @@
     const NOTICE_DISPLAY_DURATION_MS = 20000;
     const NOTICE_FADE_DURATION_MS = 520;
 
+    /**
+     * 更新通知を置くためのヘッダー幅が足りるか判定する。
+     * @param {HTMLElement} header - 更新通知を配置するヘッダー要素。
+     * @param {HTMLElement} hamburgerMenu - ヘッダー内で通知の余白を確保するメニュー要素。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     function hasEnoughHeaderSpace(header, hamburgerMenu) {
         const headerTitle = header.querySelector(HEADER_TITLE_SELECTOR);
         if (!headerTitle) return false;
@@ -27,6 +34,10 @@
         return menuRect.left - titleRect.right >= MINIMUM_NOTICE_SPACE_PX;
     }
 
+    /**
+     * 更新通知の表示スタイルを重複なく追加する。
+     * @returns {void} 戻り値はない。
+     */
     function injectNoticeStyles() {
         if (document.getElementById(STYLE_ID)) return;
         const style = document.createElement('style');
@@ -176,6 +187,11 @@
         (document.head || document.documentElement).appendChild(style);
     }
 
+    /**
+     * 最新バージョンの案内とリンクを持つ更新通知要素を作る。
+     * @param {string} version - 案内する最新バージョン。
+     * @returns {HTMLElement} バージョンの案内とリンクを持つ更新通知。
+     */
     function createUpdateNotice(version) {
         const notice = document.createElement('a');
         notice.id = NOTICE_ID;
@@ -222,6 +238,10 @@
         return notice;
     }
 
+    /**
+     * 設定と対象ページを確認し、機能の初期化を開始する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function main() {
         if (document.getElementById(NOTICE_ID)) return;
         const hamburgerMenu = await waitForElement(HAMBURGER_SELECTOR, document, 8000);

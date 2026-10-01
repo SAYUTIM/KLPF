@@ -3,16 +3,27 @@
 
 /**
  * @file 自動出席機能を担当するモジュール
+ * 保存された授業・曜日時限・出席操作の設定を読み、タイマーとDOM操作で出席処理を補助する。
  */
 
 let autoAttendIntervalId = null;
 
+/**
+ * 自動出席の定期確認を停止する。
+ * @returns {void} 戻り値はない。
+ */
 function stopAutoAttendPolling() {
     if (!autoAttendIntervalId) return;
     clearInterval(autoAttendIntervalId);
     autoAttendIntervalId = null;
 }
 
+/**
+ * 保存設定に従って自動出席の定期確認を開始する。
+ * @param {object} settings - 保存された機能設定。
+ * @param {object} state - 機能内で共有する現在の状態。
+ * @returns {void} 戻り値はない。
+ */
 function startAutoAttendPolling(settings, state) {
     stopAutoAttendPolling();
     autoAttendIntervalId = setInterval(() => {
@@ -63,19 +74,64 @@ class AttendState {
         return counter > this.RETRY_LIMIT;
     }
 
+    /**
+     * 現在の自動出席で再読み込み済みか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     isReloaded() { return this._isFlagSet(ATTEND_RELOAD_FLAG); }
+    /**
+     * 自動出席の再読み込み済み状態を保存する。
+     * @param {boolean} value - 対応する操作を完了済みとして記録するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     setReloaded(value) { this._setFlag(ATTEND_RELOAD_FLAG, value); }
 
+    /**
+     * 対象授業を選択済みか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     isLessonClicked() { return this._isFlagSet(ATTEND_LESSON_CLICK_FLAG); }
+    /**
+     * 対象授業の選択済み状態を保存する。
+     * @param {boolean} value - 対応する操作を完了済みとして記録するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     setLessonClicked(value) { this._setFlag(ATTEND_LESSON_CLICK_FLAG, value); }
 
+    /**
+     * 出席の送信が完了しているか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     isAttendSubmitted() { return this._isFlagSet(ATTEND_SUBMIT_BUTTON_FLAG); }
+    /**
+     * 出席の送信済み状態を保存する。
+     * @param {boolean} value - 対応する操作を完了済みとして記録するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     setAttendSubmitted(value) { this._setFlag(ATTEND_SUBMIT_BUTTON_FLAG, value); }
 
+    /**
+     * 出席確認のOK操作が完了しているか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     isOKClicked() { return this._isFlagSet(ATTEND_OK_BUTTON_FLAG); }
+    /**
+     * 出席確認のOK操作済み状態を保存する。
+     * @param {boolean} value - 対応する操作を完了済みとして記録するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     setOKClicked(value) { this._setFlag(ATTEND_OK_BUTTON_FLAG, value); }
 
+    /**
+     * Meetへの参加処理が完了しているか判定する。
+     * @returns {boolean} 条件を満たす場合はtrue。
+     */
     isMeetJoined() { return this._isFlagSet(ATTEND_MEET_JOIN_FLAG); }
+    /**
+     * Meetへの参加済み状態を保存する。
+     * @param {boolean} value - 対応する操作を完了済みとして記録するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     setMeetJoined(value) { this._setFlag(ATTEND_MEET_JOIN_FLAG, value); }
 
     /**

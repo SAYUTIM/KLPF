@@ -19,6 +19,10 @@ function sleep(milliseconds) {
     });
 }
 
+/**
+ * GASの自動設定中であることを示す画面を表示する。
+ * @returns {void} 戻り値はない。
+ */
 function showOverlay() {
     const existingOverlay = document.getElementById('automation-overlay');
     if (existingOverlay) existingOverlay.remove();
@@ -135,11 +139,21 @@ function showOverlay() {
 
 
 
+/**
+ * GASの自動設定中の画面を取り除く。
+ * @returns {void} 戻り値はない。
+ */
 function hideOverlay() {
     const overlay = document.getElementById('automation-overlay');
     if (overlay) overlay.remove();
 }
 
+/**
+ * 対象要素がDOMへ現れるまで、指定した期限内で待機する。
+ * @param {string} selector - 要素を探すCSSセレクター。
+ * @param {number} [timeout=10000] - 待機を打ち切るまでの時間（ミリ秒）。
+ * @returns {Promise<Element>} 見つかった対象要素。待機期限を超えた場合は拒否される。
+ */
 async function waitForElement(selector, timeout = 10000) {
     return new Promise((resolve, reject) => {
         const intervalTime = 500;
@@ -159,6 +173,11 @@ async function waitForElement(selector, timeout = 10000) {
     });
 }
 
+/**
+ * 対象要素へクリック操作を送る。
+ * @param {Element} element - 操作または読み取りの対象要素。
+ * @returns {void} 戻り値はない。
+ */
 function simulateClick(element) {
     const mouseEventInit = { bubbles: true, cancelable: true, view: window };
     element.dispatchEvent(new MouseEvent('mousedown', mouseEventInit));
@@ -166,6 +185,11 @@ function simulateClick(element) {
     element.dispatchEvent(new MouseEvent('click', mouseEventInit));
 }
 
+/**
+ * GASプロジェクトの名前を指定した名前へ変更する。
+ * @param {string} newName - GASプロジェクトへ設定する名前。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function renameProject(newName) {
     if (isAutomationCancelled) throw new Error('Cancelled by user');
     const projectTitleElement = await waitForElement('[aria-label="名前を変更"]');
@@ -181,6 +205,11 @@ async function renameProject(newName) {
     if (confirmButton && !confirmButton.disabled) simulateClick(confirmButton);
 }
 
+/**
+ * GASエディターへ設定用コードを入力する。
+ * @param {string} codeToPaste - GASエディターへ入力するコード。
+ * @returns {void} 戻り値はない。
+ */
 function pasteCodeIntoEditor(codeToPaste) {
   const editorTextarea = document.querySelector('textarea.inputarea');
   if (editorTextarea) {
@@ -190,6 +219,10 @@ function pasteCodeIntoEditor(codeToPaste) {
   }
 }
 
+/**
+ * GASエディターの画面操作でウェブアプリのデプロイを進める。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function deployWebApp() {
     const delay = 1500;
     
@@ -238,6 +271,12 @@ async function deployWebApp() {
     simulateClick(doneButton);
 }
 
+/**
+ * 指定した表示文を持つボタンが現れるまで待機する。
+ * @param {string} text - 表示または照合する文字列。
+ * @param {number} [timeout=10000] - 待機を打ち切るまでの時間（ミリ秒）。
+ * @returns {Promise<Element>} 指定した表示文のボタン。待機期限を超えた場合は拒否される。
+ */
 async function waitForButtonByText(text, timeout = 10000) {
     return new Promise((resolve, reject) => {
         const intervalTime = 500;
@@ -257,6 +296,10 @@ async function waitForButtonByText(text, timeout = 10000) {
     });
 }
 
+/**
+ * GASのプロジェクト名・コード・デプロイ設定を順番に実行する。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function runAutomation() {
 
     try {
@@ -561,6 +604,10 @@ function clearAllDataAndTriggers() {
     }
 }
 
+/**
+ * 自動設定用のスクリプト登録を解除する。
+ * @returns {void} 戻り値はない。
+ */
 function disGasScript(){
   chrome.runtime.sendMessage({
     type: 'inject',
@@ -571,6 +618,10 @@ function disGasScript(){
 let urlCheckInterval = null;
 let editorLoadCheckInterval = null;
 
+/**
+ * GASエディターの準備状態を確認して自動設定を開始する。
+ * @returns {void} 戻り値はない。
+ */
 function checkEditorLoadedAndRunAutomation() {
   const editorCodeLinesElement = document.querySelector('.view-lines.monaco-mouse-cursor-text');
 
@@ -584,6 +635,10 @@ function checkEditorLoadedAndRunAutomation() {
   }
 }
 
+/**
+ * 現在のURLに合わせてGAS自動設定の次の段階を開始する。
+ * @returns {void} 戻り値はない。
+ */
 function checkUrlAndStartNextStage() {
   const currentUrl = window.location.href;
   const targetUrlPrefix = 'https://script.google.com/home/projects/';
