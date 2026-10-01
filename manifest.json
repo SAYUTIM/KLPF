@@ -41,9 +41,23 @@
         "https://study.ns.kogakuin.ac.jp/lms/*"
       ],
       "js": [
+        "features/modules/kuport-access.js",
         "features/lmsInlineSettings.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://study.ns.kogakuin.ac.jp/lms/homeHoml/*",
+        "https://study.ns.kogakuin.ac.jp/lms/tpicTpic/doBack*",
+        "https://study.ns.kogakuin.ac.jp/lms/tpicTpil/doBack*",
+        "https://study.ns.kogakuin.ac.jp/lms/klmsKlil/doBack*"
+      ],
+      "js": [
+        "features/modules/kuport-access.js",
+        "features/syllabus.js"
+      ],
+      "run_at": "document_start"
     },
     {
       "matches": [

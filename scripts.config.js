@@ -239,3 +239,7 @@ export const CONTEXT_MENU_ID = 'openOptions';
  * 静的注入の機能を含む設定用定義。注入の登録はCONTENT_SCRIPTS_CONFIGだけを使う。
  * オプションとKU-LMS内設定、一括OFFで同じ保存キーと既定値を共有する。
  */
+export const FEATURE_SETTINGS_CONFIG = [
+    ...CONTENT_SCRIPTS_CONFIG,
+    { storageKey: 'syllabusLookupEnabled', displayName: 'シラバス表示', displayOrder: 66, enabledByDefault: true },
+];

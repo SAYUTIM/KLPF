@@ -172,7 +172,87 @@ test('offscreen parser preserves the KU-PORT form message payload', async () => 
     }
 });
 
+test('offscreen parser extracts direct timetable fields, syllabus button and partial dialog rows', async () => {
+    const parser = globalThis.KLPFKuportParser;
+    const dom = new JSDOM('');
+    const previousGlobals = new Map();
+    for (const [name, value] of Object.entries({
+        DOMParser: dom.window.DOMParser,
+        FormData: dom.window.FormData,
+        HTMLElement: dom.window.HTMLElement,
+        HTMLFormElement: dom.window.HTMLFormElement,
+        HTMLInputElement: dom.window.HTMLInputElement,
+        HTMLSelectElement: dom.window.HTMLSelectElement,
+    })) {
+        previousGlobals.set(name, globalThis[name]);
+        globalThis[name] = value;
+    }
+    try {
+        const timetable = parser.parseStudentTimetableForm(`
+        <form id="funcForm" action="/uprx/up/km/kmd008/Kmd00801.xhtml">
+          <input name="funcForm" value="funcForm">
+          <input id="funcForm:nendo_input" name="funcForm:nendo_input" value="2026">
+          <select id="funcForm:gakki_input" name="funcForm:gakki_input">
+            <option value="1">前期(1Q)</option><option value="3" selected>後期(3Q)</option>
+          </select>
+          <input id="funcForm:search" name="funcForm:search" value="表示">
+          <table><tr><td><div class="fontB">対象科目 [J1]</div>
+            <span>担当教員 A1900034</span>
+            <button id="funcForm:course" name="funcForm:course" title="シラバス照会画面を表示します。"></button>
+          </td></tr></table>
+          <input name="javax.faces.ViewState" value="state-1">
+        </form>
+        `, 'https://ku-port.sc.kogakuin.ac.jp/uprx/up/km/kmd008/Kmd00801.xhtml');
+        assert.equal(timetable.action, 'https://ku-port.sc.kogakuin.ac.jp/uprx/up/km/kmd008/Kmd00801.xhtml');
+        assert.equal(timetable.yearFieldName, 'funcForm:nendo_input');
+        assert.deepEqual(timetable.termOptions, [
+            { value: '1', label: '前期(1Q)' },
+            { value: '3', label: '後期(3Q)' },
+        ]);
+        assert.equal(timetable.syllabusButtons[0].id, 'funcForm:course');
+        assert.equal(timetable.syllabusButtons[0].courseCode, 'A1900034');
 
+        const timetableResponse = `<partial-response><changes>
+          <update id="funcForm"><![CDATA[
+            <form id="funcForm" action="/uprx/up/km/kmd008/Kmd00801.xhtml">
+              <input id="funcForm:nendo_input" name="funcForm:nendo_input" value="2026">
+              <select id="funcForm:gakki_input" name="funcForm:gakki_input"><option value="3">後期(3Q)</option></select>
+              <button id="funcForm:search" name="funcForm:search">表示</button>
+              <div class="jugyo-info"><div class="fontB">対象科目 [J1]</div>
+                <span>担当教員 A1900034</span>
+                <button id="funcForm:course" name="funcForm:course" title="シラバス照会画面を表示します。"></button>
+              </div>
+            </form>
+          ]]></update>
+          <update id="j_id1:javax.faces.ViewState:0"><![CDATA[state-2]]></update>
+        </changes></partial-response>`;
+        const updatedTimetable = parser.parseSyllabusTimetableResponse(
+            timetableResponse,
+            'https://ku-port.sc.kogakuin.ac.jp/uprx/up/km/kmd008/Kmd00801.xhtml',
+        );
+        assert.equal(updatedTimetable.fields.find(([name]) => name === 'javax.faces.ViewState')?.[1], 'state-2');
+        assert.equal(updatedTimetable.syllabusButtons[0].id, 'funcForm:course');
+
+        const response = `<partial-response><changes>
+      <update id="pkx02301:dialogPanel"><![CDATA[
+        <div id="pkx02301:dialogPanel"><div class="table">
+          <div class="rowStyle"><div class="ui-widget-header" style="width:25%">科目名</div>
+            <div class="ui-widget-content" style="width:75%"><div class="fr-box fr-view">対象科目</div></div></div>
+          <div class="rowStyle"><div class="ui-widget-header" style="width:25%">授業計画</div>
+            <div class="ui-widget-content" style="width:75%"><div class="fr-box fr-view">第1回</div></div></div>
+        </div></div>
+      ]]></update>
+      <update id="j_id1:javax.faces.ViewState:0"><![CDATA[state-2]]></update>
+    </changes></partial-response>`;
+        const syllabus = parser.parseSyllabusResponse(response);
+        assert.equal(syllabus.viewState, 'state-2');
+        assert.equal(syllabus.rows[0].cells[0].text, '科目名');
+        assert.equal(syllabus.rows[1].cells[1].text, '第1回');
+        assert.match(syllabus.text, /対象科目/);
+    } finally {
+        for (const [name, value] of previousGlobals) globalThis[name] = value;
+    }
+});
 
 test('backup schema version 1 round-trips without renaming storage keys', () => {
     const exportedAt = new Date('2026-08-06T00:00:00.000Z');

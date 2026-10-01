@@ -7,19 +7,21 @@
  * フォーム通信はbackground/kuport、HTML解析はoffscreen、表示はfeaturesへ委譲する。
  */
 
-
+import { createSyllabusTransport } from './background/kuport/syllabus.js';
 
 import {
     isKuportUrl,
+    findOpenKuportTabs,
     parseKuportDocument,
     createKuportLoginContext,
+    closeKuportLoginContext,
     closeKuportParser,
 } from './background/modules/kuport-runtime.js';
 
 import { createFormBody } from './background/modules/kuport-form.js';
 
 import { getAuthAccessState } from './background/modules/auth-access.js';
-import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
+import { CONTENT_SCRIPTS_CONFIG, FEATURE_SETTINGS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
 import {
     CONTENT_SCRIPT_BY_STORAGE_KEY,
     applyAutoAttendDependency,
@@ -49,6 +51,10 @@ const ATTENDANCE_FETCH_JOB_TIMEOUT_MS = 2 * 60 * 1000;
 const ATTENDANCE_TERM_COMPONENT_ID = 'funcForm:kaikoNendoGakki';
 const KUPORT_ENTRY_URL = 'https://ku-port.sc.kogakuin.ac.jp/';
 const KUPORT_URL_PATTERN = 'https://ku-port.sc.kogakuin.ac.jp/*';
+const SYLLABUS_LOOKUP_ENABLED_KEY = 'syllabusLookupEnabled';
+const SYLLABUS_LOOKUP_JOB_KEY = 'klpf-syllabus-lookup-job';
+const INLINE_ALL_FEATURES_DISABLED_KEY = 'klpfInlineAllFeaturesDisabled';
+const SYLLABUS_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
 const LMS_HOME_URL_PATTERNS = [
     'https://study.ns.kogakuin.ac.jp/lms/homeHoml/*',
     'https://study.ns.kogakuin.ac.jp/lms/tpicTpic/doBack*',
@@ -64,6 +70,74 @@ const startingBackgroundAttendanceTabs = new Set();
 let attendanceFetchAbortController = null;
 let attendanceRefreshRequestPromise = null;
 let attendanceRefreshRequestYear = '';
+let syllabusLookupStartPromise = null;
+let syllabusFetchAbortController = null;
+const startingSyllabusFetchRequests = new Set();
+const pendingSyllabusBootstraps = new Map();
+
+const { fetchSyllabus: fetchKuportSyllabusInBackground } = createSyllabusTransport({
+    reportPhase: reportSyllabusLookupPhase,
+    ensureActive: ensureSyllabusJobActive,
+});
+
+/**
+ * セッションストレージから進行中のシラバス取得ジョブを読み出す。
+ * @returns {Promise<object|null>} 進行中のジョブ。保存されていなければnull。
+ */
+async function getSyllabusLookupJob() {
+    const stored = await chrome.storage.session.get(SYLLABUS_LOOKUP_JOB_KEY);
+    return stored[SYLLABUS_LOOKUP_JOB_KEY] || null;
+}
+
+/**
+ * シラバス取得ジョブをセッションストレージへ保存する。
+ * @param {object} job - 要求ID・所有タブ・取得状態を持つジョブ情報。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
+async function setSyllabusLookupJob(job) {
+    await chrome.storage.session.set({ [SYLLABUS_LOOKUP_JOB_KEY]: job });
+}
+
+/**
+ * 対応するシラバス取得ジョブを終了し、所有タブを閉じて要求元へ結果を通知する。
+ * @param {string} requestId - 処理と結果を対応付ける取得要求ID。
+ * @param {object} [options={}] - この処理に必要な設定と依存処理。
+ * @param {boolean} [options.ok=false] - 取得が成功したかどうか。
+ * @param {object|null} [options.result=null] - 取得したデータ。失敗などで結果がない場合はnull。
+ * @param {string|object} [options.message=""] - 表示する案内文、または受信した機能メッセージ。
+ * @returns {Promise<boolean>} 対応するジョブを終了した場合はtrue。
+ */
+async function finishSyllabusLookup(requestId, { ok = false, result = null, message = '' } = {}) {
+    const job = await getSyllabusLookupJob();
+    if (!job || job.requestId !== requestId) return false;
+    syllabusFetchAbortController?.abort();
+    await chrome.storage.session.remove(SYLLABUS_LOOKUP_JOB_KEY);
+    try {
+        await chrome.tabs.sendMessage(job.sourceTabId, {
+            type: 'syllabus-lookup-result',
+            requestId: job.requestId,
+            ok,
+            result,
+            message,
+        });
+    } catch {
+        // 元のKU-LMSタブが閉じられている場合も取得用ウィンドウは閉じる。
+    }
+    await closeKuportLoginContext(job);
+    return true;
+}
+
+/**
+ * シラバス取得の中断が要求されていればAbortErrorを投げる。
+ * @param {AbortSignal} signal - 取得の中断を通知するシグナル。
+ * @returns {void} 戻り値はない。
+ */
+function throwIfSyllabusFetchAborted(signal) {
+    if (!signal?.aborted) return;
+    const error = new Error('シラバス取得が中止されました。');
+    error.name = 'AbortError';
+    throw error;
+}
 
 /**
  * 各取得機能の有効設定と共通の認証条件を確認する。
@@ -77,12 +151,386 @@ async function ensureKuportFeatureAvailable(key) {
         throw new Error(access.reason || '機能がOFFになったため、取得を中止しました。');
     }
 }
+
+/**
+ * シラバスの要求ID・中断状態・外部Ku-Portタブを確認し、継続できない場合は停止する。
+ * @param {string} requestId - 処理と結果を対応付ける取得要求ID。
+ * @param {AbortSignal} signal - 取得の中断を通知するシグナル。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
+async function ensureSyllabusJobActive(requestId, signal) {
+    await ensureKuportFeatureAvailable(SYLLABUS_LOOKUP_ENABLED_KEY);
+    throwIfSyllabusFetchAborted(signal);
+    const job = await getSyllabusLookupJob();
+    if (!job || job.requestId !== requestId) {
+        const error = new Error('シラバス取得ジョブが終了しました。');
+        error.name = 'AbortError';
+        throw error;
+    }
+    const openTabs = await findOpenKuportTabs(job.tabIds || []);
+    if (openTabs.length > 0) {
+        const error = new Error('Ku-Portが別のタブで開かれたため、シラバス取得を中止しました。');
+        error.name = 'ExternalKuportError';
+        throw error;
+    }
+}
+
+/**
+ * 対応する要求元タブへシラバス取得の処理段階を通知する。
+ * @param {string} requestId - 処理と結果を対応付ける取得要求ID。
+ * @param {string} phase - 要求元へ通知する取得の処理段階。
+ * @returns {Promise<boolean>} 対応するジョブへ進捗を通知した場合はtrue。
+ */
+async function reportSyllabusLookupPhase(requestId, phase) {
+    const job = await getSyllabusLookupJob();
+    if (!job || job.requestId !== requestId) return false;
+    await setSyllabusLookupJob({
+        ...job,
+        phase: String(phase || job.phase).slice(0, 80),
+        lastProgressAt: Date.now(),
+    });
+    try {
+        await chrome.tabs.sendMessage(job.sourceTabId, {
+            type: 'syllabus-lookup-phase',
+            requestId,
+            phase,
+        });
+    } catch {
+        // 元のKU-LMSタブが閉じられた場合も通信処理はキャンセル時に終了する。
+    }
+    return true;
+}
+
+/**
+ * シラバスの認証準備または直接取得を開始し、同一要求の重複開始を防ぐ。
+ * @param {string} requestId - 処理と結果を対応付ける取得要求ID。
+ * @param {object|null} [suppliedBootstrap=null] - 引き渡し済みの認証フォーム。未取得ならnull。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
+async function startSyllabusDirectFetch(requestId, suppliedBootstrap = null) {
+    if (startingSyllabusFetchRequests.has(requestId)) {
+        // 認証フォームの引き渡しが、ウィンドウ開始処理の後片付けより先に届く場合がある。
+        // 受け取ったフォームを保持し、開始処理の終了後に引き渡しを再開する。
+        if (suppliedBootstrap || !pendingSyllabusBootstraps.has(requestId)) {
+            pendingSyllabusBootstraps.set(requestId, suppliedBootstrap);
+        }
+        return;
+    }
+    startingSyllabusFetchRequests.add(requestId);
+    const abortController = new AbortController();
+    syllabusFetchAbortController = abortController;
+    let timedOut = false;
+    let unregisteredContext = null;
+    const timeoutId = setTimeout(() => {
+        timedOut = true;
+        abortController.abort();
+    }, SYLLABUS_LOOKUP_TIMEOUT_MS);
+    try {
+        await ensureKuportFeatureAvailable(SYLLABUS_LOOKUP_ENABLED_KEY);
+        let job = await getSyllabusLookupJob();
+        if (!job || job.requestId !== requestId) return;
+        const bootstrap = suppliedBootstrap;
+        if (!bootstrap) await reportSyllabusLookupPhase(requestId, 'opening-kuport');
+        if (!bootstrap) {
+            const settings = await chrome.storage.sync.get('autoLogin');
+            if (settings.autoLogin === false) {
+                await finishSyllabusLookup(requestId, {
+                    message: '自動ログインが無効なため、Ku-Portセッションを開始できませんでした。',
+                });
+                return;
+            }
+            const existingTabs = await findOpenKuportTabs(job.tabIds || []);
+            if (existingTabs.length > 0) {
+                await finishSyllabusLookup(requestId, {
+                    message: 'Ku-Portが別のタブで開かれたため、シラバス取得を中止しました。',
+                });
+                return;
+            }
+            const context = await createKuportLoginContext();
+            unregisteredContext = { createdWindowId: context.createdWindowId, helperTabId: context.tab?.id };
+            if (!Number.isInteger(context.tab?.id)) {
+                await finishSyllabusLookup(requestId, {
+                    message: 'Ku-Portのログイン用画面を作成できませんでした。',
+                });
+                return;
+            }
+            throwIfSyllabusFetchAborted(abortController.signal);
+            const stillActiveJob = await getSyllabusLookupJob();
+            if (!stillActiveJob || stillActiveJob.requestId !== requestId) {
+                return;
+            }
+            job = {
+                ...stillActiveJob,
+                createdWindowId: context.createdWindowId,
+                windowIds: Number.isInteger(context.createdWindowId) ? [context.createdWindowId] : [],
+                helperTabId: context.tab.id,
+                tabIds: [context.tab.id],
+                phase: 'opening-kuport',
+                awaitingSession: true,
+                lastProgressAt: Date.now(),
+            };
+            await setSyllabusLookupJob(job);
+            unregisteredContext = null;
+            throwIfSyllabusFetchAborted(abortController.signal);
+            const tabsOpenedDuringProbe = await findOpenKuportTabs(job.tabIds);
+            if (tabsOpenedDuringProbe.length > 0) {
+                await finishSyllabusLookup(requestId, {
+                    message: 'Ku-Portが別のタブで開かれたため、シラバス取得を中止しました。',
+                });
+                return;
+            }
+            await chrome.tabs.update(context.tab.id, { url: KUPORT_ENTRY_URL });
+            return;
+        }
+
+        job = await getSyllabusLookupJob();
+        if (!job || job.requestId !== requestId) return;
+        await ensureSyllabusJobActive(requestId, abortController.signal);
+        const helperJob = job;
+        const directJob = {
+            ...job,
+            createdWindowId: null,
+            windowIds: [],
+            helperTabId: null,
+            tabIds: [],
+            awaitingSession: false,
+            phase: 'opening-student-schedule',
+            lastProgressAt: Date.now(),
+        };
+        await setSyllabusLookupJob(directJob);
+        if (Number.isInteger(helperJob.createdWindowId) || Number.isInteger(helperJob.helperTabId)) {
+            await closeKuportLoginContext(helperJob);
+        }
+        const result = await fetchKuportSyllabusInBackground(
+            requestId,
+            bootstrap,
+            directJob.course,
+            abortController.signal,
+        );
+        await ensureSyllabusJobActive(requestId, abortController.signal);
+        await finishSyllabusLookup(requestId, { ok: true, result });
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            // 取消とウィンドウ登録が重なって保存されたジョブも終了対象にする。
+            await finishSyllabusLookup(requestId, {
+                message: timedOut ? 'シラバス取得が時間切れになりました。' : 'シラバス取得を中止しました。',
+            });
+            return;
+        }
+        if (error.name === 'ExternalKuportError') {
+            await finishSyllabusLookup(requestId, {
+                message: error.message,
+            });
+            return;
+        }
+        console.error('[KLPF] シラバスのバックグラウンド通信に失敗しました。', error);
+        await finishSyllabusLookup(requestId, {
+            message: error.message || 'シラバスの通信取得に失敗しました。',
+        });
+    } finally {
+        clearTimeout(timeoutId);
+        if (unregisteredContext) await closeKuportLoginContext(unregisteredContext);
+        if (syllabusFetchAbortController === abortController) syllabusFetchAbortController = null;
+        try {
+            await closeKuportParser();
+        } catch {
+            // 解析用ドキュメントが作られていない場合は無視する。
+        }
+        startingSyllabusFetchRequests.delete(requestId);
+        if (pendingSyllabusBootstraps.has(requestId)) {
+            const pendingBootstrap = pendingSyllabusBootstraps.get(requestId);
+            pendingSyllabusBootstraps.delete(requestId);
+            const currentJob = await getSyllabusLookupJob();
+            if (currentJob?.requestId === requestId && currentJob.awaitingSession) {
+                await startSyllabusDirectFetch(requestId, pendingBootstrap);
+            }
+        }
+    }
+}
+
+/**
+ * 設定と競合状態を確認し、シラバス取得ジョブを開始する。
+ * @param {object} options - この処理に必要な設定と依存処理。
+ * @param {number} options.sourceTabId - 要求元のKU-LMSタブID。
+ * @param {string} options.requestId - 処理と結果を対応付ける取得要求ID。
+ * @param {object} options.course - 授業カードから読み取った科目・年度学期・曜日時限・教員情報。
+ * @returns {Promise<object>} 開始または拒否の状態と要求ID・理由などの情報。
+ */
+async function beginSyllabusLookup({ sourceTabId, requestId, course }) {
+    const access = await getAuthAccessState();
+    if (!access.ready) return { status: 'auto-login-unavailable', message: access.reason };
+    if (!Number.isInteger(sourceTabId) || typeof requestId !== 'string' || !course) {
+        return { status: 'error', message: '授業情報を読み取れませんでした。' };
+    }
+
+    const [featureSettings, localSettings] = await Promise.all([
+        chrome.storage.sync.get(SYLLABUS_LOOKUP_ENABLED_KEY),
+        chrome.storage.local.get(INLINE_ALL_FEATURES_DISABLED_KEY),
+    ]);
+    if (featureSettings[SYLLABUS_LOOKUP_ENABLED_KEY] === false
+        || localSettings[INLINE_ALL_FEATURES_DISABLED_KEY] === true) {
+        return { status: 'feature-disabled' };
+    }
+    const requestedAcademicYear = normalizeAttendanceAcademicYear(course.academicYear);
+    const currentAcademicYear = getCurrentAcademicYear();
+    if (!requestedAcademicYear || requestedAcademicYear !== currentAcademicYear) {
+        return {
+            status: 'unsupported-academic-year',
+            academicYear: requestedAcademicYear,
+            currentAcademicYear,
+        };
+    }
+    if (attendanceRefreshRequestPromise || null) return { status: 'busy' };
+    if (await Promise.resolve(false)) return { status: 'busy' };
+
+    const existingSyllabusJob = await getSyllabusLookupJob();
+    if (existingSyllabusJob) {
+        const isExpired = !Number.isFinite(existingSyllabusJob.startedAt)
+            || Date.now() - existingSyllabusJob.startedAt > SYLLABUS_LOOKUP_TIMEOUT_MS;
+        if (!isExpired) return { status: 'busy' };
+        await finishSyllabusLookup(existingSyllabusJob.requestId, {
+            message: 'シラバス取得が時間切れになりました。',
+        });
+    }
+
+    const attendanceJobStatus = await prepareAttendanceRefreshJob();
+    if (attendanceJobStatus) return { status: 'busy' };
+    if (await findOpenKuportTabs().then((tabs) => tabs.length > 0)) {
+        return { status: 'kuport-open' };
+    }
+
+    const job = {
+        requestId,
+        sourceTabId,
+        course,
+        transport: 'direct-fetch',
+        createdWindowId: null,
+        windowIds: [],
+        helperTabId: null,
+        tabIds: [],
+        phase: 'opening-kuport',
+        startedAt: Date.now(),
+    };
+    await setSyllabusLookupJob(job);
+    void startSyllabusDirectFetch(requestId).catch(async (error) => {
+        console.error('[KLPF] シラバス取得ジョブを開始できませんでした。', error);
+        await finishSyllabusLookup(requestId, {
+            message: error.message || 'シラバス取得を開始できませんでした。',
+        });
+    });
+    return { status: 'started', phase: 'opening-kuport', transport: 'direct-fetch' };
+}
+
+/**
+ * シラバス取得要求を共通キューへ登録する。
+ * @param {object|object[]} options - 呼び出し時の設定、または年度学期の選択肢一覧。
+ * @returns {Promise<object>} シラバス取得の開始結果。
+ */
+function requestSyllabusLookup(options) { return startQueuedRequestSyllabusLookup(options); }
 /**
  * 出席率更新要求を共通キューへ登録する。
  * @param {object|object[]} [options] - 呼び出し時の設定、または年度学期の選択肢一覧。
  * @returns {Promise<object>} 出席率更新の開始結果。
  */
 function requestAttendanceRateRefresh(options = {}) { return startQueuedRequestAttendanceRateRefresh(options); }
+
+/**
+ * シラバス開始処理を共有し、同時に到着した要求の二重開始を防ぐ。
+ * @param {object|object[]} options - 呼び出し時の設定、または年度学期の選択肢一覧。
+ * @returns {Promise<object>} シラバス取得の開始結果を待つ共有Promise。
+ */
+function startQueuedRequestSyllabusLookup(options) {
+    if (syllabusLookupStartPromise) return Promise.resolve({ status: 'busy' });
+    const startPromise = beginSyllabusLookup(options);
+    syllabusLookupStartPromise = startPromise;
+    return startPromise.finally(() => {
+        if (syllabusLookupStartPromise === startPromise) syllabusLookupStartPromise = null;
+    });
+}
+
+/**
+ * 認証用タブから開かれた子タブをシラバスジョブの所有対象へ追加する。
+ * @param {object} job - 要求ID・所有タブ・取得状態を持つジョブ情報。
+ * @param {object} tab - Chromeから受け取ったタブ情報。
+ * @returns {Promise<object|null>} 所有情報を更新したジョブ。対象外の子タブならnull。
+ */
+async function trackSyllabusLookupChildTab(job, tab) {
+    if (!job || !Number.isInteger(tab?.id) || job.tabIds?.includes(tab.id)) return job;
+    if (!job.tabIds?.includes(tab.openerTabId)) return null;
+
+    const updatedJob = {
+        ...job,
+        tabIds: Array.from(new Set([...job.tabIds, tab.id])),
+        windowIds: Number.isInteger(tab.windowId)
+            ? Array.from(new Set([...(job.windowIds || []), tab.windowId]))
+            : (job.windowIds || []),
+    };
+    await setSyllabusLookupJob(updatedJob);
+    return updatedJob;
+}
+
+/**
+ * 所有していないKu-Portタブが開かれた場合、シラバス取得を中断する。
+ * @param {object} tab - Chromeから受け取ったタブ情報。
+ * @returns {Promise<boolean>} 外部タブの検出により中断した場合はtrue。
+ */
+async function cancelSyllabusLookupForExternalKuport(tab) {
+    const job = await getSyllabusLookupJob();
+    if (!job) return false;
+    // 取得用に拡張機能が作成・追跡しているタブは、外部Ku-Portとして扱わない。
+    // この判定がないと、ログイン用の最小化ウィンドウがKu-Portへ遷移した瞬間に
+    // 自分自身を「別タブ」と誤認して、シラバス取得を中止してしまう。
+    if (job.tabIds?.includes(tab?.id)) return false;
+    if (await trackSyllabusLookupChildTab(job, tab)) return false;
+    await finishSyllabusLookup(job.requestId, {
+        message: 'Ku-Portが別のタブで開かれたため、シラバス取得を中止しました。',
+    });
+    return true;
+}
+
+/**
+ * 要求元または所有タブの削除に合わせてシラバス取得を終了する。
+ * @param {number} tabId - 処理対象のChromeタブID。
+ * @returns {Promise<boolean>} 対象タブの削除により終了した場合はtrue。
+ */
+async function cancelSyllabusLookupForRemovedTab(tabId) {
+    const job = await getSyllabusLookupJob();
+    if (!job || (job.sourceTabId !== tabId && !job.tabIds?.includes(tabId))) return false;
+    await finishSyllabusLookup(job.requestId, {
+        message: job.sourceTabId === tabId
+            ? 'KU-LMSの授業画面が閉じられたため、シラバス取得を中止しました。'
+            : 'Ku-Portの取得用ウィンドウが閉じられたため、シラバス取得を中止しました。',
+    });
+    return true;
+}
+
+/**
+ * 所有するKu-Portタブへ認証フォームの引き渡しスクリプトを注入する。
+ * @param {number} tabId - 処理対象のChromeタブID。
+ * @param {object} tab - Chromeから受け取ったタブ情報。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
+async function injectSyllabusSessionBridge(tabId, tab) {
+    let job = await getSyllabusLookupJob();
+    if (!job?.tabIds?.includes(tabId)) {
+        job = await trackSyllabusLookupChildTab(job, tab);
+    }
+    if (!job?.tabIds?.includes(tabId)) return;
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['features/syllabusSessionBridge.js'],
+        });
+    } catch (error) {
+        console.debug('[KLPF] シラバス取得用のセッション確認スクリプトを注入できませんでした。', error);
+        const currentJob = await getSyllabusLookupJob();
+        if (currentJob?.tabIds?.includes(tabId)) {
+            await finishSyllabusLookup(currentJob.requestId, {
+                message: 'Ku-Portのセッション確認を開始できませんでした。',
+            });
+        }
+    }
+}
 
 /**
  * 出席率取得の診断状態をKU-LMSへ通知する。
@@ -654,10 +1102,17 @@ async function startAttendanceLoginFlow({
 async function executeAttendanceRateRefresh({ manual = false, academicYear = '' } = {}) {
     const access = await getAuthAccessState();
     if (!access.ready) return { status: 'auto-login-unavailable', message: access.reason };
-    if (null || null) return { status: 'kuport-operation-busy' };
+    if (syllabusLookupStartPromise || null) return { status: 'kuport-operation-busy' };
     if (await Promise.resolve(false)) return { status: 'kuport-operation-busy' };
-
-
+    const syllabusJob = await getSyllabusLookupJob();
+    if (syllabusJob) {
+        const syllabusJobExpired = !Number.isFinite(syllabusJob.startedAt)
+            || Date.now() - syllabusJob.startedAt > SYLLABUS_LOOKUP_TIMEOUT_MS;
+        if (!syllabusJobExpired) return { status: 'kuport-operation-busy' };
+        await finishSyllabusLookup(syllabusJob.requestId, {
+            message: 'シラバス取得が時間切れになりました。',
+        });
+    }
 
     const year = normalizeAttendanceAcademicYear(academicYear);
     const currentAcademicYear = getCurrentAcademicYear();
@@ -952,7 +1407,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         try {
             if (isKuportUrl(url)) {
                 const attendanceCancelled = await cancelAttendanceFetchForUserKuport(tabId);
-                if (attendanceCancelled) return;
+                const syllabusCancelled = await cancelSyllabusLookupForExternalKuport(tab);
+                if (attendanceCancelled || syllabusCancelled) return;
+                if (changeInfo.status === 'complete') await injectSyllabusSessionBridge(tabId, tab);
             }
         } catch {
             // URLがまだ確定していない更新は通常の継続判定へ渡す。
@@ -965,6 +1422,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
     void (async () => {
+        await cancelSyllabusLookupForRemovedTab(tabId);
         const job = await getAttendanceFetchJob();
         if (job?.tabId !== tabId || job.phase === 'background-fetch') return;
         await clearAttendanceFetchJob();
@@ -973,6 +1431,35 @@ chrome.tabs.onRemoved.addListener((tabId) => {
             finishedAt: Date.now(),
         });
     })();
+});
+
+chrome.windows.onRemoved.addListener((windowId) => {
+    void (async () => {
+        const job = await getSyllabusLookupJob();
+        if (job?.windowIds?.includes(windowId)) {
+            await finishSyllabusLookup(job.requestId, {
+                message: 'Ku-Portの取得用ウィンドウが閉じられたため、シラバス取得を中止しました。',
+            });
+        }
+    })();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    const featureDisabled = area === 'sync'
+        && changes[SYLLABUS_LOOKUP_ENABLED_KEY]?.newValue === false;
+    const allFeaturesDisabled = area === 'local'
+        && changes[INLINE_ALL_FEATURES_DISABLED_KEY]?.newValue === true;
+    if (featureDisabled || allFeaturesDisabled) {
+        void getSyllabusLookupJob().then((job) => {
+            if (!job) return;
+            return finishSyllabusLookup(job.requestId, {
+                message: 'シラバス表示がOFFになったため、取得を中止しました。',
+            });
+        }).catch((error) => {
+            console.debug('[KLPF] シラバス取得の停止を反映できませんでした。', error);
+        });
+    }
+
 });
 
 /**
@@ -1038,7 +1525,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'get-inline-settings-features') {
         sendResponse({
             success: true,
-            features: CONTENT_SCRIPTS_CONFIG
+            features: FEATURE_SETTINGS_CONFIG
                 .filter((config) => config.displayName)
                 .sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))
                 .map((config) => ({
@@ -1074,17 +1561,98 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.type === 'request-syllabus-lookup') {
+        requestSyllabusLookup({
+            sourceTabId: sender.tab?.id,
+            requestId: message.requestId,
+            course: message.course,
+        })
+            .then(sendResponse)
+            .catch((error) => {
+                console.error('[KLPF] シラバス取得を開始できませんでした。', error);
+                sendResponse({ status: 'error', message: 'シラバス取得を開始できませんでした。' });
+            });
+        return true;
+    }
 
 
 
 
 
+    if (message.type === 'get-syllabus-lookup-job' && sender.tab?.id) {
+        (async () => {
+            let job = await getSyllabusLookupJob();
+            if (!job) {
+                sendResponse({ job: null });
+                return;
+            }
+            const isExpired = !Number.isFinite(job.startedAt)
+                || Date.now() - job.startedAt > SYLLABUS_LOOKUP_TIMEOUT_MS;
+            if (isExpired) {
+                await finishSyllabusLookup(job.requestId, {
+                    message: 'シラバス取得が時間切れになりました。',
+                });
+                sendResponse({ job: null });
+                return;
+            }
+            if (!job.tabIds?.includes(sender.tab.id)
+                && job.tabIds?.includes(sender.tab.openerTabId)) {
+                const tabIds = Array.from(new Set([...job.tabIds, sender.tab.id]));
+                const windowIds = Number.isInteger(sender.tab.windowId)
+                    ? Array.from(new Set([...(job.windowIds || []), sender.tab.windowId]))
+                    : (job.windowIds || []);
+                job = { ...job, tabIds, windowIds };
+                await setSyllabusLookupJob(job);
+            }
+            sendResponse({
+                job: job.tabIds?.includes(sender.tab.id) ? job : null,
+            });
+        })().catch((error) => {
+            console.debug('[KLPF] シラバス取得ジョブを確認できませんでした。', error);
+            sendResponse({ job: null });
+        });
+        return true;
+    }
 
+    if (message.type === 'kuport-syllabus-session-ready' && sender.tab?.id) {
+        (async () => {
+            const job = await getSyllabusLookupJob();
+            if (!job || job.requestId !== message.requestId
+                || !job.tabIds?.includes(sender.tab.id)
+                || job.transport !== 'direct-fetch') {
+                sendResponse({ status: 'stale' });
+                return;
+            }
+            await setSyllabusLookupJob({ ...job, phase: 'opening-student-schedule' });
+            void startSyllabusDirectFetch(job.requestId, {
+                status: 'session-ready',
+                action: message.action,
+                fields: message.fields,
+            });
+            sendResponse({ status: 'accepted' });
+        })().catch((error) => {
+            console.debug('[KLPF] シラバス用Ku-Portセッションを受け取れませんでした。', error);
+            sendResponse({ status: 'error' });
+        });
+        return true;
+    }
 
-
-
-
-
+    if (message.type === 'cancel-syllabus-lookup' && sender.tab?.id) {
+        getSyllabusLookupJob().then(async (job) => {
+            if (!job || job.requestId !== message.requestId || job.sourceTabId !== sender.tab.id) {
+                sendResponse({ status: 'stale' });
+                return;
+            }
+            await finishSyllabusLookup(job.requestId, {
+                message: 'シラバス取得を中止しました。',
+            });
+            sendResponse({ status: 'accepted' });
+        }).catch((error) => {
+            console.debug('[KLPF] シラバス取得の中止を処理できませんでした。', error);
+            sendResponse({ status: 'error' });
+        });
+        return true;
+    }
 
 
 
@@ -1115,8 +1683,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === 'kuport-auto-login-unavailable' && sender.tab?.id) {
         void (async () => {
-
-
+            const syllabusJob = await getSyllabusLookupJob();
+            if (syllabusJob?.tabIds?.includes(sender.tab.id)) {
+                await finishSyllabusLookup(syllabusJob.requestId, {
+                    message: 'Ku-Portへ自動ログインできないため、シラバス取得を中止しました。',
+                });
+                return;
+            }
 
 
             await finishAttendanceFetch(sender.tab.id, 'auto-login-unavailable');

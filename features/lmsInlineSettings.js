@@ -6,6 +6,8 @@
  *
  * 静的content scriptとして複数回評価される場合があるため、INSTANCE_KEYを使って
  * 既存UIを再利用し、メニューやイベントリスナーの重複登録を防いでいる。
+ * scripts.configの機能定義とChromeストレージを使い、KU-LMS内の設定パネルと追加liメニューを管理する。
+ * テーマ・ホーム編集の操作を通知し、出席率更新の待機表示と各機能の有効状態を同期する。
  */
 
 (() => {
@@ -25,11 +27,15 @@
     const THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-theme-menu-item';
     const CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE = 'data-klpf-custom-image-theme-menu-item';
     const ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE = 'data-klpf-attendance-refresh-menu-item';
+    const SYLLABUS_LOOKUP_MENU_ITEM_ATTRIBUTE = 'data-klpf-syllabus-lookup-menu-item';
+    const BULLETIN_BOARD_MENU_ITEM_ATTRIBUTE = 'data-klpf-bulletin-board-menu-item';
     const MANAGED_MENU_ITEMS_SELECTOR = [
         `#${MENU_ITEM_ID}`,
         `[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`,
         `[${THEME_MENU_ITEM_ATTRIBUTE}]`,
         `[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`,
+        `[${SYLLABUS_LOOKUP_MENU_ITEM_ATTRIBUTE}]`,
+        `[${BULLETIN_BOARD_MENU_ITEM_ATTRIBUTE}]`,
         `[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`,
     ].join(', ');
     const ATTENDANCE_REFRESH_TOAST_ID = 'klpf-attendance-refresh-toast';
@@ -38,6 +44,8 @@
     const HOMEWORK_FEATURE_KEY = 'homework';
     const ATTENDANCE_RATE_FEATURE_KEY = 'attendanceRateDisplay';
     const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
+    const SYLLABUS_LOOKUP_ENABLED_KEY = 'syllabusLookupEnabled';
+    const BULLETIN_BOARD_ENABLED_KEY = 'bulletinBoardEnabled';
     const ATTENDANCE_RATE_CONSENT_MESSAGE = 'この機能は、ブラウザの起動後、初めてKU-LMSを開いたとき、または「出席状況」の更新ボタンを押したときに、出席情報を取得するためバックグラウンドでKU-PORTへアクセスします。アクセス時にはChromeの新しいウィンドウが一時的に生成されます。KU-PORTがすでに開かれている場合や、通信中にKU-PORTが開かれた場合は処理を中断します。';
     const OPEN_CUSTOM_IMAGE_THEME_EVENT = 'klpf-open-custom-image-theme';
     const THEME_ROOT_ID = 'klpf-site-theme-root';
@@ -131,10 +139,16 @@
     let state = {
         settings: {},
         allDisabled: false,
+        syllabusLookupEnabled: true,
+        bulletinBoardEnabled: true,
     };
 
-    // --- Feature definitions and storage state ---
+    // 機能定義と保存状態
 
+    /**
+     * 機能定義を読み込み、KU-LMS内の設定表示に必要な情報を作る。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function loadFeatureDefinitions() {
         const response = await chrome.runtime.sendMessage({ type: 'get-inline-settings-features' });
         if (!response?.success || !Array.isArray(response.features)) {
@@ -145,14 +159,32 @@
         featureKeys = features.map((feature) => feature.key);
     }
 
+    /**
+     * Chromeストレージから指定したキーの値を読み出す。
+     * @param {string} area - 読み書きまたは変更通知のストレージ領域名。
+     * @param {string[]} keys - 読み出すストレージキー。
+     * @returns {Promise<object>} 読み出した保存キーと値。
+     */
     function storageGet(area, keys) {
         return chrome.storage[area].get(keys);
     }
 
+    /**
+     * Chromeストレージへ指定した設定値を保存する。
+     * @param {string} area - 読み書きまたは変更通知のストレージ領域名。
+     * @param {object} values - 保存するキーと値の組。
+     * @returns {Promise<void>} ストレージへの保存完了を待つPromise。
+     */
     function storageSet(area, values) {
         return chrome.storage[area].set(values);
     }
 
+    /**
+     * パネルごとのロック要求を管理し、ページスクロールの可否を切り替える。
+     * @param {string} name - スクロールロックの要求元を識別する名前。
+     * @param {boolean} shouldLock - 呼び出し元がスクロールロックを要求するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     function updatePageScrollLock(name, shouldLock) {
         if (shouldLock) activeScrollLocks.add(name);
         else activeScrollLocks.delete(name);
@@ -172,8 +204,13 @@
         document.documentElement.classList.toggle('klpf-inline-modal-open', activeScrollLocks.size > 0);
     }
 
-    // --- Theme color data and selector rules ---
+    // テーマ色と要素選択ルール
 
+    /**
+     * 色の入力を有効な16進カラー文字列へそろえる。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {string|null} 有効な16進カラー文字列。無効ならnull。
+     */
     function normalizeHexColor(value) {
         if (typeof value !== 'string') return null;
 
@@ -187,6 +224,11 @@
         return null;
     }
 
+    /**
+     * CSSの色表記を16進カラーへ変換する。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {string|null} 16進カラー文字列。変換できなければnull。
+     */
     function cssColorToHex(value) {
         const normalizedHex = normalizeHexColor(value);
         if (normalizedHex) return normalizedHex;
@@ -200,6 +242,11 @@
         }).join('').toUpperCase()}`;
     }
 
+    /**
+     * 保存されたテーマ色を検証して有効な設定へそろえる。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {object} 検証済みの共通テーマ色。
+     */
     function normalizeThemeColors(value) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
         return THEME_COLOR_CONFIG.reduce((colors, config) => {
@@ -209,6 +256,11 @@
         }, {});
     }
 
+    /**
+     * 保存された要素別の色設定を検証する。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {object[]} 検証済みの要素別色設定。
+     */
     function normalizeElementRules(value) {
         if (!Array.isArray(value)) return [];
         const seen = new Set();
@@ -234,11 +286,21 @@
         });
     }
 
+    /**
+     * 最近使った色を検証し、重複を除いてまとめる。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {string[]} 重複のない有効な色の履歴。
+     */
     function normalizeRecentColors(value) {
         if (!Array.isArray(value)) return [];
         return [...new Set(value.map(normalizeHexColor).filter(Boolean))].slice(0, 5);
     }
 
+    /**
+     * 保存されたテーマプリセットを検証する。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {object|null} 検証済みのテーマプリセット。無効ならnull。
+     */
     function normalizeThemePreset(value) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
         return {
@@ -248,6 +310,12 @@
         };
     }
 
+    /**
+     * 共通色と要素別ルールをページのスタイルへ適用する。
+     * @param {object} colors - ページへ適用するテーマ色。
+     * @param {object[]} [elementRules] - 要素別の配色ルール。
+     * @returns {void} 戻り値はない。
+     */
     function applyThemeColors(colors, elementRules = persistedElementRules) {
         const normalizedColors = normalizeThemeColors(colors);
         const existingStyle = document.getElementById(THEME_STYLE_ID);
@@ -268,7 +336,7 @@
                         element = element.parentElement;
                     }
                 } catch (_error) {
-                    // Keep an unreadable selector at its original relative position.
+                    // 読み取れないセレクターは、設定内の元の相対位置を保つ。
                 }
                 // 出席表示がまだDOMへ挿入されていなくても、欄全体→各行→個別表示の順に上書きする。
                 if (knownTarget) depth = 100 + knownTarget.cascadeOrder;
@@ -306,6 +374,10 @@
         }
     }
 
+    /**
+     * 保存されたテーマ色と要素別ルールを読み取る。
+     * @returns {Promise<object>} 保存されたテーマ色と要素別設定。
+     */
     async function readStoredThemeColors() {
         const stored = await storageGet('local', [
             THEME_COLORS_STORAGE_KEY,
@@ -317,6 +389,10 @@
         return colors;
     }
 
+    /**
+     * テーマ設定を読み取り、ページへ適用する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function loadAndApplyThemeColors() {
         const [colors, stored] = await Promise.all([
             readStoredThemeColors(),
@@ -339,8 +415,12 @@
         else applyThemeColors(persistedThemeColors, persistedElementRules);
     }
 
-    // --- Theme color panel ---
+    // テーマカラーの編集パネル
 
+    /**
+     * テーマ編集パネルを表示するルート要素を用意する。
+     * @returns {void} 戻り値はない。
+     */
     function ensureThemeRoot() {
         if (themeRootElement?.isConnected && themeShadowRoot) return;
 
@@ -355,6 +435,10 @@
             || themeRootElement.attachShadow({ mode: 'open' });
     }
 
+    /**
+     * テーマ編集パネルで使用するCSSを返す。
+     * @returns {string} テーマ編集パネルのCSS文字列。
+     */
     function getThemeStyles() {
         return `
             :host {
@@ -932,6 +1016,10 @@
         `;
     }
 
+    /**
+     * テーマ編集パネルの初期HTMLを返す。
+     * @returns {string} テーマ編集パネルの初期HTML文字列。
+     */
     function getThemePanelMarkup() {
         return `
             <style>${getThemeStyles()}</style>
@@ -977,6 +1065,12 @@
         `;
     }
 
+    /**
+     * テーマ編集パネルへ操作結果またはエラーを表示する。
+     * @param {string|object} message - 表示する案内文、または受信した機能メッセージ。
+     * @param {boolean} [isError=false] - エラーとして表示するかどうか。
+     * @returns {void} 戻り値はない。
+     */
     function setThemeStatus(message, isError = false) {
         const status = themeShadowRoot?.querySelector('.theme-status');
         if (!status) return;
@@ -984,6 +1078,11 @@
         status.classList.toggle('is-error', isError);
     }
 
+    /**
+     * テーマ編集対象の要素を表すラベルを作る。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {string} 選択要素を表す表示名。
+     */
     function getThemeElementLabel(element) {
         if (!(element instanceof Element)) return '未選択';
         const knownTarget = THEME_KNOWN_ELEMENT_TARGETS.find(target => element.classList.contains(target.className));
@@ -994,6 +1093,11 @@
         return `${element.tagName.toLowerCase()}${identity}${text ? ` · ${text}` : ''}`;
     }
 
+    /**
+     * 編集対象の要素階層を表すラベルを作る。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {string} 要素階層を表す表示名。
+     */
     function getThemeHierarchyLabel(element) {
         if (!(element instanceof Element)) return '';
         const knownTarget = THEME_KNOWN_ELEMENT_TARGETS.find(target => element.classList.contains(target.className));
@@ -1003,6 +1107,10 @@
         return className ? `.${className}` : element.tagName.toLowerCase();
     }
 
+    /**
+     * 編集対象の要素階層をテーマパネルへ描画する。
+     * @returns {void} 戻り値はない。
+     */
     function renderThemeHierarchy() {
         const container = themeShadowRoot?.querySelector('[data-theme-hierarchy]');
         if (!container) return;
@@ -1025,6 +1133,11 @@
         }
     }
 
+    /**
+     * 編集対象要素を再指定するためのCSSセレクターを組み立てる。
+     * @param {Element} element - 操作または読み取りの対象要素。
+     * @returns {string|null} 編集対象のCSSセレクター。安全に指定できない場合はnull。
+     */
     function buildThemeSelector(element) {
         if (!(element instanceof Element)) return null;
         const knownTarget = THEME_KNOWN_ELEMENT_TARGETS.find(target => element.classList.contains(target.className));
@@ -1073,12 +1186,20 @@
         return parts.length > 0 ? `body > ${parts.join(' > ')}` : null;
     }
 
+    /**
+     * 現在選択されている要素の色設定を取得する。
+     * @returns {object|null} 選択要素の色設定。設定されていなければnull。
+     */
     function getSelectedThemeRule() {
         if (!selectedThemeTarget) return null;
         const selector = buildThemeSelector(selectedThemeTarget);
         return draftElementRules.find(rule => rule.selector === selector && rule.property === selectedThemeProperty) || null;
     }
 
+    /**
+     * 最近使った色の選択ボタンを描画する。
+     * @returns {void} 戻り値はない。
+     */
     function renderRecentThemeColors() {
         const container = themeShadowRoot?.querySelector('[data-theme-recents]');
         if (!container) return;
@@ -1104,6 +1225,11 @@
         }
     }
 
+    /**
+     * 使用した色を履歴へ記録する。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function recordRecentThemeColor(value) {
         const color = normalizeHexColor(value);
         if (!color) return;
@@ -1113,6 +1239,10 @@
         await storageSet('local', { [THEME_RECENT_COLORS_STORAGE_KEY]: recentThemeColors });
     }
 
+    /**
+     * 選択要素の設定をテーマ編集の入力欄へ反映する。
+     * @returns {void} 戻り値はない。
+     */
     function syncSelectedThemeControls() {
         const label = themeShadowRoot?.querySelector('[data-theme-target-label]');
         const picker = themeShadowRoot?.querySelector('[data-theme-picker]');
@@ -1144,6 +1274,11 @@
         }
     }
 
+    /**
+     * 入力した色を選択要素へ一時的に適用する。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {void} 戻り値はない。
+     */
     function previewSelectedThemeColor(value) {
         const color = normalizeHexColor(value);
         if (!color || !selectedThemeTarget) return;
@@ -1161,12 +1296,20 @@
         syncSelectedThemeControls();
     }
 
+    /**
+     * テーマ編集対象の強調表示を解除する。
+     * @returns {void} 戻り値はない。
+     */
     function clearThemeHighlight() {
         themeHoveredElement?.removeAttribute('data-klpf-theme-hover');
         themeHoveredElement = null;
         document.documentElement.classList.remove('klpf-theme-inspecting');
     }
 
+    /**
+     * 要素選択用のポインター監視と強調表示を解除する。
+     * @returns {void} 戻り値はない。
+     */
     function stopThemeInspection() {
         themeInspectMode = false;
         clearThemeHighlight();
@@ -1181,6 +1324,11 @@
         syncSelectedThemeControls();
     }
 
+    /**
+     * ポインター下のテーマ編集対象を強調表示する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleThemeInspectHover(event) {
         const workspace = themeShadowRoot?.querySelector('.theme-workspace');
         const panel = themeShadowRoot?.querySelector('.theme-panel');
@@ -1212,6 +1360,11 @@
         if (label) label.textContent = getThemeElementLabel(themeHoveredElement);
     }
 
+    /**
+     * ポインター操作でテーマ編集対象の要素を選ぶ。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleThemeInspectPointerDown(event) {
         const panel = themeShadowRoot?.querySelector('.theme-panel');
         if (event.composedPath().includes(panel)) return;
@@ -1232,6 +1385,10 @@
         setThemeStatus('要素を選択しました。');
     }
 
+    /**
+     * ページ上の要素をテーマ編集対象として選ぶ監視を開始する。
+     * @returns {void} 戻り値はない。
+     */
     function startThemeInspection() {
         if (themeInspectMode) {
             stopThemeInspection();
@@ -1249,6 +1406,11 @@
         setThemeStatus('色を変えたい要素をクリックしてください。');
     }
 
+    /**
+     * テーマ編集パネルをドラッグで移動できるようにする。
+     * @param {Element} panel - 操作または解析の対象パネル。
+     * @returns {void} 戻り値はない。
+     */
     function addThemeDragging(panel) {
         const handle = themeShadowRoot.querySelector('[data-theme-drag-handle]');
         handle.addEventListener('pointerdown', (event) => {
@@ -1289,6 +1451,12 @@
         });
     }
 
+    /**
+     * テーマ編集パネルを閉じ、必要に応じて保存済みの色へ戻す。
+     * @param {object} [options={}] - この処理に必要な設定と依存処理。
+     * @param {boolean} [options.restoreSavedColor=true] - 閉じる際に保存済みのテーマ色へ戻すかどうか。
+     * @returns {void} 戻り値はない。
+     */
     function closeThemePanel({ restoreSavedColor = true } = {}) {
         if (!isThemeOpen) return;
         stopThemeInspection();
@@ -1308,6 +1476,11 @@
         themeLastFocusedElement = null;
     }
 
+    /**
+     * テーマ編集パネル内にキーボードフォーカスを保つ。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {void} 戻り値はない。
+     */
     function handleThemeFocusTrap(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
@@ -1316,6 +1489,10 @@
         }
     }
 
+    /**
+     * テーマ編集パネルの入力・保存・選択操作を登録する。
+     * @returns {void} 戻り値はない。
+     */
     function addThemePanelListeners() {
         const panel = themeShadowRoot.querySelector('.theme-panel');
         const inspectButton = themeShadowRoot.querySelector('[data-theme-inspect]');
@@ -1444,6 +1621,10 @@
         addThemeDragging(panel);
     }
 
+    /**
+     * テーマ編集パネルを開き、現在の色設定を表示する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function openThemePanel() {
         if (isThemeOpen) {
             themeShadowRoot?.querySelector('.theme-input')?.focus();
@@ -1471,12 +1652,22 @@
         themeShadowRoot.querySelector('[data-theme-inspect]')?.focus();
     }
 
-    // --- Inline feature settings panel ---
+    // KU-LMS内の機能設定パネル
 
+    /**
+     * 保存設定と既定値から指定機能の有効状態を求める。
+     * @param {object} settings - 保存された機能設定。
+     * @param {object} feature - 有効状態を判定する機能定義。
+     * @returns {boolean} 保存値または既定値から判定した機能の有効状態。
+     */
     function getFeatureValue(settings, feature) {
         return typeof settings[feature.key] === 'boolean' ? settings[feature.key] : feature.defaultValue;
     }
 
+    /**
+     * 現在の各機能の有効状態を設定オブジェクトへまとめる。
+     * @returns {object} 保存キーと機能の有効状態の対応。
+     */
     function getCurrentFeatureSettings() {
         return features.reduce((values, feature) => {
             values[feature.key] = getFeatureValue(state.settings, feature);
@@ -1484,23 +1675,41 @@
         }, {});
     }
 
+    /**
+     * 保存された設定と表示状態を読み取り、機能内の状態へ反映する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function loadState() {
         if (features.length === 0) {
             await loadFeatureDefinitions();
         }
 
         const [syncSettings, localSettings] = await Promise.all([
-            storageGet('sync', featureKeys),
+            storageGet('sync', [
+                ...featureKeys,
+                SYLLABUS_LOOKUP_ENABLED_KEY,
+                BULLETIN_BOARD_ENABLED_KEY,
+            ]),
             storageGet('local', [ALL_DISABLED_KEY]),
         ]);
 
         state = {
             settings: syncSettings,
             allDisabled: !!localSettings[ALL_DISABLED_KEY],
+            syllabusLookupEnabled: typeof syncSettings[SYLLABUS_LOOKUP_ENABLED_KEY] === 'boolean'
+                ? syncSettings[SYLLABUS_LOOKUP_ENABLED_KEY]
+                : true,
+            bulletinBoardEnabled: typeof syncSettings[BULLETIN_BOARD_ENABLED_KEY] === 'boolean'
+                ? syncSettings[BULLETIN_BOARD_ENABLED_KEY]
+                : true,
         };
         hasLoadedState = true;
     }
 
+    /**
+     * 設定パネルを表示するルート要素を用意する。
+     * @returns {void} 戻り値はない。
+     */
     function ensureRoot() {
         if (rootElement && shadowRoot) return;
 
@@ -1514,6 +1723,10 @@
         shadowRoot = rootElement.shadowRoot || rootElement.attachShadow({ mode: 'open' });
     }
 
+    /**
+     * KU-LMS内の設定パネルで使用するCSSを返す。
+     * @returns {string} KU-LMS内設定パネルのCSS文字列。
+     */
     function getStyles() {
         return `
             :host {
@@ -1848,6 +2061,10 @@
         `;
     }
 
+    /**
+     * 設定パネルの初期HTMLを返す。
+     * @returns {string} パネルの初期HTML文字列。
+     */
     function getPanelMarkup() {
         if (isAttendanceConsentOpen) {
             return `
@@ -1886,15 +2103,17 @@
         }
 
         const featureCards = features.map((feature) => {
-            const checked = getFeatureValue(state.settings, feature) && !state.allDisabled;
+            const requiresLogin = ['attendanceRateDisplay', SYLLABUS_LOOKUP_ENABLED_KEY, BULLETIN_BOARD_ENABLED_KEY].includes(feature.key);
+            const disabled = state.allDisabled || (requiresLogin && !globalThis.KLPFKuportAccess.ready);
+            const checked = getFeatureValue(state.settings, feature) && !disabled;
             return `
                 <article class="feature-card">
                     <div>
                         <p class="feature-title">${feature.label}${feature.isBeta ? '<span class="feature-beta">ベータ版</span>' : ''}</p>
-                        <p class="feature-desc">${feature.defaultValue ? '通常は有効' : '必要なときだけ有効'} / オプションページと同期</p>
+                        <p class="feature-desc">${requiresLogin && !globalThis.KLPFKuportAccess.ready ? '自動ログインの有効化・認証情報の設定が必要です' : `${feature.defaultValue ? '通常は有効' : '必要なときだけ有効'} / オプションページと同期`}</p>
                     </div>
                     <label class="switch" aria-label="${feature.label}">
-                        <input type="checkbox" data-feature-key="${feature.key}" ${checked ? 'checked' : ''} ${state.allDisabled ? 'disabled' : ''}>
+                        <input type="checkbox" data-feature-key="${feature.key}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
                         <span class="slider"></span>
                     </label>
                 </article>
@@ -1934,6 +2153,11 @@
         `;
     }
 
+    /**
+     * KU-LMS内の設定パネルへ操作結果を表示する。
+     * @param {string|object} message - 表示する案内文、または受信した機能メッセージ。
+     * @returns {void} 戻り値はない。
+     */
     function showStatus(message) {
         const status = shadowRoot?.querySelector('.status');
         if (!status) return;
@@ -1943,10 +2167,18 @@
         showStatus.timer = window.setTimeout(() => status.classList.remove('is-visible'), 1800);
     }
 
+    /**
+     * 設定が変更されたことを記録し、表示状態を更新する。
+     * @returns {void} 戻り値はない。
+     */
     function markSettingsChanged() {
         hasPendingReloadPrompt = true;
     }
 
+    /**
+     * 設定パネルを直ちに閉じ、ページ操作を復元する。
+     * @returns {void} 戻り値はない。
+     */
     function closePanelImmediately() {
         hasPendingReloadPrompt = false;
         isReloadPromptOpen = false;
@@ -1955,6 +2187,10 @@
         render();
     }
 
+    /**
+     * 未反映の設定変更を確認して設定パネルを閉じる処理へ進む。
+     * @returns {void} 戻り値はない。
+     */
     function requestClosePanel() {
         if (hasPendingReloadPrompt) {
             isReloadPromptOpen = true;
@@ -1965,6 +2201,10 @@
         closePanelImmediately();
     }
 
+    /**
+     * 設定パネルを開き、保存状態を入力欄へ反映する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function openPanel() {
         await loadState();
         hasPendingReloadPrompt = false;
@@ -1975,9 +2215,19 @@
         render();
     }
 
+    /**
+     * 個別機能の切り替えを保存状態と表示へ反映する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function handleFeatureToggle(event) {
         const input = event.target.closest('input[data-feature-key]');
         if (!input || state.allDisabled) return;
+        if (['attendanceRateDisplay', SYLLABUS_LOOKUP_ENABLED_KEY, BULLETIN_BOARD_ENABLED_KEY].includes(input.dataset.featureKey)
+            && !globalThis.KLPFKuportAccess.ready) {
+            applyStateToControls();
+            return;
+        }
 
         const key = input.dataset.featureKey;
         if (key === ATTENDANCE_RATE_FEATURE_KEY && input.checked) {
@@ -1996,6 +2246,11 @@
         showStatus('設定を保存しました');
     }
 
+    /**
+     * 全機能の一括停止・復元操作を設定へ反映する。
+     * @param {Event} event - 操作または通知のイベント。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function handleMasterToggle(event) {
         const input = event.target.closest('input[data-master-toggle]');
         if (!input) return;
@@ -2050,6 +2305,10 @@
         showStatus('停止前の設定を復元しました');
     }
 
+    /**
+     * 現在の機能設定をパネル内のスイッチへ反映する。
+     * @returns {void} 戻り値はない。
+     */
     function applyStateToControls() {
         if (!shadowRoot || isReloadPromptOpen) return;
 
@@ -2065,10 +2324,16 @@
             const input = shadowRoot.querySelector(`input[data-feature-key="${CSS.escape(feature.key)}"]`);
             if (!input) continue;
             input.checked = getFeatureValue(state.settings, feature) && !state.allDisabled;
-            input.disabled = state.allDisabled;
+            const requiresLogin = ['attendanceRateDisplay', SYLLABUS_LOOKUP_ENABLED_KEY, BULLETIN_BOARD_ENABLED_KEY].includes(feature.key);
+            input.disabled = state.allDisabled || (requiresLogin && !globalThis.KLPFKuportAccess.ready);
+            if (requiresLogin && !globalThis.KLPFKuportAccess.ready) input.checked = false;
         }
     }
 
+    /**
+     * 設定パネルの入力・保存・閉じる操作を登録する。
+     * @returns {void} 戻り値はない。
+     */
     function addPanelListeners() {
         const overlay = shadowRoot.querySelector('.overlay');
         const panel = shadowRoot.querySelector('.panel');
@@ -2108,12 +2373,25 @@
         });
     }
 
+    /**
+     * 設定パネルの内容を現在の状態から描画する。
+     * @returns {void} 戻り値はない。
+     */
     function render() {
         ensureRoot();
         shadowRoot.innerHTML = getPanelMarkup();
         addPanelListeners();
     }
 
+    /**
+     * メニュー項目の識別子・表示名・操作を設定したli要素を作る。
+     * @param {object} options - この処理に必要な設定と依存処理。
+     * @param {string} options.id - 対象を識別するID。
+     * @param {string} options.attributeName - 追加メニューを識別する属性名。
+     * @param {string} options.labelText - メニュー項目に表示する文言。
+     * @param {Function} options.onActivate - メニューを選択した場合に呼ぶ処理。
+     * @returns {HTMLLIElement} 作成した追加メニュー項目。
+     */
     function createSettingsMenuItem({ id, attributeName, labelText, onActivate }) {
         const item = document.createElement('li');
         if (id) item.id = id;
@@ -2134,6 +2412,10 @@
         return item;
     }
 
+    /**
+     * KU-LMS内の設定パネルを開くメニュー項目を作る。
+     * @returns {HTMLLIElement} KLPF設定のメニュー項目。
+     */
     function buildMenuItem() {
         return createSettingsMenuItem({
             id: MENU_ITEM_ID,
@@ -2142,6 +2424,10 @@
         });
     }
 
+    /**
+     * テーマカラー編集を開くメニュー項目を作る。
+     * @returns {HTMLLIElement} テーマ編集のメニュー項目。
+     */
     function buildThemeMenuItem() {
         return createSettingsMenuItem({
             attributeName: THEME_MENU_ITEM_ATTRIBUTE,
@@ -2154,6 +2440,10 @@
         });
     }
 
+    /**
+     * ホームの表示編集を開くメニュー項目を作る。
+     * @returns {HTMLLIElement} ホーム編集のメニュー項目。
+     */
     function buildHomeEditorMenuItem() {
         return createSettingsMenuItem({
             attributeName: HOME_EDITOR_MENU_ITEM_ATTRIBUTE,
@@ -2162,6 +2452,10 @@
         });
     }
 
+    /**
+     * カスタム画像テーマの編集を開くメニュー項目を作る。
+     * @returns {HTMLLIElement} 画像テーマ編集のメニュー項目。
+     */
     function buildCustomImageThemeMenuItem() {
         return createSettingsMenuItem({
             attributeName: CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE,
@@ -2170,8 +2464,107 @@
         });
     }
 
-    // --- Attendance refresh feedback and cooldown ---
+    /**
+     * シラバス取得の有効状態を切り替えて保存する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
+    async function handleSyllabusLookupToggle() {
+        if (state.allDisabled || !hasLoadedState) return;
 
+        const previousValue = state.syllabusLookupEnabled;
+        state.syllabusLookupEnabled = !previousValue;
+        injectMenuItem();
+        try {
+            await storageSet('sync', {
+                [SYLLABUS_LOOKUP_ENABLED_KEY]: state.syllabusLookupEnabled,
+            });
+        } catch (error) {
+            state.syllabusLookupEnabled = previousValue;
+            injectMenuItem();
+            console.warn('[KLPF] シラバス表示の設定を保存できませんでした。', error);
+        }
+    }
+
+    /**
+     * シラバス取得を切り替えるメニュー項目を作る。
+     * @returns {HTMLLIElement} シラバス切り替えのメニュー項目。
+     */
+    function buildSyllabusLookupMenuItem() {
+        const item = createSettingsMenuItem({
+            attributeName: SYLLABUS_LOOKUP_MENU_ITEM_ATTRIBUTE,
+            labelText: 'シラバス表示',
+            onActivate: () => void handleSyllabusLookupToggle(),
+        });
+        const link = item.querySelector('a');
+        const stateLabel = document.createElement('span');
+        stateLabel.className = 'klpf-syllabus-menu-state';
+        stateLabel.setAttribute('aria-hidden', 'true');
+        link?.appendChild(stateLabel);
+        updateSyllabusLookupMenuItem(item);
+        return item;
+    }
+
+    /**
+     * シラバス取得の設定状態をメニュー表示へ反映する。
+     * @param {object} item - 処理する掲示情報または課題要素。
+     * @returns {void} 戻り値はない。
+     */
+    function updateSyllabusLookupMenuItem(item) {
+        const enabled = state.syllabusLookupEnabled && !state.allDisabled;
+        const link = item.querySelector('a');
+        const stateLabel = item.querySelector('.klpf-syllabus-menu-state');
+
+        // clickableSettei/on は幅40pxのメニューアイコン向けクラスで、
+        // 通常の設定メニュー行に付けると高さと幅を崩してしまう。
+        item.classList.remove('clickableSettei', 'on');
+        item.dataset.klpfEnabled = String(enabled);
+        link?.setAttribute('aria-pressed', String(enabled));
+        if (stateLabel) {
+            const nextLabel = enabled ? 'ON' : 'OFF';
+            if (stateLabel.textContent !== nextLabel) {
+                stateLabel.textContent = nextLabel;
+            }
+            Object.assign(stateLabel.style, {
+                display: 'inline-block',
+                marginLeft: '5px',
+                padding: '2px 4px',
+                borderRadius: '999px',
+                background: enabled ? '#e8f5ee' : '#f1f3f5',
+                color: enabled ? '#176b4d' : '#667085',
+                fontSize: '10px',
+                fontWeight: '700',
+                lineHeight: '1',
+                verticalAlign: 'middle',
+            });
+        }
+    }
+
+    /**
+     * 掲示板表示の有効状態を切り替えて保存する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
+
+
+    /**
+     * 掲示板表示を切り替えるメニュー項目を作る。
+     * @returns {HTMLLIElement} 掲示板切り替えのメニュー項目。
+     */
+
+
+    /**
+     * 掲示板表示の設定状態をメニュー表示へ反映する。
+     * @param {object} item - 処理する掲示情報または課題要素。
+     * @returns {void} 戻り値はない。
+     */
+
+
+    // 出席率更新の案内と待機時間
+
+    /**
+     * 出席率更新に失敗した理由を通知欄へ表示する。
+     * @param {string|object} message - 表示する案内文、または受信した機能メッセージ。
+     * @returns {void} 戻り値はない。
+     */
     function showAttendanceRefreshError(message) {
         let toast = document.getElementById(ATTENDANCE_REFRESH_TOAST_ID);
         if (!toast) {
@@ -2207,6 +2600,28 @@
         }, 5000);
     }
 
+    /**
+     * 更新要求の応答から出席率取得のエラー説明を選ぶ。
+     * @param {*} value - 検証・変換する入力値。
+     * @returns {string} 出席率更新の失敗理由。
+     */
+    function getAttendanceRefreshErrorDetail(value) {
+        return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    }
+
+    /**
+     * 現在の日付から4月始まりの年度を求める。
+     * @returns {string} 4月始まりの年度を表す4桁の文字列。
+     */
+    function getCurrentAcademicYear() {
+        const now = new Date();
+        return String(now.getFullYear() - (now.getMonth() < 3 ? 1 : 0));
+    }
+
+    /**
+     * 出席率更新の待機表示に使うスタイルを用意する。
+     * @returns {void} 戻り値はない。
+     */
     function ensureAttendanceRefreshMenuStyle() {
         if (document.getElementById(ATTENDANCE_REFRESH_STYLE_ID)) return;
         const style = document.createElement('style');
@@ -2235,6 +2650,10 @@
         (document.head || document.documentElement).appendChild(style);
     }
 
+    /**
+     * 出席率の手動更新までの待機秒数をメニューへ表示する。
+     * @returns {number} 表示へ反映した残り待機秒数。
+     */
     function renderAttendanceRefreshCooldown() {
         const remainingSeconds = Math.max(
             0,
@@ -2266,6 +2685,11 @@
         return remainingSeconds;
     }
 
+    /**
+     * 手動更新までの残り秒数を設定し、カウントダウンを開始する。
+     * @param {number} remainingSeconds - 更新までの残り秒数。
+     * @returns {void} 戻り値はない。
+     */
     function startAttendanceRefreshCooldown(remainingSeconds) {
         const seconds = Math.max(0, Number(remainingSeconds) || 0);
         attendanceRefreshCooldownEndsAt = Date.now() + seconds * 1000;
@@ -2278,6 +2702,10 @@
             : null;
     }
 
+    /**
+     * バックグラウンドの更新間隔を読み取り、メニューへ反映する。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function syncAttendanceRefreshCooldown() {
         try {
             const response = await chrome.runtime.sendMessage({
@@ -2289,7 +2717,23 @@
         }
     }
 
+    /**
+     * 出席率更新メニューの操作から更新要求を送り、結果を表示する。
+     * @param {HTMLElement} link - 対象のリンク要素。
+     * @returns {Promise<void>} 処理の完了を待つPromise。
+     */
     async function handleAttendanceRefreshClick(link) {
+        const yearLabel = document.querySelector('.lms-search-condition-detail')?.textContent || '';
+        const academicYear = String(yearLabel).normalize('NFKC').match(/(\d{4})\s*年度?/)?.[1] || '';
+        const currentAcademicYear = getCurrentAcademicYear();
+        if (academicYear !== currentAcademicYear) {
+            showAttendanceRefreshError(
+                academicYear
+                    ? `出席率表示は${currentAcademicYear}年度のみ利用できます。`
+                    : '対象年度を確認できないため、出席状況の更新を中止しました。'
+            );
+            return;
+        }
         const localRemainingSeconds = renderAttendanceRefreshCooldown();
         if (localRemainingSeconds > 0) {
             showAttendanceRefreshError(
@@ -2307,6 +2751,7 @@
             const response = await chrome.runtime.sendMessage({
                 type: 'request-attendance-rate-refresh',
                 manual: true,
+                academicYear,
             });
             if (response?.status === 'cooldown') {
                 startAttendanceRefreshCooldown(response.remainingSeconds);
@@ -2319,12 +2764,26 @@
                 showAttendanceRefreshError('出席状況を更新中です。完了までお待ちください。');
             } else if (response?.status === 'auto-login-disabled') {
                 showAttendanceRefreshError(AUTO_LOGIN_REQUIRED_MESSAGE);
+            } else if (response?.status === 'consent-required') {
+                showAttendanceRefreshError('出席率表示のデータ取得への同意が必要です。設定を確認してください。');
+            } else if (response?.status === 'feature-disabled') {
+                showAttendanceRefreshError('出席率表示が無効になっています。設定を確認してください。');
+            } else if (response?.status === 'unsupported-academic-year') {
+                showAttendanceRefreshError(
+                    `出席率表示は${response.currentAcademicYear || getCurrentAcademicYear()}年度のみ利用できます。`
+                );
             } else if (['started', 'started-existing-session'].includes(response?.status)) {
                 refreshStarted = true;
                 await syncAttendanceRefreshCooldown();
             } else if (response?.status === 'completed') {
                 attendanceManualRefreshPending = false;
                 await syncAttendanceRefreshCooldown();
+            } else if (response?.status === 'error') {
+                const detail = getAttendanceRefreshErrorDetail(response.error);
+                console.error('[KLPF] 出席状況の更新を開始できませんでした。', response.error);
+                showAttendanceRefreshError(
+                    detail ? `更新を開始できませんでした。${detail}` : '出席状況の更新を開始できませんでした。'
+                );
             } else {
                 showAttendanceRefreshError('出席状況の更新を開始できませんでした。');
             }
@@ -2339,6 +2798,10 @@
         }
     }
 
+    /**
+     * 出席率の手動更新用メニュー項目を作る。
+     * @returns {HTMLLIElement} 出席率更新のメニュー項目。
+     */
     function buildAttendanceRefreshMenuItem() {
         ensureAttendanceRefreshMenuStyle();
         const item = createSettingsMenuItem({
@@ -2350,8 +2813,12 @@
         return item;
     }
 
-    // --- KU-LMS settings menu lifecycle ---
+    // KU-LMS設定メニューの追加・更新・削除
 
+    /**
+     * KU-LMSの設定メニュー要素を列挙する。
+     * @returns {Element[]} ページ内の設定メニュー。
+     */
     function getSettingsMenus() {
         return [...new Set([
             ...document.querySelectorAll('.selectBoxSettei.lms-user-menu .selectBox.lms-sp-user-menu'),
@@ -2361,6 +2828,11 @@
             && (element.matches('ul, ol') || element.classList.contains('selectBox'))))];
     }
 
+    /**
+     * 現在の設定メニューに属さない拡張機能の項目を片付ける。
+     * @param {Element[]} activeMenus - 現在ページ内に存在する設定メニュー。
+     * @returns {void} 戻り値はない。
+     */
     function removeDetachedMenuItems(activeMenus) {
         const activeMenuSet = new Set(activeMenus);
         document.querySelectorAll(MANAGED_MENU_ITEMS_SELECTOR).forEach((item) => {
@@ -2368,18 +2840,45 @@
         });
     }
 
+    /**
+     * 停止中に不要となる追加メニュー項目を取り除く。
+     * @param {Element} menu - 追加項目を配置するKU-LMSの設定メニュー。
+     * @returns {void} 戻り値はない。
+     */
     function removeOptionalMenuItems(menu) {
         menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`)?.remove();
         menu.querySelector(`[${THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
         menu.querySelector(`[${CUSTOM_IMAGE_THEME_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+        menu.querySelector(`[${SYLLABUS_LOOKUP_MENU_ITEM_ATTRIBUTE}]`)?.remove();
+        menu.querySelector(`[${BULLETIN_BOARD_MENU_ITEM_ATTRIBUTE}]`)?.remove();
         menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`)?.remove();
     }
 
+    /**
+     * 指定した項目の直後へ追加メニューを配置する。
+     * @param {Element} anchor - 追加項目を配置する基準のメニュー要素。
+     * @param {object} item - 処理する掲示情報または課題要素。
+     * @returns {void} 戻り値はない。
+     */
     function placeMenuItemAfter(anchor, item) {
         if (anchor.nextElementSibling !== item) anchor.insertAdjacentElement('afterend', item);
     }
 
-    function syncEnabledMenuItems(menu, settingsItem, { canEditHome, canRefreshAttendance }) {
+    /**
+     * 設定とページの対応状態に合わせて追加メニューを配置する。
+     * @param {Element} menu - 追加項目を配置するKU-LMSの設定メニュー。
+     * @param {HTMLElement} settingsItem - 配置の基準となるKLPF設定メニュー項目。
+     * @param {object} options - この処理に必要な設定と依存処理。
+     * @param {boolean} options.canEditHome - 現在のページでホーム編集を表示できるかどうか。
+     * @param {boolean} options.canRefreshAttendance - 現在のページで出席率の更新を表示できるかどうか。
+     * @param {boolean} options.canToggleSyllabusLookup - 現在のページでシラバスの切り替えを表示できるかどうか。
+     * @returns {void} 戻り値はない。
+     */
+    function syncEnabledMenuItems(menu, settingsItem, {
+        canEditHome,
+        canRefreshAttendance,
+        canToggleSyllabusLookup,
+    }) {
         let homeEditorItem = menu.querySelector(`[${HOME_EDITOR_MENU_ITEM_ATTRIBUTE}]`);
         if (canEditHome) {
             homeEditorItem ||= buildHomeEditorMenuItem();
@@ -2399,6 +2898,15 @@
             menu.appendChild(customImageThemeItem);
         }
 
+        let syllabusLookupItem = menu.querySelector(`[${SYLLABUS_LOOKUP_MENU_ITEM_ATTRIBUTE}]`);
+        if (canToggleSyllabusLookup) {
+            if (!syllabusLookupItem) syllabusLookupItem = buildSyllabusLookupMenuItem();
+            updateSyllabusLookupMenuItem(syllabusLookupItem);
+            placeMenuItemAfter(customImageThemeItem, syllabusLookupItem);
+        } else {
+            syllabusLookupItem?.remove();
+        }
+
         let attendanceRefreshItem = menu.querySelector(`[${ATTENDANCE_REFRESH_MENU_ITEM_ATTRIBUTE}]`);
         if (!canRefreshAttendance) {
             attendanceRefreshItem?.remove();
@@ -2407,9 +2915,13 @@
 
         attendanceRefreshItem ||= buildAttendanceRefreshMenuItem();
         attendanceRefreshItem.classList.remove('clickableSettei', 'on');
-        placeMenuItemAfter(customImageThemeItem, attendanceRefreshItem);
+        placeMenuItemAfter(syllabusLookupItem || customImageThemeItem, attendanceRefreshItem);
     }
 
+    /**
+     * KU-LMSの設定メニューへ各機能の操作項目を追加・更新する。
+     * @returns {void} 戻り値はない。
+     */
     function injectMenuItem() {
         const menus = getSettingsMenus();
         removeDetachedMenuItems(menus);
@@ -2422,7 +2934,8 @@
         const attendanceFeature = features.find(feature => feature.key === ATTENDANCE_RATE_FEATURE_KEY);
         const attendanceEnabled = !!attendanceFeature
             && getFeatureValue(state.settings, attendanceFeature);
-        const canRefreshAttendance = attendanceEnabled && isHomePage;
+        const canRefreshAttendance = attendanceEnabled && isHomePage && globalThis.KLPFKuportAccess.ready;
+        const canToggleSyllabusLookup = isHomePage && globalThis.KLPFKuportAccess.ready;
 
         for (const menu of menus) {
             let settingsItem = menu.querySelector(`#${MENU_ITEM_ID}`);
@@ -2435,10 +2948,18 @@
                 removeOptionalMenuItems(menu);
                 continue;
             }
-            syncEnabledMenuItems(menu, settingsItem, { canEditHome, canRefreshAttendance });
+            syncEnabledMenuItems(menu, settingsItem, {
+                canEditHome,
+                canRefreshAttendance,
+                canToggleSyllabusLookup,
+            });
         }
     }
 
+    /**
+     * 一括停止状態に合わせてテーマやホーム編集の適用状態を通知する。
+     * @returns {void} 戻り値はない。
+     */
     function syncOptionalCustomizationState() {
         injectMenuItem();
         if (state.allDisabled) {
@@ -2452,6 +2973,10 @@
         });
     }
 
+    /**
+     * KU-LMSの設定メニューのDOM変更を監視し、追加項目を維持する。
+     * @returns {void} 戻り値はない。
+     */
     function observeMenu() {
         injectMenuItem();
         if (menuObserver) return;
@@ -2459,7 +2984,19 @@
         menuObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
 
+    globalThis.KLPFKuportAccess.subscribe(() => {
+        injectMenuItem();
+        if (isOpen) applyStateToControls();
+    });
+
     chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'sync' && changes[SYLLABUS_LOOKUP_ENABLED_KEY]) {
+            state.syllabusLookupEnabled = changes[SYLLABUS_LOOKUP_ENABLED_KEY].newValue !== false;
+            injectMenuItem();
+        }
+
+
+
         if (area === 'sync' && featureKeys.some((key) => changes[key])) {
             if (state.allDisabled) {
                 const forcedOffSettings = featureKeys.reduce((values, key) => {
@@ -2515,7 +3052,10 @@
         if (message.stage === '処理終了') {
             attendanceManualRefreshPending = false;
             if (message.details?.status !== 'completed') {
-                showAttendanceRefreshError('出席状況の更新に失敗しました。');
+                const detail = getAttendanceRefreshErrorDetail(message.details?.error);
+                showAttendanceRefreshError(
+                    detail ? `出席状況の更新に失敗しました。${detail}` : '出席状況の更新に失敗しました。'
+                );
             }
         } else if (message.stage === 'Ku-portが別タブで開かれたため出席状況の取得中止') {
             attendanceManualRefreshPending = false;
@@ -2524,7 +3064,10 @@
             );
         } else if (message.stage === 'バックグラウンド取得失敗') {
             attendanceManualRefreshPending = false;
-            showAttendanceRefreshError('出席状況の更新に失敗しました。');
+            const detail = getAttendanceRefreshErrorDetail(message.details?.error);
+            showAttendanceRefreshError(
+                detail ? `出席状況の更新に失敗しました。${detail}` : '出席状況の更新に失敗しました。'
+            );
         }
         return false;
     });
@@ -2543,6 +3086,10 @@
     });
 
     globalThis[INSTANCE_KEY] = {
+        /**
+         * 編集対象の状態変更をパネル表示へ反映する。
+         * @returns {void} 戻り値はない。
+         */
         refresh() {
             loadState()
                 .then(() => {
