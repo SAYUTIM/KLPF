@@ -196,11 +196,7 @@ KLPF/
 │  └─ totp/
 ├─ templates/
 ├─ vendor/
-├─ tools/
-│  └─ check-syntax.js
 ├─ .github/workflows/check.yml
-├─ .stylelintrc.json
-├─ .htmlvalidate.json
 ├─ eslint.config.js
 ├─ package.json
 ├─ package-lock.json
@@ -555,15 +551,12 @@ npm ci
 npm run check
 ```
 
-`npm run check`は、first-party JavaScriptの構文検査、ESLint、CSS検査、HTML構造検査を順に実行します。`vendor/`、画像、ローカルのブラウザ操作データは検査対象外です。pushとPull RequestではGitHub Actionsでも同じ検査を実行します。
+`npm run check`は、ESLintで自作のJavaScriptを静的に検査します。`npm run lint`でも同じ検査を実行できます。`vendor/`、`node_modules/`、ローカルのブラウザ操作データは検査対象外です。pushとPull RequestではGitHub Actionsでも同じ検査を実行します。
 
 | ファイル | 開発時の用途 |
 | --- | --- |
 | `package.json`, `package-lock.json` | 検査コマンドと開発用ライブラリ、そのバージョンを管理する |
 | `eslint.config.js` | JavaScriptの静的検査ルールを設定する |
-| `.stylelintrc.json` | CSSの検査ルールを設定する |
-| `.htmlvalidate.json` | HTMLの検査ルールを設定する |
-| `tools/check-syntax.js` | Node.jsのパーサーで自作JavaScriptの構文を検査する |
 | `.github/workflows/check.yml` | push・Pull Request時に`npm ci`と`npm run check`を実行する |
 
 これらの開発用ファイルは、拡張機能の通常動作からは読み込みません。

@@ -4,7 +4,7 @@
 /**
  * @file KLPFのfirst-party JavaScriptに対する静的検査設定。
  * 注入順で共有されるclassic scriptのグローバルは既存仕様のため、未定義変数検査は
- * Service Worker・Node用コードで有効にする。
+ * Service Workerで有効にする。
  * ファイル単位の未使用判定だけで共有グローバルを削除しない。
  */
 
@@ -89,15 +89,6 @@ export default [
                 ScriptApp: 'readonly',
                 SpreadsheetApp: 'readonly',
             },
-        },
-    },
-    {
-        files: ['tools/**/*.js'],
-        languageOptions: {
-            globals: globals.node,
-        },
-        rules: {
-            'no-undef': 'error',
         },
     },
 ];

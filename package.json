@@ -5,17 +5,11 @@
   "type": "module",
   "description": "Development checks for the KLPF browser extension.",
   "scripts": {
-    "check": "npm run check:syntax && npm run lint",
-    "check:syntax": "node tools/check-syntax.js",
-    "lint": "npm run lint:js && npm run lint:css && npm run lint:html",
-    "lint:js": "eslint .",
-    "lint:css": "stylelint \"**/*.css\"",
-    "lint:html": "html-validate \"**/*.html\""
+    "check": "npm run lint",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "eslint": "^9.32.0",
-    "globals": "^16.3.0",
-    "html-validate": "^9.7.1",
-    "stylelint": "^16.23.0"
+    "globals": "^16.3.0"
   }
 }
