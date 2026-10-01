@@ -3,7 +3,9 @@
 /**
  * @file 制御可能な非同期処理で優先順位キューの実行順と失敗後の継続を検証する。
  * Chrome APIや実際のKu-Port通信には依存しない。
- */import assert from 'node:assert/strict';
+ */
+
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPriorityQueue } from '../background/modules/priority-queue.js';
 

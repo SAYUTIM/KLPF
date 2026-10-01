@@ -45,8 +45,8 @@ function createStorage(initial = {}) {
 
 /**
  * HTML本文とURLを持つ通信応答のテスト用オブジェクトを作る。
- * @param {string|URLSearchParams|null} body - 送信本文。診断ではnullの場合にGETする。
- * @param {string|URL} url - 判定または通信の対象URL。
+ * @param {string} body - text()で返す模擬応答のHTML本文。
+ * @param {string|URL} url - 模擬応答のURL。
  * @returns {object} 本文のtext読み取りとURLを持つ模擬通信応答。
  */
 function response(body, url) {
