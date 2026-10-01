@@ -544,6 +544,4 @@ npm run check
 
 ## 開発資料
 
-[構成と安全条件](docs/development/kuport.md)、[今回の整理内容と未確認事項](docs/development/refactoring.md)、[日本語のコミット分割案](docs/development/commit-plan.md)を参照してください。セッション再利用は本番機能へ導入していません。
-
-追加・変更するコードの説明は[日本語コメントの書き方](docs/development/comments.md)を参照してください。ファイルの役割、実行環境、依存処理と、関数の引数・戻り値・例外条件を記載します。
+[Ku-Port取得の構成と安全条件](docs/development/kuport.md)を参照してください。
