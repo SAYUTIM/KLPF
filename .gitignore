@@ -1,8 +1,5 @@
-# Development dependencies.
+# 開発用の依存ライブラリは公開しない。
 node_modules/
-
-# Test and coverage output.
-coverage/
 
 # ローカルのブラウザ操作データはセッションURLや画像を含むため公開しない。
 .playwright-cli/

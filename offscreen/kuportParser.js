@@ -792,21 +792,6 @@
         'parse-bulletin-detail-response': message => parseBulletinDetailResponse(message.html),
     });
 
-    // Offscreenのmessage契約は維持しつつ、解析規則をDOM回帰テストから直接検証できるようにする。
-    globalThis.KLPFKuportParser = Object.freeze({
-        parseAttendanceForm,
-        parseMenuBootstrap,
-        parseAutoNavigationForm,
-        parseAttendanceRecordResponse,
-        parseAttendanceResponse,
-        parseStudentTimetableForm,
-        parseSyllabusTimetableResponse,
-        parseSyllabusResponse,
-        parseBulletinHomeForm,
-        parseBulletinBoardResponse,
-        parseBulletinDetailResponse,
-    });
-
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (message.target !== MESSAGE_TARGET) return false;
 

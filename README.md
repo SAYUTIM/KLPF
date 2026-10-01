@@ -196,7 +196,6 @@ KLPF/
 │  └─ totp/
 ├─ templates/
 ├─ vendor/
-├─ tests/
 ├─ tools/
 │  └─ check-syntax.js
 ├─ .github/workflows/check.yml
@@ -556,7 +555,7 @@ npm ci
 npm run check
 ```
 
-`npm run check`は、first-party JavaScriptの構文検査、ESLint、CSS検査、HTML構造検査、Node標準テストを順に実行します。`vendor/`、画像、ローカルのブラウザ操作データは検査対象外です。pushとPull RequestではGitHub Actionsでも同じ検査を実行します。
+`npm run check`は、first-party JavaScriptの構文検査、ESLint、CSS検査、HTML構造検査を順に実行します。`vendor/`、画像、ローカルのブラウザ操作データは検査対象外です。pushとPull RequestではGitHub Actionsでも同じ検査を実行します。
 
 | ファイル | 開発時の用途 |
 | --- | --- |
@@ -565,25 +564,11 @@ npm run check
 | `.stylelintrc.json` | CSSの検査ルールを設定する |
 | `.htmlvalidate.json` | HTMLの検査ルールを設定する |
 | `tools/check-syntax.js` | Node.jsのパーサーで自作JavaScriptの構文を検査する |
-| `tests/` | Node.jsと模擬DOM・Chrome APIを使って回帰チェックを行う |
 | `.github/workflows/check.yml` | push・Pull Request時に`npm ci`と`npm run check`を実行する |
 
 これらの開発用ファイルは、拡張機能の通常動作からは読み込みません。
 
-### 自動テストの対象
-
-| ファイル | 確認する動作 |
-| --- | --- |
-| `tests/manifest-contract.test.js` | manifestとpackageのバージョン一致、動的スクリプトID・保存キーの重複防止、参照ファイルの存在、共通モジュールの読み込み順 |
-| `tests/content-scripts.test.js` | 登録内容が同じ場合の再登録抑制、変更時の登録更新、設定定義とオプション画面の対応 |
-| `tests/pure-utils.test.js` | バージョン比較、TOTP、出席表・フォーム・シラバスの解析、通信先URL判定、取消信号、CSSの重複防止、設定バックアップ |
-| `tests/priority-queue.test.js` | 優先順位と受付順、実行中の処理の継続、失敗した要求の後の処理継続 |
-| `tests/background-syllabus-direct.test.js` | シラバスのPOST順序、最小化指定、過年度の拒否、通常のKu-Portタブとの競合停止 |
-| `tests/syllabus-automation.test.js` | 今年度のボタン表示、取得依頼、結果表示、閉じる操作とスクロール復元、過年度での非表示 |
-
-テストには、固定したHTML・応答データと模擬Chrome APIを使います。特定のリリース番号、権限一覧、機能一覧・既定値を固定する検査は設けていません。これらを変更するときは、実装と必要な権限・設定をレビューしてください。
-
-掲示板の取得・キャッシュ、自動ログインの再送制限、出席率の各クォーターの連続取得、認証ウィンドウの実際の終了とタイムアウトは、現在の自動テストの対象外です。ブラウザでの表示・認証・通信を含め、次の手動確認で確認してください。
+CIの静的検査だけでは、画面操作・認証・通信の動作は確認できません。これらは次の手動確認で確認してください。
 
 ### 実サービスの手動回帰確認
 
