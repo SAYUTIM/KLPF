@@ -12,23 +12,30 @@ const ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
 
 let lastAttendanceRefreshAt = 0;
 
+/**
+ * セッションストレージから進行中の出席率取得ジョブを読み出す。
+ * @returns {Promise<object|null>} 進行中のジョブ。保存されていなければnull。
+ */
 export async function getAttendanceFetchJob() {
     const stored = await chrome.storage.session.get(ATTENDANCE_FETCH_JOB_KEY);
     return stored[ATTENDANCE_FETCH_JOB_KEY] || null;
 }
 
+/**
+ * セッションストレージに保存した出席率取得ジョブを削除する。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 export async function clearAttendanceFetchJob() {
     await chrome.storage.session.remove(ATTENDANCE_FETCH_JOB_KEY);
 }
 
-export function createFormBody(fields) {
-    const body = new URLSearchParams();
-    for (const [name, value] of fields || []) {
-        if (typeof name === 'string' && typeof value === 'string') body.append(name, value);
-    }
-    return body;
-}
+export { createFormBody } from './kuport-form.js';
 
+/**
+ * 出席率取得の中断が要求されていればAbortErrorを投げる。
+ * @param {AbortSignal} signal - 取得の中断を通知するシグナル。
+ * @returns {void} 戻り値はない。
+ */
 export function throwIfAttendanceFetchAborted(signal) {
     if (!signal?.aborted) return;
     const error = new Error('Ku-portが別タブで開かれたため取得を中断しました。');
@@ -36,6 +43,11 @@ export function throwIfAttendanceFetchAborted(signal) {
     throw error;
 }
 
+/**
+ * 手動更新の受付時刻をメモリとセッションストレージへ記録する。
+ * @param {number} [requestedAt] - 更新要求を受け付けた時刻（ミリ秒）。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 export async function recordAttendanceRefreshCooldown(requestedAt = Date.now()) {
     lastAttendanceRefreshAt = requestedAt;
     await chrome.storage.session.set({
@@ -43,6 +55,10 @@ export async function recordAttendanceRefreshCooldown(requestedAt = Date.now()) 
     });
 }
 
+/**
+ * 手動更新の待機秒数を返し、更新可能な場合は今回の受付時刻を記録する。
+ * @returns {Promise<number>} 残り待機秒数。0なら今回の手動更新を受け付けた。
+ */
 export async function checkManualRefreshCooldown() {
     const requestedAt = Date.now();
     const memoryElapsed = requestedAt - lastAttendanceRefreshAt;
@@ -62,6 +78,10 @@ export async function checkManualRefreshCooldown() {
     return 0;
 }
 
+/**
+ * 受付時刻を変更せず、手動更新までの残り秒数を取得する。
+ * @returns {Promise<number>} 残り待機秒数。更新可能な場合は0。
+ */
 export async function getManualRefreshCooldownRemaining() {
     const stored = await chrome.storage.session.get(ATTENDANCE_MANUAL_REFRESH_KEY);
     const storedRequestedAt = stored[ATTENDANCE_MANUAL_REFRESH_KEY]?.requestedAt;

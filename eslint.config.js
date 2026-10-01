@@ -4,7 +4,8 @@
 /**
  * @file KLPFのfirst-party JavaScriptに対する静的検査設定。
  * 注入順で共有されるclassic scriptのグローバルは既存仕様のため、未定義変数検査は
- * テスト・Node用コードに限定し、ブラウザ用コードでは実行時契約テストで補完する。
+ * Service Worker・テスト・Node用コードで有効にする。classic scriptの注入順は
+ * リソース契約で管理し、ファイル単位の未使用判定だけで共有グローバルを削除しない。
  */
 
 import globals from 'globals';
@@ -69,6 +70,13 @@ export default [
             },
         },
         rules: correctnessRules,
+    },
+    {
+        files: ['background.js', 'background/**/*.js'],
+        rules: {
+            'no-undef': 'error',
+            'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
+        },
     },
     {
         files: ['gas/**/*.js'],

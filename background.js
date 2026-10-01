@@ -7,6 +7,9 @@
  * モジュールへ処理を委譲する。
  */
 
+import { parseKuportDocument, createKuportLoginContext, closeKuportParser } from './background/modules/kuport-runtime.js';
+import { createFormBody } from './background/modules/kuport-form.js';
+
 import { CONTENT_SCRIPTS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
 import {
     CONTENT_SCRIPT_BY_STORAGE_KEY,
@@ -22,7 +25,6 @@ import {
     ATTENDANCE_FETCH_JOB_KEY,
     checkManualRefreshCooldown,
     clearAttendanceFetchJob,
-    createFormBody,
     getAttendanceFetchJob,
     getManualRefreshCooldownRemaining,
     recordAttendanceRefreshCooldown,
@@ -38,7 +40,7 @@ const ATTENDANCE_FETCH_JOB_TIMEOUT_MS = 2 * 60 * 1000;
 const ATTENDANCE_BACKGROUND_JOB_TAB_ID = -1;
 const KUPORT_ENTRY_URL = 'https://ku-port.sc.kogakuin.ac.jp/';
 const KUPORT_URL_PATTERN = 'https://ku-port.sc.kogakuin.ac.jp/*';
-const ATTENDANCE_PARSER_PATH = 'offscreen/attendanceParser.html';
+
 const LMS_HOME_URL_PATTERNS = [
     'https://study.ns.kogakuin.ac.jp/lms/homeHoml/*',
     'https://study.ns.kogakuin.ac.jp/lms/tpicTpil/doBack*',
@@ -49,7 +51,7 @@ const KUPORT_TRANSITION_HOSTS = new Set([
     'auth.kogakuin.ac.jp',
     'slink.secioss.com',
 ]);
-let creatingAttendanceParser = null;
+
 const startingBackgroundAttendanceTabs = new Set();
 let attendanceFetchAbortController = null;
 
@@ -121,38 +123,9 @@ async function askKuportTabToCapture(tabId, mode = 'capture') {
     }
 }
 
-async function ensureAttendanceParser() {
-    const documentUrl = chrome.runtime.getURL(ATTENDANCE_PARSER_PATH);
-    const contexts = await chrome.runtime.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT'],
-        documentUrls: [documentUrl],
-    });
-    if (contexts.length > 0) return;
 
-    if (!creatingAttendanceParser) {
-        creatingAttendanceParser = chrome.offscreen.createDocument({
-            url: ATTENDANCE_PARSER_PATH,
-            reasons: ['DOM_PARSER'],
-            justification: 'Ku-portの出席表HTMLを画面へ表示せず解析するため',
-        }).finally(() => {
-            creatingAttendanceParser = null;
-        });
-    }
-    await creatingAttendanceParser;
-}
 
-async function parseKuportDocument(type, payload) {
-    await ensureAttendanceParser();
-    const response = await chrome.runtime.sendMessage({
-        target: 'attendance-parser',
-        type,
-        ...payload,
-    });
-    if (!response?.success) {
-        throw new Error(response?.error || 'Ku-portのHTMLを解析できませんでした。');
-    }
-    return response.data;
-}
+
 
 async function fetchKuportAttendanceInBackground(bootstrap, signal) {
     await reportAttendanceDebug('バックグラウンド通信開始');
@@ -279,44 +252,14 @@ async function startBackgroundAttendanceFetch(tabId, bootstrap) {
         }
         startingBackgroundAttendanceTabs.delete(tabId);
         try {
-            await chrome.offscreen.closeDocument();
+            await closeKuportParser();
         } catch {
             // offscreen documentが作られる前の失敗は無視する。
         }
     }
 }
 
-async function createAttendanceLoginContext() {
-    try {
-        const popupWindow = await chrome.windows.create({
-            url: 'about:blank',
-            type: 'popup',
-            state: 'minimized',
-            focused: false,
-        });
-        const tabs = popupWindow?.tabs?.length
-            ? popupWindow.tabs
-            : Number.isInteger(popupWindow?.id)
-                ? await chrome.tabs.query({ windowId: popupWindow.id })
-                : [];
-        if (tabs[0]?.id !== undefined) {
-            return {
-                tab: tabs[0],
-                createdWindowId: popupWindow.id,
-                displayMode: 'minimized-window',
-            };
-        }
-        if (Number.isInteger(popupWindow?.id)) await chrome.windows.remove(popupWindow.id);
-    } catch (error) {
-        console.debug('[KLPF] 最小化したKu-portログイン画面を作成できませんでした。', error);
-    }
 
-    return {
-        tab: await chrome.tabs.create({ active: false }),
-        createdWindowId: null,
-        displayMode: 'inactive-tab',
-    };
-}
 
 async function prepareAttendanceRefreshJob() {
     const currentJob = await getAttendanceFetchJob();
@@ -361,7 +304,7 @@ async function setAttendanceFetchJob(
 }
 
 async function startAttendanceLoginFlow({ abortIfKuportOpen = false, manual = false } = {}) {
-    const createdContext = await createAttendanceLoginContext();
+    const createdContext = await createKuportLoginContext();
     const tab = createdContext.tab;
     await setAttendanceFetchJob(tab.id, {
         createdByExtension: true,
@@ -451,7 +394,7 @@ async function tryManualRefreshFromBackgroundSession() {
             error: error.message,
         });
         try {
-            await chrome.offscreen.closeDocument();
+            await closeKuportParser();
         } catch {
             // 解析用ドキュメントが作成されていない場合は無視する。
         }

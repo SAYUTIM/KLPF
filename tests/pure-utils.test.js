@@ -141,7 +141,9 @@ test('offscreen parser preserves the KU-PORT form message payload', async () => 
     for (const [name, value] of Object.entries({
         DOMParser: dom.window.DOMParser,
         FormData: dom.window.FormData,
+        HTMLElement: dom.window.HTMLElement,
         HTMLFormElement: dom.window.HTMLFormElement,
+        HTMLInputElement: dom.window.HTMLInputElement,
         HTMLSelectElement: dom.window.HTMLSelectElement,
         chrome: { runtime: { onMessage: { addListener() {} } } },
     })) {
@@ -150,8 +152,8 @@ test('offscreen parser preserves the KU-PORT form message payload', async () => 
     }
 
     try {
-        await import('../offscreen/attendanceParser.js');
-        const result = globalThis.KLPFAttendanceParser.parseAttendanceForm(`
+        await import('../offscreen/kuportParser.js');
+        const result = globalThis.KLPFKuportParser.parseAttendanceForm(`
             <form id="funcForm" action="/attendance">
               <input name="javax.faces.ViewState" value="state-token">
               <select id="funcForm:kaikoNendoGakki_input" name="term">
@@ -169,6 +171,8 @@ test('offscreen parser preserves the KU-PORT form message payload', async () => 
         for (const [name, value] of previousGlobals) globalThis[name] = value;
     }
 });
+
+
 
 test('backup schema version 1 round-trips without renaming storage keys', () => {
     const exportedAt = new Date('2026-08-06T00:00:00.000Z');

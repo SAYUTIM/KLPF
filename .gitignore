@@ -3,3 +3,6 @@ node_modules/
 
 # Test and coverage output.
 coverage/
+
+# Local browser diagnostics can contain session URLs and screenshots.
+.playwright-cli/

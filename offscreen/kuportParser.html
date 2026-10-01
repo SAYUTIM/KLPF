@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<!--
+Service WorkerにDOMParserを提供する非表示の拡張機能ページ。
+出席表とフォームの共通処理を先に読み込み、kuportParser.jsで解析要求へ応答する。認証や通信は行わない。
+-->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>KLPF Ku-Port HTML解析</title>
+</head>
+<body>
+  <script src="../features/modules/attendance-utils.js"></script>
+  <script src="../features/modules/form-utils.js"></script>
+  <script src="kuportParser.js"></script>
+</body>
+</html>
