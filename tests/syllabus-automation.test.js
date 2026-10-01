@@ -38,6 +38,18 @@ function lmsHarness(html) {
         return timer;
     };
     window.clearTimeout = timer => { clearTimeout(timer); timers.delete(timer); };
+    const observers = new Set();
+    const NativeMutationObserver = window.MutationObserver;
+    window.MutationObserver = class extends NativeMutationObserver {
+        /**
+         * DOM監視を登録し、検証環境を閉じる前に解除できるよう保持する。
+         * @param {MutationCallback} callback - DOM変更時に呼び出す処理。
+         */
+        constructor(callback) {
+            super(callback);
+            observers.add(this);
+        }
+    };
     const messages = [];
     let resultListener;
     window.KLPFKuportAccess = {
@@ -67,6 +79,9 @@ function lmsHarness(html) {
         scrollCalls,
         start() { window.eval(source); },
         close() {
+            // 画面終了によるDOM変更から、終了後の描画が予約されるのを防ぐ。
+            observers.forEach(observer => observer.disconnect());
+            observers.clear();
             timers.forEach(clearTimeout);
             timers.clear();
             dom.window.close();
