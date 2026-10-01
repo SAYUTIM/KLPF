@@ -3,6 +3,8 @@
 
 /**
  * @file 自動ログイン機能を提供するモジュール
+ * Chromeのlocalストレージに保存された認証情報と共通TOTP生成関数を使い、各認証ページの入力を補助する。
+ * 秘密鍵の取り込み確認と、Ku-Port取得ジョブへ自動ログインできない状態の通知も担当する。
  */
 
 
@@ -44,6 +46,10 @@ function findKuportLoginButton() {
     }) || null;
 }
 
+/**
+ * Ku-Portの取得ジョブへ自動ログインできない状態を通知する。
+ * @returns {void} 戻り値はない。
+ */
 function notifyKuportAutoLoginUnavailable() {
     void chrome.runtime.sendMessage({ type: 'kuport-auto-login-unavailable' }).catch(() => {});
 }
@@ -81,12 +87,20 @@ function handleLogin(password) {
 }
 
 // タイムアウトページからログインページへ復帰 (timeout.cgi)
+/**
+ * 認証のタイムアウト画面からログイン画面へ戻る。
+ * @returns {void} 戻り値はない。
+ */
 function sso_timeoutpage() {
     location.pathname = "/user/";
 }
 
 // エラーページからログインページへ復帰
 // 2025/9/1 エラーページの存在を確認できず。もしかしたら削除されてるかも
+/**
+ * KU-LMSのエラー画面から入口へ戻る。
+ * @returns {void} 戻り値はない。
+ */
 function lms_errorpage() {
     location.pathname = "/lms/lginLgir/";
 }
@@ -113,6 +127,8 @@ async function handleTotpPage(totpSecret) {
         return;
     }
 
+    // 非同期のコード生成中にOFFへ切り替わった場合も、送信直前の許可で止める。
+    if (!await canSubmitAutomatically('otp')) return;
     otpInput.value = code;
     otpInput.dispatchEvent(new Event('input', { bubbles: true }));
     otpInput.dispatchEvent(new Event('change', { bubbles: true }));
@@ -134,6 +150,10 @@ async function handleTotpPage(totpSecret) {
 const TOTP_SETUP_PATH = '/user/index.php';
 const TOTP_IMPORT_HOST_ID = 'klpf-totp-import';
 
+/**
+ * 現在のページがTOTP設定画面か判定する。
+ * @returns {boolean} 条件を満たす場合はtrue。
+ */
 function isTotpSetupPage() {
     const url = new URL(window.location.href);
     return url.origin === new URL(KU_SSO).origin
@@ -142,6 +162,10 @@ function isTotpSetupPage() {
         && url.searchParams.get('st') === 'ga';
 }
 
+/**
+ * TOTP設定画面のQR生成情報から秘密鍵を読み取る。
+ * @returns {string|null} 読み取ったTOTP秘密鍵。見つからなければnull。
+ */
 function readTotpSecretFromSetupPage() {
     if (!safeQuerySelector('#qrImg canvas')) return null;
 
@@ -167,6 +191,12 @@ function readTotpSecretFromSetupPage() {
     return null;
 }
 
+/**
+ * 読み取ったTOTP秘密鍵を保存するための確認パネルを作る。
+ * @param {string} secret - 設定画面で読み取ったBase32のTOTP秘密鍵。
+ * @param {boolean} alreadyConfigured - TOTP秘密鍵がすでに設定されているかどうか。
+ * @returns {void} 戻り値はない。
+ */
 function createTotpImportPanel(secret, alreadyConfigured) {
     if (document.getElementById(TOTP_IMPORT_HOST_ID)) return;
 
@@ -253,6 +283,10 @@ function createTotpImportPanel(secret, alreadyConfigured) {
     document.documentElement.appendChild(host);
 }
 
+/**
+ * TOTP設定画面を確認し、秘密鍵の取り込みパネルを初期化する。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function initializeTotpSecretImport() {
     const qrCanvas = await waitForElement('#qrImg canvas', document, 10000);
     if (!qrCanvas) return;
@@ -271,9 +305,27 @@ async function initializeTotpSecretImport() {
 }
 
 /**
+ * 認証段階ごとの自動送信許可をWorkerに要求する。
+ * @param {string} stage - 入口・ID・パスワード・OTPなどの認証段階。
+ * @returns {Promise<boolean>} 設定と送信回数制限を満たす場合だけtrue。
+ */
+async function canSubmitAutomatically(stage) {
+    try {
+        const result = await chrome.runtime.sendMessage({ type: 'claim-auto-login-attempt', stage });
+        if (result?.ready === true) return true;
+        console.info('[KLPF] 自動ログインを停止しました。', result?.reason || '設定を確認してください。');
+    } catch { /* 許可を確認できない場合も送信しない。 */ }
+    notifyKuportAutoLoginUnavailable();
+    return false;
+}
+
+/**
  * メイン処理
  */
 async function main() {
+    const settings = await chrome.storage.sync.get('autoLogin');
+    const local = await chrome.storage.local.get('klpfInlineAllFeaturesDisabled');
+    if (settings.autoLogin === false || local.klpfInlineAllFeaturesDisabled === true) return;
     if (isTotpSetupPage()) {
         await initializeTotpSecretImport();
         return;
@@ -282,17 +334,26 @@ async function main() {
     const { href } = window.location;
     if (href.startsWith(KUPORT_URL)) {
         const loginButton = findKuportLoginButton();
-        if (!loginButton) return;
+        if (!loginButton) {
+            if (document.querySelector('form[id="menuForm"]')) {
+                void chrome.runtime.sendMessage({ type: 'auto-login-success' }).catch(() => {});
+            }
+            return;
+        }
 
         const { username, password } = await getCredentials();
         if (!username || !password) {
             notifyKuportAutoLoginUnavailable();
             return;
         }
-        loginButton.click();
+        if (await canSubmitAutomatically('kuport-entry')) loginButton.click();
         return;
     }
 
+    if (href.startsWith(LMS_HOME_URL) && document.querySelector('.lms-card, .lms-news-block')) {
+        void chrome.runtime.sendMessage({ type: 'auto-login-success' }).catch(() => {});
+        return;
+    }
     const { username, password, totpSecret } = await getCredentials();
 
     if (!username || !password) {
@@ -302,11 +363,11 @@ async function main() {
     }
 
     if (href.startsWith(LMS_LOGIN_URL)) {
-        handleLmsStartPage();
+        if (await canSubmitAutomatically('lms-entry')) handleLmsStartPage();
     } else if (href.startsWith(SSO_PRELOGIN_URL)) {
-        handlePreLogin(username);
+        if (await canSubmitAutomatically('username')) handlePreLogin(username);
     } else if (href.startsWith(SSO_LOGIN_URL)) {
-        handleLogin(password);
+        if (await canSubmitAutomatically('password')) handleLogin(password);
     } else if (href.startsWith(SSO_OTP_URL)) {
         if (!totpSecret) {
             notifyKuportAutoLoginUnavailable();
@@ -314,11 +375,12 @@ async function main() {
         }
         await handleTotpPage(totpSecret);
     } else if (href.startsWith(SSO_TIMEOUT_URL)) {
-        sso_timeoutpage();
+        if (await canSubmitAutomatically('sso-timeout')) sso_timeoutpage();
     } else if (href.startsWith(LMS_ERROR_URL)) {
-        lms_errorpage();
+        if (await canSubmitAutomatically('lms-error')) lms_errorpage();
     }
 }
 
 // DOMの準備ができたらメイン処理を実行
-document.addEventListener("DOMContentLoaded", main);
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => void main().catch(() => {}), { once: true });
+else void main().catch(() => {});

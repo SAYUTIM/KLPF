@@ -4,9 +4,12 @@
 /**
  * @file 設定ページのUI操作と視覚効果を管理するモジュール
  * @module modules/ui
+ * 設定画面のDOM・保存イベント・機能定義を使い、画面切り替え、スイッチ、案内モーダルを管理する。
+ * Webhookの権限確認と全機能の停止・復元も担当する。
  */
 
-import { CONTENT_SCRIPTS_CONFIG } from '../../scripts.config.js';
+import { FEATURE_SETTINGS_CONFIG } from '../../scripts.config.js';
+import '../../features/modules/kuport-access.js';
 
 // --- 定数定義 ---
 const PARTICLE_COUNT = 75;
@@ -45,7 +48,7 @@ const elements = {
     customThemeCheckbox: null,
     homeworkSwitch: null,
     homeworkNotificationCheckbox: null,
-    // Webhook URL
+    // Webhookの送信先URL
     homeworkWebhookUrlInput: null,
     // オプションパネル
     optionsPanel: null,
@@ -57,7 +60,7 @@ const elements = {
     modalMessage: null,
     modalLink: null,
     modalCloseButton: null,
-    // TOTP
+    // TOTP認証の設定
     totpSecretInput: null,
     totpStatus: null,
 };
@@ -97,7 +100,7 @@ function cacheDOMElements() {
     elements.homeworkSwitch = document.getElementById('home-work');
     elements.homeworkNotificationCheckbox = document.getElementById('homework-notification');
 
-    // Webhook URL
+    // Webhookの送信先URL
     elements.homeworkWebhookUrlInput = document.getElementById('homework-webhook-url');
 
     // オプションパネル
@@ -112,11 +115,39 @@ function cacheDOMElements() {
     elements.modalLink = document.getElementById('modal-link');
     elements.modalCloseButton = document.getElementById('modal-close-button');
 
-    // TOTP
+    // TOTP認証の設定
     elements.totpSecretInput = document.getElementById('totp-secret');
     elements.totpStatus = document.getElementById('totp-status');
 }
 
+/**
+ * 共通の認証条件を取得系スイッチへ反映する。
+ * @param {object} access - 認証情報を含まない利用可否と理由。
+ * @returns {void} 表示と操作可否を更新する。
+ */
+function applyKuportAccessState(access) {
+    for (const key of ['attendanceRateDisplay', 'syllabusLookupEnabled', 'bulletinBoardEnabled']) {
+        const container = document.querySelector(`.switch-container[data-feature-key="${key}"]`);
+        const input = container?.querySelector('input[type="checkbox"]');
+        if (!input) continue;
+        input.disabled = !access.ready;
+        container.setAttribute('aria-disabled', String(!access.ready));
+        let reason = container.querySelector('.switch-dependency');
+        if (!reason) {
+            reason = document.createElement('p');
+            reason.className = 'switch-dependency';
+            reason.setAttribute('role', 'status');
+            container.querySelector('.switch-copy').appendChild(reason);
+        }
+        reason.hidden = access.ready;
+        reason.textContent = access.ready ? '' : access.reason;
+    }
+}
+
+/**
+ * 機能定義から設定画面の表示名・順序・既定値を初期化する。
+ * @returns {void} 戻り値はない。
+ */
 function initFeatureMetadata() {
     document.querySelectorAll('.switch-container[data-feature-key]').forEach((container) => {
         const copy = container.querySelector('.switch-copy');
@@ -131,11 +162,17 @@ function initFeatureMetadata() {
             description.textContent = container.getAttribute('title') || '';
             copy.appendChild(description);
         }
+        container.removeAttribute('title');
     });
 }
 
+/**
+ * 保存された値と各機能の既定値から設定を補完する。
+ * @param {object} [storedSettings] - ストレージから読み出した機能設定。
+ * @returns {object} 既定値を補完した機能設定。
+ */
 function getResolvedFeatureSettings(storedSettings = {}) {
-    return CONTENT_SCRIPTS_CONFIG.reduce((settings, feature) => {
+    return FEATURE_SETTINGS_CONFIG.reduce((settings, feature) => {
         settings[feature.storageKey] = typeof storedSettings[feature.storageKey] === 'boolean'
             ? storedSettings[feature.storageKey]
             : feature.enabledByDefault === true;
@@ -143,6 +180,11 @@ function getResolvedFeatureSettings(storedSettings = {}) {
     }, {});
 }
 
+/**
+ * 一括停止状態を設定画面のスイッチと操作可否へ反映する。
+ * @param {boolean} disabled - 機能または操作を停止するかどうか。
+ * @returns {void} 戻り値はない。
+ */
 function applyAllFeaturesDisabledState(disabled) {
     const isDisabled = disabled === true;
     document.body.classList.toggle('is-all-features-disabled', isDisabled);
@@ -161,6 +203,11 @@ function applyAllFeaturesDisabledState(disabled) {
     });
 }
 
+/**
+ * 全機能切り替え時の表示アニメーションを再生する。
+ * @param {string|number} direction - 移動またはアニメーションの方向。
+ * @returns {Promise<void>} 切り替えアニメーションの完了を待つPromise。
+ */
 function playAllFeaturesToggleAnimation(direction) {
     const title = elements.settingsHeadingTitle;
     if (!title) return Promise.resolve();
@@ -192,6 +239,11 @@ function playAllFeaturesToggleAnimation(direction) {
     });
 }
 
+/**
+ * 個別機能切り替え時の表示アニメーションを再生する。
+ * @param {HTMLInputElement} checkbox - 表示を更新する設定スイッチ。
+ * @returns {void} 戻り値はない。
+ */
 function playFeatureToggleAnimation(checkbox) {
     const label = checkbox.closest('.switch-container')?.querySelector('.switch-label');
     if (!label) return;
@@ -221,8 +273,12 @@ function playFeatureToggleAnimation(checkbox) {
     featureToggleAnimationCleanups.set(label, finish);
 }
 
+/**
+ * 現在の機能設定を退避し、全機能を停止する。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function disableAllFeatures() {
-    const featureKeys = CONTENT_SCRIPTS_CONFIG.map(feature => feature.storageKey);
+    const featureKeys = FEATURE_SETTINGS_CONFIG.map(feature => feature.storageKey);
     const storedSettings = await chrome.storage.sync.get(featureKeys);
     const previousSettings = getResolvedFeatureSettings(storedSettings);
     const disabledSettings = Object.fromEntries(featureKeys.map(key => [key, false]));
@@ -234,6 +290,10 @@ async function disableAllFeatures() {
     await chrome.storage.sync.set(disabledSettings);
 }
 
+/**
+ * 一括停止前に退避した機能設定を復元する。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function restoreAllFeatures() {
     const [{ [PREVIOUS_FEATURE_SETTINGS_KEY]: previousSettings = {} }, consentSettings] = await Promise.all([
         chrome.storage.local.get(PREVIOUS_FEATURE_SETTINGS_KEY),
@@ -253,6 +313,10 @@ async function restoreAllFeatures() {
     });
 }
 
+/**
+ * 全機能の停止または復元を受け付ける。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function handleAllFeaturesToggle() {
     if (!elements.allFeaturesToggle || allFeaturesToggleInProgress) return;
     allFeaturesToggleInProgress = true;
@@ -283,6 +347,10 @@ async function handleAllFeaturesToggle() {
     }
 }
 
+/**
+ * 保存された一括停止状態を読み取り、設定画面へ反映する。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function initAllFeaturesState() {
     try {
         const stored = await chrome.storage.local.get({ [ALL_FEATURES_DISABLED_KEY]: false });
@@ -300,6 +368,11 @@ async function initAllFeaturesState() {
     });
 }
 
+/**
+ * 現在のセクションに対応する設定ナビゲーションを選択状態へする。
+ * @param {string} sectionId - 移動または選択する設定セクションのID。
+ * @returns {void} 戻り値はない。
+ */
 function setActiveCalmNavigation(sectionId) {
     document.querySelectorAll('.calm-navigation-link').forEach((link) => {
         const isActive = link.dataset.section === sectionId;
@@ -312,6 +385,10 @@ function setActiveCalmNavigation(sectionId) {
     });
 }
 
+/**
+ * 設定画面のセクション移動と現在位置の表示を登録する。
+ * @returns {void} 戻り値はない。
+ */
 function initCalmNavigation() {
     if (calmNavigationInitialized) return;
     calmNavigationInitialized = true;
@@ -382,12 +459,21 @@ function initParticleEffect() {
     }
 }
 
+/**
+ * 表示モードを有効な設定値へそろえる。
+ * @param {*} value - 検証・変換する入力値。
+ * @returns {string} 対応する設定画面の表示モード。
+ */
 function normalizeOptionsViewMode(value) {
     return value === OPTIONS_VIEW_MODE_CALM
         ? OPTIONS_VIEW_MODE_CALM
         : OPTIONS_VIEW_MODE_VIVID;
 }
 
+/**
+ * 設定画面の表示モード切り替えボタンを更新する。
+ * @returns {void} 戻り値はない。
+ */
 function updateOptionsViewToggle() {
     const isCalm = currentOptionsViewMode === OPTIONS_VIEW_MODE_CALM;
     if (elements.optionsViewToggle) {
@@ -403,6 +489,13 @@ function updateOptionsViewToggle() {
     }
 }
 
+/**
+ * 設定画面へ表示モードを適用し、必要に応じて切り替え演出を待つ。
+ * @param {string} mode - 読み取りまたは表示の処理モード。
+ * @param {object} [options={}] - この処理に必要な設定と依存処理。
+ * @param {boolean} [options.waitForPanelAnimation=true] - 表示モード切り替えの演出完了を待つかどうか。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function applyOptionsViewMode(mode, { waitForPanelAnimation = true } = {}) {
     const normalizedMode = normalizeOptionsViewMode(mode);
     if (currentOptionsViewMode === normalizedMode) {
@@ -423,12 +516,24 @@ async function applyOptionsViewMode(mode, { waitForPanelAnimation = true } = {})
     requestAnimationFrame(() => window.dispatchEvent(new Event('scroll')));
 }
 
+/**
+ * 表示モード切り替えのアニメーション時間だけ待つ。
+ * @param {number} duration - 表示または待機の時間（ミリ秒）。
+ * @returns {Promise<void>} 指定時間の経過を待つPromise。
+ */
 function waitForOptionsViewTransition(duration) {
     return new Promise((resolve) => {
         setTimeout(resolve, duration);
     });
 }
 
+/**
+ * 表示モード切り替え用の背景アニメーションを再生する。
+ * @param {HTMLElement} overlay - 切り替え演出の背景要素。
+ * @param {object[]} keyframes - 切り替え演出で使用するキーフレーム。
+ * @param {number} duration - 表示または待機の時間（ミリ秒）。
+ * @returns {Promise<Animation>} 再生完了後の背景アニメーション。呼び出し元でcancelして表示を片付けられる。
+ */
 async function animateOptionsViewOverlay(overlay, keyframes, duration) {
     const animation = overlay.animate(keyframes, {
         duration,
@@ -439,6 +544,11 @@ async function animateOptionsViewOverlay(overlay, keyframes, duration) {
     return animation;
 }
 
+/**
+ * 表示モード切り替えの演出・適用・保存を順番に実行する。
+ * @param {string} nextMode - 切り替え先の設定画面表示モード。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function transitionOptionsViewMode(nextMode) {
     const normalizedMode = normalizeOptionsViewMode(nextMode);
     const transitionOverlay = elements.optionsViewTransition;
@@ -501,6 +611,10 @@ async function transitionOptionsViewMode(nextMode) {
     }
 }
 
+/**
+ * 設定画面の表示モード切り替え操作を受け付ける。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function handleOptionsViewToggle() {
     if (optionsViewTransitionInProgress) return;
     optionsViewTransitionInProgress = true;
@@ -526,6 +640,10 @@ async function handleOptionsViewToggle() {
     }
 }
 
+/**
+ * 保存された表示モードを読み取り、設定画面へ適用する。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function initOptionsViewMode() {
     try {
         const stored = await chrome.storage.local.get({
@@ -593,6 +711,11 @@ function setupInteractions() {
 
 // --- イベントリスナー ---
 
+/**
+ * 設定の保存完了イベントを受けて操作結果を表示する。
+ * @param {Event} e - 設定状態を通知するイベント。
+ * @returns {void} 戻り値はない。
+ */
 function handleSettingsSaved(e) {
     const detail = e?.detail;
     if (detail && typeof detail === 'object') {
@@ -607,6 +730,11 @@ function handleSettingsSaved(e) {
     showStatusMessage("設定が保存されました", "lightgreen");
 }
 
+/**
+ * 設定のエラーイベントを受けて理由を表示する。
+ * @param {Event} e - 設定状態を通知するイベント。
+ * @returns {void} 戻り値はない。
+ */
 function handleSettingsError(e) {
     const message = typeof e.detail === 'string'
         ? e.detail
@@ -638,6 +766,10 @@ function showStatusMessage(text, color = 'lightgreen', duration = STATUS_MESSAGE
     }, duration);
 }
 
+/**
+ * 設定の読み込み完了後に入力欄と関連表示を更新する。
+ * @returns {void} 戻り値はない。
+ */
 function handleSettingsLoaded() {
     updateSwitchGradientLabels();
     reorderAndShowPanels();
@@ -646,6 +778,10 @@ function handleSettingsLoaded() {
     validateTotpSecret();
 }
 
+/**
+ * DOMの準備完了後に設定画面を初期化する。
+ * @returns {void} 戻り値はない。
+ */
 function handleDOMContentLoaded() {
     cacheDOMElements();
     initFeatureMetadata();
@@ -659,6 +795,10 @@ function handleDOMContentLoaded() {
     void initAllFeaturesState();
 }
 
+/**
+ * 設定画面の入力・保存・ナビゲーション操作を登録する。
+ * @returns {void} 戻り値はない。
+ */
 function addEventListenersToUI() {
     document.addEventListener("settings-saved", handleSettingsSaved);
     document.addEventListener("settings-error", handleSettingsError);
@@ -678,7 +818,7 @@ function addEventListenersToUI() {
     elements.autoAttendCheckbox?.addEventListener("change", (e) => updateOptionsOrder('auto-attend-options', e.target.checked));
     elements.homeworkSwitch?.addEventListener("change", (e) => updateOptionsOrder('homework-options', e.target.checked));
 
-    // --- Webhook URL Validation ---
+    // Webhook送信先の検証と権限確認
     elements.homeworkNotificationCheckbox?.addEventListener('change', async (e) => {
         if (e.target.checked) {
             e.stopImmediatePropagation();
@@ -714,7 +854,7 @@ function addEventListenersToUI() {
             : "Webhook URLが不正なため、通知機能をOFFにしました。");
     });
 
-    // --- Modal Listeners ---
+    // モーダルの操作イベント
     elements.modalCloseButton?.addEventListener('click', hideModal);
     elements.validationModal?.addEventListener('click', (e) => {
         if (e.target === elements.validationModal) {
@@ -723,14 +863,23 @@ function addEventListenersToUI() {
     });
 }
 
-// --- Modal --- 
+// 案内モーダル
 
+/**
+ * 設定画面の案内モーダルへメッセージを表示する。
+ * @param {string|object} message - 表示する案内文、または受信した機能メッセージ。
+ * @returns {void} 戻り値はない。
+ */
 function showModal(message) {
     if (!elements.validationModal || !elements.modalMessage) return;
     elements.modalMessage.textContent = message;
     elements.validationModal.classList.add('visible');
 }
 
+/**
+ * 設定画面の案内モーダルを閉じる。
+ * @returns {void} 戻り値はない。
+ */
 function hideModal() {
     if (!elements.validationModal) return;
     elements.validationModal.classList.remove('visible');
@@ -748,6 +897,11 @@ export function showUpdateNotification(newVersion) {
     elements.updateNotification.classList.add('visible');
 }
 
+/**
+ * Webhookの入力をURLへ変換し、有効な送信先か検証する。
+ * @param {*} value - 検証・変換する入力値。
+ * @returns {URL|null} 有効なWebhook送信先。入力が無効ならnull。
+ */
 function parseWebhookUrl(value) {
     try {
         const url = new URL(value);
@@ -758,11 +912,20 @@ function parseWebhookUrl(value) {
     }
 }
 
+/**
+ * Webhook送信先のオリジンへアクセスする拡張機能権限を要求する。
+ * @param {string|URL} url - 判定または通信の対象URL。
+ * @returns {Promise<boolean>} 対象オリジンの権限を取得できた場合はtrue。
+ */
 function requestWebhookOriginPermission(url) {
     const originPattern = `${url.protocol}//${url.hostname}/*`;
     return chrome.permissions.request({ origins: [originPattern] });
 }
 
+/**
+ * スイッチの状態に合わせてラベルの表示を更新する。
+ * @returns {void} 戻り値はない。
+ */
 function updateSwitchGradientLabels() {
     const switches = document.querySelectorAll(".switch-container");
     switches.forEach((switchContainer) => {
@@ -903,11 +1066,21 @@ async function updateOptionsOrder(optionId, isEnabled) {
 
 // --- エフェクトヘルパー ---
 
+/**
+ * 演出用の虹色からランダムに1色を選ぶ。
+ * @returns {string} 粒子に使用する色文字列。
+ */
 function getRandomRainbowColor() {
     const colors = ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#8B00FF'];
     return colors[Math.floor(Math.random() * colors.length)];
 }
 
+/**
+ * 設定画面の背景演出用の粒子を生成する。
+ * @param {object} [options={}] - この処理に必要な設定と依存処理。
+ * @param {boolean} [options.randomizeProgress=false] - 粒子の開始位置をランダムにずらすかどうか。
+ * @returns {void} 戻り値はない。
+ */
 function createPowderParticle({ randomizeProgress = false } = {}) {
     if (!elements.particleCanvas || currentOptionsViewMode !== OPTIONS_VIEW_MODE_VIVID) return;
     const particle = document.createElement('div');
@@ -976,6 +1149,7 @@ async function validateTotpSecret() {
  * UIの初期化を実行するエントリーポイント
  */
 export function initializeUI() {
+    globalThis.KLPFKuportAccess.subscribe(applyKuportAccessState);
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', handleDOMContentLoaded);
     } else {

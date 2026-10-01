@@ -1,5 +1,8 @@
 <!DOCTYPE html>
-<!-- 拡張機能の設定、認証情報、バックアップを管理するオプションページ。 -->
+<!--
+拡張機能の設定・認証情報・バックアップを操作するページ。
+options.cssとmain.jsを読み込み、機能定義に対応した入力要素を提供する。保存と権限確認は各モジュールが行う。
+-->
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
@@ -230,6 +233,20 @@
                     </div>
                 </header>
                 <div class="feature-category-list">
+                    <div class="switch-container" data-feature-key="syllabusLookupEnabled" title="授業カードから今年度のシラバスを取得して表示します。取得結果は1か月保存します。自動ログインの有効化とユーザー名・パスワードの設定が必要です。">
+                        <div class="switch-copy"><span class="switch-label">シラバス表示</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="syllabus-lookup-enabled">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="switch-container" data-feature-key="bulletinBoardEnabled" title="KU-LMSホームにKu-Portの掲示板を最大5件表示します。ブラウザ起動後に一度更新します。自動ログインの有効化とユーザー名・パスワードの設定が必要です。">
+                        <div class="switch-copy"><span class="switch-label">掲示板表示</span><span class="feature-recommended">推奨</span></div>
+                        <label class="switch">
+                            <input type="checkbox" id="bulletin-board-enabled">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                     <div class="switch-container" data-feature-key="kuportDialogOutsideClose" title="KU-PORTの掲示板やシラバスなどで開くダイアログを、ポップアップの外側をクリックするだけで閉じられるようにします。小さい画面内の閉じるボタン×までカーソルを移動する必要がなくなります。">
                         <div class="switch-copy"><span class="switch-label">KP枠外簡易閉</span><span class="feature-recommended">推奨</span></div>
                         <label class="switch">

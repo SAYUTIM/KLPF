@@ -4,9 +4,11 @@
 /**
  * @file 設定データの管理を担当するモジュール
  * @module modules/settings
+ * 入力要素と設定定義を対応させ、認証情報をlocal、機能設定をsyncへ保存・復元する。
+ * 出席率の有効化では同意画面を経由し、保存結果をUI向けイベントで通知する。
  */
 
-import { CONTENT_SCRIPTS_CONFIG } from '../../scripts.config.js';
+import { FEATURE_SETTINGS_CONFIG } from '../../scripts.config.js';
 
 const ATTENDANCE_RATE_FEATURE_KEY = 'attendanceRateDisplay';
 const ATTENDANCE_RATE_CONSENT_KEY = 'attendanceRateAccessConsent';
@@ -32,6 +34,8 @@ export const SETTINGS_CONFIG = [
     { id: 'search-subject',  key: 'searchSubject', type: 'checked', storage: 'sync' },
     { id: 'home-attendance-badge', key: 'homeAttendanceBadge', type: 'checked', storage: 'sync' },
     { id: 'attendance-rate-display', key: 'attendanceRateDisplay', type: 'checked', storage: 'sync' },
+    { id: 'syllabus-lookup-enabled', key: 'syllabusLookupEnabled', type: 'checked', storage: 'sync' },
+    { id: 'bulletin-board-enabled', key: 'bulletinBoardEnabled', type: 'checked', storage: 'sync' },
     { id: 'dark-mode',       key: 'darkMode',      type: 'checked', storage: 'sync' },
     { id: 'home-work',        key: 'homework',      type: 'checked', storage: 'sync' },
     { id: 'logout-block',    key: 'logoutblock',   type: 'checked', storage: 'sync' },
@@ -52,17 +56,32 @@ export const SETTINGS_CONFIG = [
 ];
 
 const DEFAULT_ENABLED_MAP = new Map(
-    CONTENT_SCRIPTS_CONFIG.map((config) => [config.storageKey, !!config.enabledByDefault]),
+    FEATURE_SETTINGS_CONFIG.map((config) => [config.storageKey, !!config.enabledByDefault]),
 );
 
+/**
+ * 設定定義から保存先のストレージ領域名を取得する。
+ * @param {object} config - 機能または設定項目の定義。
+ * @returns {string} 保存先の領域名。省略時はsync。
+ */
 function getStorageArea(config) {
     return config.storage || 'sync';
 }
 
+/**
+ * 設定定義から保存値に必要な型を求める。
+ * @param {object} config - 機能または設定項目の定義。
+ * @returns {string} 保存値の型を表す文字列。
+ */
 function getExpectedType(config) {
     return config.type === 'checked' ? 'boolean' : 'string';
 }
 
+/**
+ * 設定定義に対応する既定値を返す。
+ * @param {object} config - 機能または設定項目の定義。
+ * @returns {boolean|string} 設定項目の既定値。
+ */
 function getFallbackValue(config) {
     if (config.type === 'value') {
         return '';
@@ -75,6 +94,13 @@ function getFallbackValue(config) {
     return false;
 }
 
+/**
+ * 読み取った設定値を対応する入力要素へ反映する。
+ * @param {Element} element - 操作または読み取りの対象要素。
+ * @param {object} config - 機能または設定項目の定義。
+ * @param {*} value - 検証・変換する入力値。
+ * @returns {void} 戻り値はない。
+ */
 function applySettingToElement(element, config, value) {
     if (config.type === 'checked') {
         element.checked = value;
@@ -84,6 +110,10 @@ function applySettingToElement(element, config, value) {
     element.value = value;
 }
 
+/**
+ * 設定定義から読み込み対象の保存キーを列挙する。
+ * @returns {object} 領域ごとに分類した保存キー一覧。
+ */
 export function getSettingsStorageKeys() {
     return SETTINGS_CONFIG.reduce((keys, config) => {
         keys[getStorageArea(config)].add(config.key);
@@ -114,6 +144,11 @@ export async function saveSettings() {
 
     try {
         // localとsyncの両方に保存
+        if (settingsToSave.sync.autoLogin === false) {
+            for (const key of ['attendanceRateDisplay', 'syllabusLookupEnabled', 'bulletinBoardEnabled']) {
+                settingsToSave.sync[key] = false;
+            }
+        }
         await Promise.all([
             chrome.storage.sync.set(settingsToSave.sync),
             chrome.storage.local.set(settingsToSave.local)
@@ -127,6 +162,10 @@ export async function saveSettings() {
     }
 }
 
+/**
+ * 出席率取得の説明と同意画面を表示し、利用者の選択を待つ。
+ * @returns {Promise<boolean>} 出席率取得へ同意した場合はtrue。
+ */
 function showAttendanceConsentModal() {
     const modal = document.getElementById('attendance-consent-modal');
     if (!modal) return Promise.resolve(false);
@@ -138,12 +177,22 @@ function showAttendanceConsentModal() {
     });
 }
 
+/**
+ * 出席率の同意画面を閉じ、待機中の処理へ結果を返す。
+ * @param {boolean} accepted - 出席率取得への同意を受け付けたかどうか。
+ * @returns {void} 戻り値はない。
+ */
 function resolveAttendanceConsent(accepted) {
     document.getElementById('attendance-consent-modal')?.classList.remove('visible');
     attendanceConsentResolver?.(accepted);
     attendanceConsentResolver = null;
 }
 
+/**
+ * 出席率の有効化時に同意を確認し、設定へ反映する。
+ * @param {Element} element - 操作または読み取りの対象要素。
+ * @returns {Promise<void>} 処理の完了を待つPromise。
+ */
 async function handleAttendanceRateToggle(element) {
     element.disabled = true;
     try {
@@ -160,7 +209,7 @@ async function handleAttendanceRateToggle(element) {
         }
         await saveSettings();
     } finally {
-        element.disabled = false;
+        element.disabled = globalThis.KLPFKuportAccess?.ready !== true;
     }
 }
 

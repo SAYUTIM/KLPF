@@ -1,3 +1,8 @@
+/**
+ * @file 拡張機能の設定画面の配色・入力欄・切り替え演出・表示モードを定義する。
+ * options.htmlのクラスとui.jsが付ける状態に対応し、認証や保存処理はJavaScriptへ委譲する。
+ */
+
 /*
 Copyright (c) 2024-2026 SAYU
 This software is released under the MIT License, see LICENSE.
@@ -812,7 +817,7 @@ select:hover {
     cursor: none;
 }
 
-/* Keyframes and other styles... */
+/* キーフレームと表示演出 */
 
 @keyframes box_color { 0% { background-position-x: 200%; } 100% { background-position-x: 0%; } }
 @keyframes configure-xclockwise { 0% { transform: rotate(45deg); } 25% { transform: rotate(-45deg); } 50% { transform: rotate(-135deg); } 75% { transform: rotate(-225deg); } 100% { transform: rotate(-315deg); } }
@@ -824,7 +829,7 @@ select:hover {
 @keyframes spin { from { transform: rotate(0); } to{ transform: rotate(359deg); } }
 @keyframes spin3D { from { transform: rotate3d(.5,.5,.5, 360deg); } to{ transform: rotate3d(0deg); } }
 
-/* --- Layout Styles --- */
+/* 設定画面の配置 */
 .settings-wrapper {
     display: flex;
     align-items: flex-start;
@@ -959,7 +964,7 @@ select:hover {
     flex: 1;
 }
 
-/* --- Modal Styles --- */
+/* 設定画面のモーダル表示 */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1081,7 +1086,7 @@ select:hover {
     color: #101010;
 }
 
-/* --- Options page appearance switcher --- */
+/* 設定画面の表示モード切り替え */
 .options-page-header {
     align-items: center;
     box-sizing: border-box;
@@ -1501,7 +1506,7 @@ body.is-options-view-switching.is-options-view-revealing .calm-footer {
     transition-duration: 400ms;
 }
 
-/* --- Calm extension-style appearance --- */
+/* 落ち着いた表示モードの配色と配置 */
 body[data-options-view="calm"] {
     --calm-accent: #0b57d0;
     --calm-accent-hover: #0842a0;
@@ -2704,4 +2709,16 @@ body[data-options-view="calm"] select {
     body[data-options-view="calm"] .loading.is-leaving .loading-brand {
         transition-duration: 900ms, 800ms, 1.05s !important;
     }
+}
+
+/* 認証が必要な機能の停止理由は、表示モードを問わずスイッチのそばへ表示する。 */
+.switch-dependency {
+    color: #8a3b15;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 7px 0 0;
+}
+
+.switch-dependency[hidden] {
+    display: none;
 }

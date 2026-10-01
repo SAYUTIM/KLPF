@@ -22,7 +22,7 @@ import {
 
 import { createFormBody } from './background/modules/kuport-form.js';
 
-import { getAuthAccessState } from './background/modules/auth-access.js';
+import { getAuthAccessState, claimAutoLoginAttempt, resetAutoLoginAttempts, recordAutoLoginSuccess, AUTH_ATTEMPTS_KEY, KUPORT_DEPENDENT_KEYS } from './background/modules/auth-access.js';
 import { CONTENT_SCRIPTS_CONFIG, FEATURE_SETTINGS_CONFIG, GAS_SETUP_CONFIG, CONTEXT_MENU_ID } from './scripts.config.js';
 import {
     CONTENT_SCRIPT_BY_STORAGE_KEY,
@@ -166,6 +166,31 @@ async function ensureKuportFeatureAvailable(key) {
     if (!access.ready || settings[key] === false
         || (key === ATTENDANCE_RATE_FEATURE_KEY && settings[key] !== true)) {
         throw new Error(access.reason || '機能がOFFになったため、取得を中止しました。');
+    }
+}
+
+/**
+ * 利用条件を画面へ再通知し、利用できなくなった取得を終了する。
+ * @returns {Promise<void>} 通知と終了処理の完了。
+ */
+async function updateKuportAccess() {
+    const access = await getAuthAccessState();
+    const tabs = await chrome.tabs.query({ url: 'https://study.ns.kogakuin.ac.jp/*' });
+    await Promise.all(tabs.map(tab => chrome.tabs.sendMessage(tab.id, { type: 'kuport-access-changed' }).catch(() => {})));
+    const [syllabus, bulletin, attendance, settings] = await Promise.all([
+        getSyllabusLookupJob(), getBulletinFetchJob(), getAttendanceFetchJob(),
+        chrome.storage.sync.get(KUPORT_DEPENDENT_KEYS),
+    ]);
+    if (syllabus && (!access.ready || settings[SYLLABUS_LOOKUP_ENABLED_KEY] === false)) {
+        await finishSyllabusLookup(syllabus.requestId, { message: access.reason || 'シラバス表示がOFFになりました。' });
+    }
+    if (bulletin && (!access.ready || settings[BULLETIN_BOARD_ENABLED_KEY] === false)) {
+        await finishBulletinFetch(bulletin.requestId, { message: access.reason || '掲示板表示がOFFになりました。' });
+    }
+    if (attendance && (!access.ready || settings[ATTENDANCE_RATE_FEATURE_KEY] !== true)) {
+        attendanceFetchAbortController?.abort();
+        await finishAttendanceFetch(attendance.tabId, 'feature-disabled');
+        await clearAttendanceBrowserSessionYear(attendance.academicYear);
     }
 }
 
@@ -2037,6 +2062,33 @@ chrome.storage.onChanged.addListener((changes, area) => {
     });
 });
 
+// 自動ログインの停止は保存設定にも反映する。一括停止前の退避データは変更しない。
+chrome.storage.onChanged.addListener((changes, area) => {
+    const authChanged = (area === 'sync' && changes.autoLogin)
+        || (area === 'local' && ['username', 'password', 'totpSecret'].some(key => changes[key]));
+    if (authChanged) {
+        void (async () => {
+            await resetAutoLoginAttempts();
+            const settings = await chrome.storage.sync.get('autoLogin');
+            if (settings.autoLogin === false) {
+                await chrome.storage.sync.set(Object.fromEntries(KUPORT_DEPENDENT_KEYS.map(key => [key, false])));
+            }
+            await updateKuportAccess();
+        })().catch(error => console.debug('[KLPF] 自動ログイン設定の反映に失敗しました。', error));
+    } else if ((area === 'sync' && KUPORT_DEPENDENT_KEYS.some(key => changes[key]))
+        || (area === 'local' && changes[INLINE_ALL_FEATURES_DISABLED_KEY])
+        || (area === 'session' && changes[AUTH_ATTEMPTS_KEY]
+            && changes[AUTH_ATTEMPTS_KEY].oldValue?.blocked !== changes[AUTH_ATTEMPTS_KEY].newValue?.blocked)) {
+        void (async () => {
+            const settings = await chrome.storage.sync.get(['autoLogin', ...KUPORT_DEPENDENT_KEYS]);
+            if (settings.autoLogin === false && KUPORT_DEPENDENT_KEYS.some(key => settings[key] === true)) {
+                await chrome.storage.sync.set(Object.fromEntries(KUPORT_DEPENDENT_KEYS.map(key => [key, false])));
+            }
+            await updateKuportAccess();
+        })().catch(error => console.debug('[KLPF] 取得の利用条件を反映できませんでした。', error));
+    }
+});
+
 /**
  * コンテンツスクリプトやポップアップからのメッセージを受信する。
  */
@@ -2046,8 +2098,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         getAuthAccessState().then(sendResponse).catch(() => sendResponse({ ready: false, reason: '設定を確認できませんでした。' }));
         return true;
     }
-
-
+    if (message.type === 'claim-auto-login-attempt') {
+        const stages = ['kuport-entry', 'lms-entry', 'username', 'password', 'otp', 'sso-timeout', 'lms-error'];
+        let host = '';
+        try { host = new URL(sender.url || '').hostname; } catch { /* 不正な送信元は拒否する。 */ }
+        if (!['study.ns.kogakuin.ac.jp', 'ku-port.sc.kogakuin.ac.jp', 'slink.secioss.com'].includes(host)
+            || !stages.includes(message.stage) || !Number.isInteger(sender.tab?.id)) {
+            sendResponse({ ready: false });
+            return false;
+        }
+        claimAutoLoginAttempt(message.stage, sender.tab.id).then(sendResponse).catch(() => sendResponse({ ready: false }));
+        return true;
+    }
+    if (message.type === 'auto-login-success') {
+        let url;
+        try { url = new URL(sender.url || ''); } catch { return false; }
+        if ((url.hostname === 'ku-port.sc.kogakuin.ac.jp' && url.pathname.startsWith('/uprx/'))
+            || (url.hostname === 'study.ns.kogakuin.ac.jp' && url.pathname.startsWith('/lms/homeHoml/'))) {
+            void recordAutoLoginSuccess(sender.tab?.id).catch(() => {});
+        }
+        return false;
+    }
     if (message.action === "openTab") {
         chrome.tabs.create({ url: message.url });
         return;
