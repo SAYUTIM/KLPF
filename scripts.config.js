@@ -3,6 +3,7 @@
 
 /**
  * @file 拡張機能のコンテンツスクリプトと設定を管理する。
+ * 背景側の動的スクリプト登録と設定画面が同じ定義を参照し、対象URL・依存ファイル・既定値を共有する。
  */
 
 
@@ -26,7 +27,8 @@ const MODULES = {
 const URLS = {
   KOGAKUIN_LMS: 'https://study.ns.kogakuin.ac.jp/*',
   KOGAKUIN_LMS_HOME: 'https://study.ns.kogakuin.ac.jp/lms/homeHoml/*',
-  KOGAKUIN_LMS_HOME_BACK: 'https://study.ns.kogakuin.ac.jp/lms/tpicTpil/doBack*',
+  KOGAKUIN_LMS_HOME_BACK: 'https://study.ns.kogakuin.ac.jp/lms/tpicTpic/doBack*',
+  KOGAKUIN_LMS_HOME_BACK_LEGACY: 'https://study.ns.kogakuin.ac.jp/lms/tpicTpil/doBack*',
   KOGAKUIN_LMS_HOME_KLIL_BACK: 'https://study.ns.kogakuin.ac.jp/lms/klmsKlil/doBack*',
   KOGAKUIN_LMS_GENERAL: 'https://study.ns.kogakuin.ac.jp/lms/*',
   KOGAKUIN_LMS_hH_KYOZAI: 'https://study.ns.kogakuin.ac.jp/lms/homeHoml/doLinkKougi*',
@@ -118,7 +120,7 @@ export const CONTENT_SCRIPTS_CONFIG = [
         displayName: '履修中科目のみ表示',
         displayOrder: 80,
         js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, `${PATHS.FEATURES}subject.js`],
-        matches: [URLS.KOGAKUIN_LMS_HOME, URLS.KOGAKUIN_LMS_HOME_BACK, URLS.KOGAKUIN_LMS_HOME_KLIL_BACK],
+        matches: [URLS.KOGAKUIN_LMS_HOME, URLS.KOGAKUIN_LMS_HOME_BACK, URLS.KOGAKUIN_LMS_HOME_BACK_LEGACY, URLS.KOGAKUIN_LMS_HOME_KLIL_BACK],
         runAt: 'document_start',
         enabledByDefault: true,
     },
@@ -145,7 +147,7 @@ export const CONTENT_SCRIPTS_CONFIG = [
             `${PATHS.FEATURES}homeDashboard.js`,
         ],
         css: [`${PATHS.FEATURES}homeDashboard.css`],
-        matches: [URLS.KOGAKUIN_LMS_HOME, URLS.KOGAKUIN_LMS_HOME_BACK, URLS.KOGAKUIN_LMS_HOME_KLIL_BACK],
+        matches: [URLS.KOGAKUIN_LMS_HOME, URLS.KOGAKUIN_LMS_HOME_BACK, URLS.KOGAKUIN_LMS_HOME_BACK_LEGACY, URLS.KOGAKUIN_LMS_HOME_KLIL_BACK],
         runAt: 'document_end',
         enabledByDefault: true,
         optionsPanelId: 'homework-options',
@@ -156,7 +158,7 @@ export const CONTENT_SCRIPTS_CONFIG = [
         displayName: 'ホーム出席表示',
         displayOrder: 60,
         js: [MODULES.CONSTANTS, MODULES.DOM_UTILS, MODULES.FORM_UTILS, `${PATHS.FEATURES}homeAttendance.js`],
-        matches: [URLS.KOGAKUIN_LMS_HOME, URLS.KOGAKUIN_LMS_HOME_BACK, URLS.KOGAKUIN_LMS_HOME_KLIL_BACK],
+        matches: [URLS.KOGAKUIN_LMS_HOME, URLS.KOGAKUIN_LMS_HOME_BACK, URLS.KOGAKUIN_LMS_HOME_BACK_LEGACY, URLS.KOGAKUIN_LMS_HOME_KLIL_BACK],
         runAt: 'document_start',
         enabledByDefault: true,
     },
@@ -165,11 +167,12 @@ export const CONTENT_SCRIPTS_CONFIG = [
         storageKey: 'attendanceRateDisplay',
         displayName: '出席率表示',
         displayOrder: 65,
-        js: [MODULES.DOM_UTILS, MODULES.ATTENDANCE_UTILS, `${PATHS.FEATURES}attendanceRate.js`],
+        js: ['features/modules/kuport-access.js', MODULES.DOM_UTILS, MODULES.ATTENDANCE_UTILS, `${PATHS.FEATURES}attendanceRate.js`],
         matches: [
             URLS.KOGAKUIN_KUPORT,
             URLS.KOGAKUIN_LMS_HOME,
             URLS.KOGAKUIN_LMS_HOME_BACK,
+            URLS.KOGAKUIN_LMS_HOME_BACK_LEGACY,
             URLS.KOGAKUIN_LMS_HOME_KLIL_BACK,
         ],
         runAt: 'document_start',
@@ -231,3 +234,8 @@ export const GAS_SETUP_CONFIG = {
  * コンテキストメニューのID
  */
 export const CONTEXT_MENU_ID = 'openOptions';
+
+/**
+ * 静的注入の機能を含む設定用定義。注入の登録はCONTENT_SCRIPTS_CONFIGだけを使う。
+ * オプションとKU-LMS内設定、一括OFFで同じ保存キーと既定値を共有する。
+ */

@@ -5,7 +5,7 @@
   "version": "4.4.2",
   "permissions": [
     "tabs",
-    "storage", 
+    "storage",
     "scripting",
     "offscreen",
     "contextMenus"
@@ -16,8 +16,8 @@
   },
   "host_permissions": [
     "https://study.ns.kogakuin.ac.jp/*",
-    "https://ku-port.sc.kogakuin.ac.jp/*", 
-    "https://auth.kogakuin.ac.jp/*", 
+    "https://ku-port.sc.kogakuin.ac.jp/*",
+    "https://auth.kogakuin.ac.jp/*",
     "https://meet.google.com/*",
     "https://script.google.com/*",
     "https://slink.secioss.com/*"
@@ -48,6 +48,7 @@
     {
       "matches": [
         "https://study.ns.kogakuin.ac.jp/lms/homeHoml/*",
+        "https://study.ns.kogakuin.ac.jp/lms/tpicTpic/doBack*",
         "https://study.ns.kogakuin.ac.jp/lms/tpicTpil/doBack*",
         "https://study.ns.kogakuin.ac.jp/lms/klmsKlil/doBack*"
       ],

@@ -4,12 +4,14 @@
 if (typeof LMS_URL === 'undefined') {
     /**
      * @file 共通の定数を管理するモジュール
-     */
+     * URL、セレクター、時間割などの共有値をclassic scriptの注入順で各機能へ提供する。
+ */
 
-    // URL
+    // 対象URL
     var LMS_URL = 'https://study.ns.kogakuin.ac.jp/';
     var LMS_HOME_URL = `${LMS_URL}lms/homeHoml/`;
-    var LMS_HOME_BACK_URL = `${LMS_URL}lms/tpicTpil/doBack`;
+    var LMS_HOME_BACK_URL = `${LMS_URL}lms/tpicTpic/doBack`;
+    var LMS_HOME_BACK_LEGACY_URL = `${LMS_URL}lms/tpicTpil/doBack`;
     var LMS_HOME_KLIL_BACK_URL = `${LMS_URL}lms/klmsKlil/doBack`;
     var LMS_ERROR_URL = `${LMS_URL}lms/error/`
 
@@ -56,7 +58,7 @@ if (typeof LMS_URL === 'undefined') {
     // セッション送信間隔
     var SESSION_KEEP_ALIVE_INTERVAL_MS = 90 * 60 * 1000; // 90分
 
-    // --- time.js --- 
+    // time.jsで使う定数
     var TIME_SCHEDULE_NORMAL = [
         { start: "08:30", end: "10:00", label: "1限" },
         { start: "10:10", end: "11:40", label: "2限" },
@@ -79,7 +81,7 @@ if (typeof LMS_URL === 'undefined') {
 
     var PAGE_RELOAD_INTERVAL_MS = 30 * 60 * 1000; // 30分
 
-    // --- subject.js ---
+    // subject.jsで使う定数
     var SUBJECT_FILTER_STORAGE_KEY = 'klpf-course-filter-settings';
     var SUBJECT_HIGHLIGHT_CLASS = 'klpf-subject-highlight';
 }
