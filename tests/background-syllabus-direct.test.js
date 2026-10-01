@@ -1,8 +1,8 @@
 
 
 /**
- * @file Chrome APIとfetchを差し替え、シラバス直接通信と取消の契約を検証する。
- * 実際のKu-Portへは接続せず、Service Workerの要求と後片付けを検査する。
+ * @file Chrome APIとfetchを差し替え、シラバスのPOST順序、年度制限、通常タブとの競合停止を検証する。
+ * 模擬応答と通知を使い、通信内容と最小化指定を確認する。実際の認証や画面の終了は検証しない。
  */
 
 import assert from 'node:assert/strict';

@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 SAYU
 // This software is released under the MIT License, see LICENSE.
 
-/** @file 動的content script登録の差分更新と既定値をChrome APIモックで検証する。 */
+/** @file 動的content script登録の差分更新と設定画面の参照整合性を模擬Chrome API・DOMで検証する。 */
 
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
