@@ -294,7 +294,8 @@
             summary.setAttribute('aria-label', `${formatCalendarDate(dateKey)}の課題${events.length}件：${names}`);
             summary.title = `${events.length}件：${names}`;
 
-            for (let index = 0; index < Math.min(events.length, 3); index += 1) {
+            const visibleDots = events.length >= 4 ? 1 : events.length;
+            for (let index = 0; index < visibleDots; index += 1) {
                 const dot = document.createElement('span');
                 dot.className = 'klpf-compact-event-dot';
                 dot.setAttribute('aria-hidden', 'true');
@@ -304,7 +305,7 @@
             if (events.length > 3) {
                 const remainder = document.createElement('span');
                 remainder.className = 'klpf-compact-event-remainder';
-                remainder.textContent = `+${events.length - 3}`;
+                remainder.textContent = `+${events.length - visibleDots}`;
                 remainder.setAttribute('aria-hidden', 'true');
                 summary.appendChild(remainder);
             }

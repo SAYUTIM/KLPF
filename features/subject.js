@@ -27,6 +27,7 @@
 
     if (!window.location.href.startsWith(LMS_HOME_URL)
         && !window.location.href.startsWith(LMS_HOME_BACK_URL)
+        && !window.location.href.startsWith(LMS_HOME_BACK_LEGACY_URL)
         && !window.location.href.startsWith(LMS_HOME_KLIL_BACK_URL)) {
         return;
     }
