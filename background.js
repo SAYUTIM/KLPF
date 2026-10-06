@@ -10,6 +10,8 @@
 import { createSyllabusTransport } from './background/kuport/syllabus.js';
 import { createBulletinTransport, BULLETIN_MAX_ITEMS } from './background/kuport/bulletin.js';
 import { createPriorityQueue } from './background/modules/priority-queue.js';
+import { createKuportJobStore } from './background/modules/kuport-job-state.js';
+import './features/modules/syllabus-cache.js';
 import { registerKuportJobTimeouts } from './background/modules/kuport-job-timeouts.js';
 
 import {
@@ -39,8 +41,8 @@ import { queueHomeUpdateNoticeClaim } from './background/modules/update-notice.j
 import { assertKuportUrl, isAllowedWebhookUrl } from './background/modules/url-utils.js';
 import {
     ATTENDANCE_FETCH_JOB_KEY,
+    attendanceJobs,
     checkManualRefreshCooldown,
-    clearAttendanceFetchJob,
     getAttendanceFetchJob,
     getManualRefreshCooldownRemaining,
     recordAttendanceRefreshCooldown,
@@ -65,6 +67,8 @@ const BULLETIN_CACHE_KEY = 'klpf-bulletin-board-cache';
 const BULLETIN_SESSION_KEY = 'klpf-bulletin-updated-this-session';
 const BULLETIN_CACHE_VERSION = 2;
 const BULLETIN_FETCH_JOB_KEY = 'klpf-bulletin-fetch-job';
+const syllabusJobs = createKuportJobStore(SYLLABUS_LOOKUP_JOB_KEY);
+const bulletinJobs = createKuportJobStore(BULLETIN_FETCH_JOB_KEY);
 const BULLETIN_FETCH_TIMEOUT_MS = 2 * 60 * 1000;
 const LMS_HOME_URL_PATTERNS = [
     'https://study.ns.kogakuin.ac.jp/lms/homeHoml/*',
@@ -105,17 +109,7 @@ const { probeSession: probeKuportSessionForBulletin, fetchBulletin: fetchKuportB
  * @returns {Promise<object|null>} 進行中のジョブ。保存されていなければnull。
  */
 async function getSyllabusLookupJob() {
-    const stored = await chrome.storage.session.get(SYLLABUS_LOOKUP_JOB_KEY);
-    return stored[SYLLABUS_LOOKUP_JOB_KEY] || null;
-}
-
-/**
- * シラバス取得ジョブをセッションストレージへ保存する。
- * @param {object} job - 要求ID・所有タブ・取得状態を持つジョブ情報。
- * @returns {Promise<void>} 処理の完了を待つPromise。
- */
-async function setSyllabusLookupJob(job) {
-    await chrome.storage.session.set({ [SYLLABUS_LOOKUP_JOB_KEY]: job });
+    return syllabusJobs.get();
 }
 
 /**
@@ -128,17 +122,26 @@ async function setSyllabusLookupJob(job) {
  * @returns {Promise<boolean>} 対応するジョブを終了した場合はtrue。
  */
 const finishSyllabusLookup = createKuportJobFinisher(async (requestId, { ok = false, result = null, message = '' } = {}) => {
-    const job = await getSyllabusLookupJob();
-    if (!job || job.requestId !== requestId) return false;
-    syllabusFetchAbortController?.abort();
-    await closeKuportLoginContext(job);
-    await chrome.storage.session.remove(SYLLABUS_LOOKUP_JOB_KEY);
+    const fetchedAt = Date.now();
+    const job = await syllabusJobs.finish(requestId, async current => {
+        syllabusFetchAbortController?.abort();
+        await closeKuportLoginContext(current);
+        if (ok) {
+            try {
+                await globalThis.KLPFSyllabusCache.save(current.course, result, fetchedAt);
+            } catch (error) {
+                console.debug('[KLPF] シラバスキャッシュを保存できませんでした。', error);
+            }
+        }
+    });
+    if (!job) return false;
     try {
         await chrome.tabs.sendMessage(job.sourceTabId, {
             type: 'syllabus-lookup-result',
             requestId: job.requestId,
             ok,
             result,
+            fetchedAt,
             message,
         });
     } catch {
@@ -227,13 +230,12 @@ async function ensureSyllabusJobActive(requestId, signal) {
  * @returns {Promise<boolean>} 対応するジョブへ進捗を通知した場合はtrue。
  */
 async function reportSyllabusLookupPhase(requestId, phase) {
-    const job = await getSyllabusLookupJob();
-    if (!job || job.requestId !== requestId) return false;
-    await setSyllabusLookupJob({
-        ...job,
-        phase: String(phase || job.phase).slice(0, 80),
+    const job = await syllabusJobs.update(requestId, current => ({
+        ...current,
+        phase: String(phase || current.phase).slice(0, 80),
         lastProgressAt: Date.now(),
-    });
+    }));
+    if (!job) return false;
     try {
         await chrome.tabs.sendMessage(job.sourceTabId, {
             type: 'syllabus-lookup-phase',
@@ -304,8 +306,8 @@ async function startSyllabusDirectFetch(requestId, suppliedBootstrap = null) {
             if (!stillActiveJob || stillActiveJob.requestId !== requestId) {
                 return;
             }
-            job = {
-                ...stillActiveJob,
+            job = await syllabusJobs.update(requestId, current => ({
+                ...current,
                 createdWindowId: context.createdWindowId,
                 windowIds: Number.isInteger(context.createdWindowId) ? [context.createdWindowId] : [],
                 helperTabId: context.tab.id,
@@ -313,8 +315,8 @@ async function startSyllabusDirectFetch(requestId, suppliedBootstrap = null) {
                 phase: 'opening-kuport',
                 awaitingSession: true,
                 lastProgressAt: Date.now(),
-            };
-            await setSyllabusLookupJob(job);
+            }));
+            if (!job) return;
             unregisteredContext = null;
             throwIfSyllabusFetchAborted(abortController.signal);
             const tabsOpenedDuringProbe = await findOpenKuportTabs(job.tabIds);
@@ -332,13 +334,13 @@ async function startSyllabusDirectFetch(requestId, suppliedBootstrap = null) {
         if (!job || job.requestId !== requestId) return;
         await ensureSyllabusJobActive(requestId, abortController.signal);
         const helperJob = job;
-        const directJob = {
-            ...job,
+        const directJob = await syllabusJobs.update(requestId, current => ({
+            ...current,
             awaitingSession: false,
             phase: 'opening-student-schedule',
             lastProgressAt: Date.now(),
-        };
-        await setSyllabusLookupJob(directJob);
+        }));
+        if (!directJob) return;
         // 認証画面のIDは終了まで保持し、終了操作に失敗した場合も閉じ直せるようにする。
         if (Number.isInteger(helperJob.createdWindowId) || Number.isInteger(helperJob.helperTabId)) {
             await closeKuportLoginContext(helperJob);
@@ -454,7 +456,7 @@ async function beginSyllabusLookup({ sourceTabId, requestId, course }) {
         phase: 'opening-kuport',
         startedAt: Date.now(),
     };
-    await setSyllabusLookupJob(job);
+    await syllabusJobs.create(job);
     void startSyllabusDirectFetch(requestId).catch(async (error) => {
         console.error('[KLPF] シラバス取得ジョブを開始できませんでした。', error);
         await finishSyllabusLookup(requestId, {
@@ -575,15 +577,10 @@ async function trackSyllabusLookupChildTab(job, tab) {
     if (!job || !Number.isInteger(tab?.id) || job.tabIds?.includes(tab.id)) return job;
     if (!job.tabIds?.includes(tab.openerTabId)) return null;
 
-    const updatedJob = {
-        ...job,
-        tabIds: Array.from(new Set([...job.tabIds, tab.id])),
-        windowIds: Number.isInteger(tab.windowId)
-            ? Array.from(new Set([...(job.windowIds || []), tab.windowId]))
-            : (job.windowIds || []),
-    };
-    await setSyllabusLookupJob(updatedJob);
-    return updatedJob;
+    return syllabusJobs.update(job.requestId, current => ({
+        ...current,
+        tabIds: Array.from(new Set([...(current.tabIds || []), tab.id])),
+    }));
 }
 
 /**
@@ -659,8 +656,7 @@ async function injectSyllabusSessionBridge(tabId, tab) {
  * @returns {Promise<object|null>} 進行中のジョブ。保存されていなければnull。
  */
 async function getBulletinFetchJob() {
-    const stored = await chrome.storage.session.get(BULLETIN_FETCH_JOB_KEY);
-    return stored[BULLETIN_FETCH_JOB_KEY] || null;
+    return bulletinJobs.get();
 }
 
 /**
@@ -673,15 +669,6 @@ async function hasActiveBulletinFetch() {
     if (Number.isFinite(job.startedAt) && Date.now() - job.startedAt <= BULLETIN_FETCH_TIMEOUT_MS) return true;
     await finishBulletinFetch(job.requestId, { message: '掲示板取得が時間切れになりました。' });
     return false;
-}
-
-/**
- * 掲示板取得ジョブをセッションストレージへ保存する。
- * @param {object} job - 要求ID・所有タブ・取得状態を持つジョブ情報。
- * @returns {Promise<void>} 処理の完了を待つPromise。
- */
-async function setBulletinFetchJob(job) {
-    await chrome.storage.session.set({ [BULLETIN_FETCH_JOB_KEY]: job });
 }
 
 /**
@@ -726,13 +713,12 @@ async function ensureBulletinJobActive(requestId, signal) {
  * @returns {Promise<boolean>} 対応するジョブへ進捗を通知した場合はtrue。
  */
 async function reportBulletinPhase(requestId, phase) {
-    const job = await getBulletinFetchJob();
-    if (!job || job.requestId !== requestId) return false;
-    await setBulletinFetchJob({
-        ...job,
-        phase: String(phase || job.phase).slice(0, 80),
+    const job = await bulletinJobs.update(requestId, current => ({
+        ...current,
+        phase: String(phase || current.phase).slice(0, 80),
         lastProgressAt: Date.now(),
-    });
+    }));
+    if (!job) return false;
     try {
         await chrome.tabs.sendMessage(job.sourceTabId, {
             type: 'bulletin-board-phase',
@@ -755,11 +741,11 @@ async function reportBulletinPhase(requestId, phase) {
  * @returns {Promise<boolean>} 対応するジョブを終了した場合はtrue。
  */
 const finishBulletinFetch = createKuportJobFinisher(async (requestId, { ok = false, result = null, message = '' } = {}) => {
-    const job = await getBulletinFetchJob();
-    if (!job || job.requestId !== requestId) return false;
-    bulletinFetchAbortController?.abort();
-    await closeKuportLoginContext(job);
-    await chrome.storage.session.remove(BULLETIN_FETCH_JOB_KEY);
+    const job = await bulletinJobs.finish(requestId, async current => {
+        bulletinFetchAbortController?.abort();
+        await closeKuportLoginContext(current);
+    });
+    if (!job) return false;
     try {
         await chrome.tabs.sendMessage(job.sourceTabId, {
             type: 'bulletin-board-result',
@@ -834,8 +820,8 @@ async function startBulletinDirectFetch(requestId, suppliedBootstrap = null) {
             throwIfBulletinFetchAborted(abortController.signal);
             const stillActiveJob = await getBulletinFetchJob();
             if (!stillActiveJob || stillActiveJob.requestId !== requestId) return;
-            job = {
-                ...stillActiveJob,
+            job = await bulletinJobs.update(requestId, current => ({
+                ...current,
                 createdWindowId: context.createdWindowId,
                 windowIds: Number.isInteger(context.createdWindowId) ? [context.createdWindowId] : [],
                 helperTabId: context.tab.id,
@@ -844,8 +830,8 @@ async function startBulletinDirectFetch(requestId, suppliedBootstrap = null) {
                 phase: 'opening-kuport',
                 awaitingSession: true,
                 lastProgressAt: Date.now(),
-            };
-            await setBulletinFetchJob(job);
+            }));
+            if (!job) return;
             unregisteredContext = null;
             throwIfBulletinFetchAborted(abortController.signal);
             const tabsOpenedDuringProbe = await findOpenKuportTabs(job.tabIds);
@@ -863,26 +849,32 @@ async function startBulletinDirectFetch(requestId, suppliedBootstrap = null) {
         if (!job || job.requestId !== requestId) return;
         await ensureBulletinJobActive(requestId, abortController.signal);
         const helperJob = job;
-        await setBulletinFetchJob({
-            ...job,
+        const directJob = await bulletinJobs.update(requestId, current => ({
+            ...current,
             awaitingSession: false,
             phase: 'opening-bulletin-board',
             lastProgressAt: Date.now(),
-        });
+        }));
+        if (!directJob) return;
         if (Number.isInteger(helperJob.createdWindowId) || Number.isInteger(helperJob.helperTabId)) {
             await closeKuportLoginContext(helperJob);
         }
         await ensureBulletinJobActive(requestId, abortController.signal);
         const result = await fetchKuportBulletinInBackground(requestId, bootstrap, abortController.signal);
         await ensureBulletinJobActive(requestId, abortController.signal);
-        await chrome.storage.local.set({
-            [BULLETIN_CACHE_KEY]: {
-                version: BULLETIN_CACHE_VERSION,
-                fetchedAt: result.fetchedAt,
-                items: result.items,
-            },
+        const saved = await bulletinJobs.update(requestId, async current => {
+            await ensureBulletinJobActive(requestId, abortController.signal);
+            await chrome.storage.local.set({
+                [BULLETIN_CACHE_KEY]: {
+                    version: BULLETIN_CACHE_VERSION,
+                    fetchedAt: result.fetchedAt,
+                    items: result.items,
+                },
+            });
+            await chrome.storage.session.set({ [BULLETIN_SESSION_KEY]: true });
+            return current;
         });
-        await chrome.storage.session.set({ [BULLETIN_SESSION_KEY]: true });
+        if (!saved) return;
         await finishBulletinFetch(requestId, { ok: true, result });
     } catch (error) {
         if (error.name === 'AbortError') {
@@ -986,7 +978,7 @@ async function beginBulletinFetch({ sourceTabId, requestId } = {}) {
         phase: 'opening-kuport',
         startedAt: Date.now(),
     };
-    await setBulletinFetchJob(job);
+    await bulletinJobs.create(job);
     void startBulletinDirectFetch(requestId).catch(async error => {
         console.error('[KLPF] 掲示板取得ジョブを開始できませんでした。', error);
         await finishBulletinFetch(requestId, {
@@ -1147,17 +1139,14 @@ async function closeCreatedAttendanceContext(job) {
  * @returns {Promise<void>} 処理の完了を待つPromise。
  */
 const finishAttendanceFetch = createKuportJobFinisher(async (tabId, status) => {
-    const job = await getAttendanceFetchJob();
-    if (!job || job.tabId !== tabId) return;
-    attendanceFetchAbortController?.abort();
-
-    // 通信開始時の終了操作が失敗していても、処理段階にかかわらず閉じ直す。
-    // 終了操作に失敗した場合はジョブを保持し、期限監視から再試行できるようにする。
-    await closeCreatedAttendanceContext(job);
-    if (status === 'completed' && !job.manual) {
-        await recordAttendanceRefreshCooldown();
-    }
-    await clearAttendanceFetchJob();
+    const job = await attendanceJobs.finish(tabId, async current => {
+        attendanceFetchAbortController?.abort();
+        await closeCreatedAttendanceContext(current);
+        if (status === 'completed' && !current.manual) {
+            await recordAttendanceRefreshCooldown();
+        }
+    });
+    if (!job) return;
     await setAttendanceBrowserSessionYear(job.academicYear, {
         status,
         finishedAt: Date.now(),
@@ -1331,9 +1320,10 @@ function parseAttendanceTerm(termValue = '', termLabel = '') {
  * @param {object} bootstrap - 認証後に読み取った送信先とフォームフィールド。
  * @param {AbortSignal} signal - 取得の中断を通知するシグナル。
  * @param {string} [requestedAcademicYear=""] - 取得要求で指定された年度。
+ * @param {number} tabId - 保存処理を対応付ける取得ジョブのタブID。
  * @returns {Promise<void>} 処理の完了を待つPromise。
  */
-async function fetchKuportAttendanceInBackground(bootstrap, signal, requestedAcademicYear = '') {
+async function fetchKuportAttendanceInBackground(bootstrap, signal, requestedAcademicYear, tabId) {
     await reportAttendanceDebug('バックグラウンド通信開始');
     throwIfAttendanceFetchAborted(signal);
     await ensureKuportFeatureAvailable(ATTENDANCE_RATE_FEATURE_KEY);
@@ -1457,31 +1447,37 @@ async function fetchKuportAttendanceInBackground(bootstrap, signal, requestedAca
     throwIfAttendanceFetchAborted(signal);
     await ensureKuportFeatureAvailable(ATTENDANCE_RATE_FEATURE_KEY);
 
-    const stored = await chrome.storage.local.get(ATTENDANCE_CACHE_KEY);
-    const existingCache = stored[ATTENDANCE_CACHE_KEY];
-    const mergedRecords = new Map();
-    for (const record of Array.isArray(existingCache?.records) ? existingCache.records : []) {
-        if (String(record.academicYear) === String(academicYear)) continue;
-        mergedRecords.set(getAttendanceRecordKey(record), record);
-    }
-    for (const record of records) mergedRecords.set(getAttendanceRecordKey(record), record);
+    const saved = await attendanceJobs.update(tabId, async current => {
+        throwIfAttendanceFetchAborted(signal);
+        await ensureKuportFeatureAvailable(ATTENDANCE_RATE_FEATURE_KEY);
+        const stored = await chrome.storage.local.get(ATTENDANCE_CACHE_KEY);
+        const existingCache = stored[ATTENDANCE_CACHE_KEY];
+        const mergedRecords = new Map();
+        for (const record of Array.isArray(existingCache?.records) ? existingCache.records : []) {
+            if (String(record.academicYear) === String(academicYear)) continue;
+            mergedRecords.set(getAttendanceRecordKey(record), record);
+        }
+        for (const record of records) mergedRecords.set(getAttendanceRecordKey(record), record);
 
-    const updatedAt = Date.now();
-    const updatedAtByYear = getAttendanceCacheUpdateTimes(existingCache);
-    updatedAtByYear[academicYear] = updatedAt;
-    const completedAtByYear = getAttendanceCacheCompletionTimes(existingCache);
-    completedAtByYear[academicYear] = updatedAt;
-    await chrome.storage.local.set({
-        [ATTENDANCE_CACHE_KEY]: {
-            version: ATTENDANCE_CACHE_VERSION,
-            updatedAt,
-            updatedAtByYear,
-            completedAtByYear,
-            academicYear,
-            academicTerm: `${academicYear}年度 ${availableQuarters.map(quarter => `${quarter}Q`).join('・')}`,
-            records: Array.from(mergedRecords.values()),
-        },
+        const updatedAt = Date.now();
+        const updatedAtByYear = getAttendanceCacheUpdateTimes(existingCache);
+        updatedAtByYear[academicYear] = updatedAt;
+        const completedAtByYear = getAttendanceCacheCompletionTimes(existingCache);
+        completedAtByYear[academicYear] = updatedAt;
+        await chrome.storage.local.set({
+            [ATTENDANCE_CACHE_KEY]: {
+                version: ATTENDANCE_CACHE_VERSION,
+                updatedAt,
+                updatedAtByYear,
+                completedAtByYear,
+                academicYear,
+                academicTerm: `${academicYear}年度 ${availableQuarters.map(quarter => `${quarter}Q`).join('・')}`,
+                records: Array.from(mergedRecords.values()),
+            },
+        });
+        return current;
     });
+    if (!saved) throwIfAttendanceFetchAborted({ aborted: true });
     await reportAttendanceDebug('新しい出席率キャッシュを保存', {
         recordCount: records.length,
         academicYear,
@@ -1503,12 +1499,11 @@ async function startBackgroundAttendanceFetch(tabId, bootstrap) {
     try {
         const job = await getAttendanceFetchJob();
         if (!job || job.tabId !== tabId || job.phase !== 'login-tab') return;
-        await chrome.storage.session.set({
-            [ATTENDANCE_FETCH_JOB_KEY]: {
-                ...job,
-                phase: 'background-fetch',
-            },
-        });
+        const updated = await attendanceJobs.update(tabId, current => ({
+            ...current,
+            phase: 'background-fetch',
+        }));
+        if (!updated) return;
         if (job.createdByExtension) {
             await reportAttendanceDebug('Ku-portログイン完了・一時画面を閉じます');
             await closeCreatedAttendanceContext(job);
@@ -1517,6 +1512,7 @@ async function startBackgroundAttendanceFetch(tabId, bootstrap) {
             bootstrap,
             abortController.signal,
             job.academicYear,
+            tabId,
         );
         await finishAttendanceFetch(tabId, 'completed');
     } catch (error) {
@@ -1597,8 +1593,7 @@ async function setAttendanceFetchJob(
             startedAt: Date.now(),
         });
     }
-    await chrome.storage.session.set({
-        [ATTENDANCE_FETCH_JOB_KEY]: {
+    await attendanceJobs.create({
             tabId,
             startedAt: Date.now(),
             createdByExtension,
@@ -1606,7 +1601,6 @@ async function setAttendanceFetchJob(
             manual,
             academicYear: year,
             phase: 'login-tab',
-        },
     });
 }
 
@@ -2025,8 +2019,7 @@ chrome.tabs.onCreated.addListener((tab) => {
     void (async () => {
         const job = await getSyllabusLookupJob();
         if (job?.tabIds?.includes(tab.openerTabId) && Number.isInteger(tab.id)) {
-            const tabIds = Array.from(new Set([...job.tabIds, tab.id]));
-            await setSyllabusLookupJob({ ...job, tabIds });
+            await trackSyllabusLookupChildTab(job, tab);
         }
         if (isKuportUrl(tab.pendingUrl || tab.url || '')) {
             await cancelAttendanceFetchForUserKuport(tab.id);
@@ -2291,10 +2284,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
             if (!job.tabIds?.includes(sender.tab.id)
                 && job.tabIds?.includes(sender.tab.openerTabId)) {
-                const tabIds = Array.from(new Set([...job.tabIds, sender.tab.id]));
                 // 子タブの通常ウィンドウは所有対象へ加えず、タブだけ追跡する。
-                job = { ...job, tabIds };
-                await setSyllabusLookupJob(job);
+                job = await trackSyllabusLookupChildTab(job, sender.tab);
+                if (!job) { sendResponse({ job: null }); return; }
             }
             sendResponse({
                 job: job.tabIds?.includes(sender.tab.id) ? job : null,

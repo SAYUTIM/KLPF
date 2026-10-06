@@ -5,8 +5,10 @@
  * @file 出席率取得ジョブと手動更新クールダウンのsession保存を管理する。
  * Service Workerが停止・再起動しても競合判定を継続できるよう、メモリとstorage.sessionを併用する。
  */
+import { createKuportJobStore } from './kuport-job-state.js';
 
 export const ATTENDANCE_FETCH_JOB_KEY = 'klpf-attendance-fetch-job';
+export const attendanceJobs = createKuportJobStore(ATTENDANCE_FETCH_JOB_KEY, 'tabId');
 const ATTENDANCE_MANUAL_REFRESH_KEY = 'klpf-attendance-manual-refresh';
 const ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
 
@@ -17,19 +19,8 @@ let lastAttendanceRefreshAt = 0;
  * @returns {Promise<object|null>} 進行中のジョブ。保存されていなければnull。
  */
 export async function getAttendanceFetchJob() {
-    const stored = await chrome.storage.session.get(ATTENDANCE_FETCH_JOB_KEY);
-    return stored[ATTENDANCE_FETCH_JOB_KEY] || null;
+    return attendanceJobs.get();
 }
-
-/**
- * セッションストレージに保存した出席率取得ジョブを削除する。
- * @returns {Promise<void>} 処理の完了を待つPromise。
- */
-export async function clearAttendanceFetchJob() {
-    await chrome.storage.session.remove(ATTENDANCE_FETCH_JOB_KEY);
-}
-
-export { createFormBody } from './kuport-form.js';
 
 /**
  * 出席率取得の中断が要求されていればAbortErrorを投げる。

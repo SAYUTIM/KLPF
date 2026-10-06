@@ -66,6 +66,7 @@
       ],
       "js": [
         "features/modules/kuport-access.js",
+        "features/modules/syllabus-cache.js",
         "features/syllabus.js"
       ],
       "run_at": "document_start"

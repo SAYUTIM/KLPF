@@ -26,10 +26,6 @@
     const MODAL_ROOT_ID = 'klpf-syllabus-modal-root';
     const PROGRESS_MODAL_ROOT_ID = 'klpf-syllabus-progress-root';
     const NOTICE_ID = 'klpf-syllabus-notice';
-    const SYLLABUS_CACHE_KEY = 'klpf-syllabus-cache';
-    const SYLLABUS_CACHE_VERSION = 1;
-    const SYLLABUS_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-    const MAX_SYLLABUS_CACHE_ENTRIES = 80;
     const MAX_SYLLABUS_TEXT_LENGTH = 60000;
     const ESTIMATED_SYLLABUS_DURATION_SECONDS = 9;
     const SYLLABUS_PHASE_INFO = Object.freeze({
@@ -129,7 +125,6 @@
     const activeRequests = new Map();
     let pageScrollLockCount = 0;
     let pageScrollRestore = null;
-    let syllabusCacheWritePromise = Promise.resolve();
 
     /**
      * シラバス取得の有効設定と一括停止状態を読み取る。
@@ -191,111 +186,17 @@
     }
 
     /**
-     * 授業の年度・学期・曜日時限・科目情報からキャッシュキーを作る。
-     * @param {object} course - 授業カードから読み取った科目・年度学期・曜日時限・教員情報。
-     * @returns {string} 対象授業のキャッシュ識別キー。
-     */
-    function getSyllabusCacheKey(course) {
-        return JSON.stringify([
-            course?.academicYear,
-            course?.courseName,
-            course?.instructor,
-            course?.dayText,
-            course?.period,
-            course?.termText,
-            course?.courseInfoText,
-        ].map(value => normalizeText(value).toLowerCase()));
-    }
-
-    /**
-     * 保存データがシラバスキャッシュの形式を満たすか判定する。
-     * @param {*} value - 検証・変換する入力値。
-     * @returns {boolean} 条件を満たす場合はtrue。
-     */
-    function isSyllabusCacheEntry(value) {
-        return !!value
-            && Number.isFinite(Number(value.fetchedAt))
-            && Number(value.fetchedAt) > 0
-            && value.result
-            && typeof value.result === 'object';
-    }
-
-    /**
-     * シラバスキャッシュが有効な形式と30日以内の取得時刻を持つか判定する。
-     * @param {*} value - 検証・変換する入力値。
-     * @param {number} [now] - 経過時間や期限の判定に使う現在時刻。
-     * @returns {boolean} 条件を満たす場合はtrue。
-     */
-    function isFreshSyllabusCacheEntry(value, now = Date.now()) {
-        return isSyllabusCacheEntry(value)
-            && now - Number(value.fetchedAt) <= SYLLABUS_CACHE_MAX_AGE_MS;
-    }
-
-    /**
      * 指定授業に対応する有効なシラバスキャッシュを読み出す。
      * @param {object} course - 授業カードから読み取った科目・年度学期・曜日時限・教員情報。
      * @returns {Promise<object|null>} 有効なキャッシュ。未保存または期限切れならnull。
      */
     async function getCachedSyllabus(course) {
         try {
-            const stored = await chrome.storage.local.get(SYLLABUS_CACHE_KEY);
-            const cache = stored[SYLLABUS_CACHE_KEY];
-            if (cache?.version !== SYLLABUS_CACHE_VERSION || !cache.entries) return null;
-            const entry = cache.entries[getSyllabusCacheKey(course)];
-            return isFreshSyllabusCacheEntry(entry) ? entry : null;
+            return await globalThis.KLPFSyllabusCache.get(course);
         } catch (error) {
             console.debug('[KLPF] シラバスキャッシュを読み込めませんでした。', error);
             return null;
         }
-    }
-
-    /**
-     * 取得結果を時刻付きで保存し、期限切れや保存上限を超えるキャッシュを整理する。
-     * @param {object} course - 授業カードから読み取った科目・年度学期・曜日時限・教員情報。
-     * @param {object|null} result - 取得したデータ。失敗などで結果がない場合はnull。
-     * @param {number} [fetchedAt] - データを取得した時刻（ミリ秒）。
-     * @returns {Promise<void>} 直列化したキャッシュ保存と期限・件数整理の完了を待つPromise。
-     */
-    function saveSyllabusCache(course, result, fetchedAt = Date.now()) {
-        const key = getSyllabusCacheKey(course);
-        const entry = {
-            fetchedAt,
-            course: {
-                academicYear: String(course?.academicYear || ''),
-                courseName: String(course?.courseName || ''),
-                instructor: String(course?.instructor || ''),
-            },
-            result: {
-                title: String(result?.title || 'シラバス照会'),
-                text: String(result?.text || '').slice(0, MAX_SYLLABUS_TEXT_LENGTH),
-                rows: Array.isArray(result?.rows) ? result.rows : [],
-            },
-        };
-        syllabusCacheWritePromise = syllabusCacheWritePromise
-            .catch(() => {})
-            .then(async () => {
-                const stored = await chrome.storage.local.get(SYLLABUS_CACHE_KEY);
-                const current = stored[SYLLABUS_CACHE_KEY];
-                const entries = current?.version === SYLLABUS_CACHE_VERSION
-                    && current.entries && typeof current.entries === 'object'
-                    ? { ...current.entries }
-                    : {};
-                entries[key] = entry;
-                const recentEntries = Object.entries(entries)
-                    .filter(([, value]) => isFreshSyllabusCacheEntry(value))
-                    .sort(([, left], [, right]) => Number(right.fetchedAt) - Number(left.fetchedAt))
-                    .slice(0, MAX_SYLLABUS_CACHE_ENTRIES);
-                await chrome.storage.local.set({
-                    [SYLLABUS_CACHE_KEY]: {
-                        version: SYLLABUS_CACHE_VERSION,
-                        entries: Object.fromEntries(recentEntries),
-                    },
-                });
-            })
-            .catch((error) => {
-                console.debug('[KLPF] シラバスキャッシュを保存できませんでした。', error);
-            });
-        return syllabusCacheWritePromise;
     }
 
     /**
@@ -1115,7 +1016,7 @@
     }
 
     /**
-     * 対応する要求の取得結果を受け取り、キャッシュとポップアップを更新する。
+     * Workerが保存した取得結果と取得日時を受け取り、ポップアップを表示する。
      * @param {string|object} message - 表示する案内文、または受信した機能メッセージ。
      * @returns {void} 戻り値はない。
      */
@@ -1127,8 +1028,7 @@
         setButtonLoading(request.button, false);
         if (request.cancelled || !globalThis.KLPFKuportAccess.ready || !featureEnabled || allFeaturesDisabled) return;
         if (message.ok) {
-            const fetchedAt = Date.now();
-            void saveSyllabusCache(request.course, message.result, fetchedAt);
+            const fetchedAt = message.fetchedAt || Date.now();
             showSyllabusDialog(request.course, message.result, {
                 fetchedAt,
                 button: request.button,
