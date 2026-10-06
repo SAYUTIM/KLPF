@@ -1,6 +1,6 @@
 {
   "name": "klpf",
-  "version": "4.5.0",
+  "version": "4.5.1",
   "private": true,
   "type": "module",
   "description": "Development checks for the KLPF browser extension.",
