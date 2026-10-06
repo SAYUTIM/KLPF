@@ -997,7 +997,20 @@
         renderCompactCalendar();
         observeDashboard();
         document.addEventListener(OPEN_HOME_EDITOR_EVENT, openEditor);
-        window.addEventListener('pagehide', cleanupDashboard, { once: true });
+        window.addEventListener('pagehide', cleanupDashboard);
+        window.addEventListener('pageshow', event => {
+            if (!event.persisted) return;
+            void loadState().then(() => {
+                applyLayout();
+                applyHomeworkVisibility();
+                refreshCalendars();
+                observeDashboard();
+                document.addEventListener(OPEN_HOME_EDITOR_EVENT, openEditor);
+                document.addEventListener('keydown', handleEditorKeydown);
+            }).catch(error => {
+                console.error('[KLPF] ホームダッシュボードを復帰できませんでした。', error);
+            });
+        });
     }
 
     main().catch(error => {

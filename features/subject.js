@@ -379,10 +379,16 @@
 
         const autoCheckbox = form.querySelector(SELECTORS.autoFilter);
         if (autoCheckbox) autoCheckbox.checked = savedSettings.isAutoActive === true;
-        form.querySelector(SELECTORS.weekday).value = savedSettings.yobi || 'all';
-        form.querySelector(SELECTORS.period).value = savedSettings.jigen || 'all';
-        form.querySelector(SELECTORS.courseName).value = savedSettings.kougiName || '';
-        form.querySelector(SELECTORS.instructor).value = savedSettings.kyoinName || '';
+        const fields = [
+            [SELECTORS.weekday, savedSettings.yobi || 'all'],
+            [SELECTORS.period, savedSettings.jigen || 'all'],
+            [SELECTORS.courseName, savedSettings.kougiName || ''],
+            [SELECTORS.instructor, savedSettings.kyoinName || ''],
+        ];
+        for (const [selector, value] of fields) {
+            const field = form.querySelector(selector);
+            if (field) field.value = value;
+        }
         safeQuerySelectorAll(SELECTORS.allTerms, form).forEach(checkbox => {
             checkbox.checked = savedSettings.checkKiList?.includes(checkbox.value) || false;
             if (autoCheckbox) checkbox.disabled = autoCheckbox.checked;
@@ -406,10 +412,14 @@
     async function main() {
         const form = safeQuerySelector('#homeHomlForm');
         const weeklyArea = safeQuerySelector('.lms-weekly-area');
-        const termCell = safeQuerySelectorAll('th', form).find(th => th.textContent.trim() === '期')?.nextElementSibling;
 
-        if (!form || !weeklyArea || !termCell) {
-            if(weeklyArea) weeklyArea.style.visibility = 'visible';
+        // 授業詳細も/homeHoml/配下にあるため、URLだけでホーム画面とは判定しない。
+        if (!form || !weeklyArea) return;
+
+        const termCell = safeQuerySelectorAll('th', form)
+            .find(th => th.textContent.trim() === '期')?.nextElementSibling;
+        if (!termCell) {
+            weeklyArea.style.visibility = 'visible';
             return;
         }
 
@@ -430,7 +440,13 @@
         highlightCurrentClass();
         stopHighlightTimer();
         highlightIntervalId = setInterval(highlightCurrentClass, HIGHLIGHT_INTERVAL_MS);
-        window.addEventListener('pagehide', stopHighlightTimer, { once: true });
+        window.addEventListener('pagehide', stopHighlightTimer);
+        window.addEventListener('pageshow', event => {
+            if (!event.persisted) return;
+            stopHighlightTimer();
+            highlightCurrentClass();
+            highlightIntervalId = setInterval(highlightCurrentClass, HIGHLIGHT_INTERVAL_MS);
+        });
 
         weeklyArea.style.visibility = 'visible';
         console.log("[KLPF] 講義フィルター機能を初期化しました。");

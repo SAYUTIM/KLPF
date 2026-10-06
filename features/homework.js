@@ -8,6 +8,7 @@
 let activeHomeworkUpdate = null;
 let hasHomeworkUserInteracted = false;
 let homeworkNavigationInProgress = false;
+let homeworkNavigationRevision = 0;
 
 const HOMEWORK_NAVIGATION_REQUEST_EVENT = 'klpf-homework-navigation-request';
 const HOMEWORK_NAVIGATION_READY_EVENT = 'klpf-home-attendance-navigation-ready';
@@ -89,6 +90,10 @@ function waitForHomeAttendanceIdle() {
         const handleReady = (event) => {
             if (event.detail?.requestId !== requestId) return;
             cleanup();
+            if (event.detail.error) {
+                reject(new Error(event.detail.error));
+                return;
+            }
             resolve();
         };
 
@@ -136,21 +141,36 @@ async function navigateToHomework(sid, kyozaiId, kyozaiSyCd, item) {
     if (homeworkNavigationInProgress) return;
 
     homeworkNavigationInProgress = true;
+    const revision = ++homeworkNavigationRevision;
     item.setAttribute('aria-busy', 'true');
     item.style.cursor = 'wait';
 
     try {
         await waitForHomeAttendanceIdle();
+        if (revision !== homeworkNavigationRevision) return;
         abortActiveHomeworkUpdate();
         await restoreHomeworkListContext(sid);
+        if (revision !== homeworkNavigationRevision) return;
         submitKyozaiForm(sid, kyozaiId, kyozaiSyCd);
     } catch (error) {
-        delete document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG];
-        homeworkNavigationInProgress = false;
-        item.removeAttribute('aria-busy');
-        item.style.cursor = 'pointer';
+        if (revision !== homeworkNavigationRevision) return;
+        resetHomeworkNavigation();
         console.error('[KLPF] 課題ページへの遷移準備に失敗しました。', error);
     }
+}
+
+/**
+ * 課題への遷移待ちを無効にし、再クリックできる表示へ戻す。
+ * @returns {void} 遷移フラグと待機表示の解除。
+ */
+function resetHomeworkNavigation() {
+    homeworkNavigationRevision += 1;
+    homeworkNavigationInProgress = false;
+    delete document.documentElement.dataset[HOMEWORK_NAVIGATION_FLAG];
+    document.querySelectorAll(`.${HOMEWORK_ITEM_CLASS}[aria-busy="true"]`).forEach(item => {
+        item.removeAttribute('aria-busy');
+        item.style.cursor = 'pointer';
+    });
 }
 
 /**
@@ -523,11 +543,21 @@ async function fetchHomeworkData(sid) {
     activeHomeworkUpdate = updateState;
     document.body.appendChild(iframe);
 
-    await new Promise((resolve, reject) => {
-        updateState.reject = reject;
-        iframe.onload = resolve;
-        iframe.onerror = reject;
-    });
+    try {
+        await new Promise((resolve, reject) => {
+            updateState.reject = reject;
+            iframe.onload = resolve;
+            iframe.onerror = reject;
+            updateState.timeoutId = setTimeout(() => {
+                reject(new Error('課題一覧ページの読み込みがタイムアウトしました。'));
+            }, HOMEWORK_ROWS_TIMEOUT_MS);
+        });
+    } finally {
+        clearTimeout(updateState.timeoutId);
+        updateState.timeoutId = null;
+        iframe.onload = null;
+        iframe.onerror = null;
+    }
 
     throwIfHomeworkUpdateAborted();
 
@@ -573,9 +603,8 @@ async function main() {
         return;
     }
 
-    window.addEventListener('pagehide', abortActiveHomeworkUpdate, { once: true });
-
     await restoreCachedHomework(form, sid);
+    if (hasHomeworkUserInteracted) return;
 
     const stopLoading = manageLoadingIndicator(true);
     try {
@@ -590,5 +619,13 @@ async function main() {
         cleanupHomeworkUpdate(activeHomeworkUpdate);
     }
 }
+
+window.addEventListener('pagehide', () => {
+    resetHomeworkNavigation();
+    abortActiveHomeworkUpdate();
+});
+window.addEventListener('pageshow', event => {
+    if (event.persisted) resetHomeworkNavigation();
+});
 
 main();

@@ -1019,6 +1019,11 @@
         window.addEventListener('pagehide', cleanup, { once: true });
     }
 
+    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) main();
+    });
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', main, { once: true });
     } else {

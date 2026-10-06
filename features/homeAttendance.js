@@ -30,6 +30,7 @@
     const HOMEWORK_NAVIGATION_FLAG = 'klpfHomeworkNavigation';
     const ATTENDANCE_READY_FLAG = 'klpfHomeAttendanceReady';
     const PROBE_CONCURRENCY = 1;
+    const PROBE_TIMEOUT_MS = 30000;
     const CACHE_KEY = 'klpf-home-attendance-cache';
     const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -38,6 +39,7 @@
     let hasAbortListenersBound = false;
     let hasUserInteracted = false;
     let courseNavigationInProgress = false;
+    let courseNavigationRevision = 0;
     const pendingHomeworkNavigationRequests = new Set();
 
     /**
@@ -50,12 +52,13 @@
 
     /**
      * 出席確認の通信終了を待つ課題機能へ遷移可能になったことを通知する。
+     * @param {Error|null} [error=null] - 通信の時間切れなど、遷移を中断する理由。
      * @returns {void} 戻り値はない。
      */
-    function notifyHomeworkNavigationReady() {
+    function notifyHomeworkNavigationReady(error = null) {
         for (const requestId of pendingHomeworkNavigationRequests) {
             document.dispatchEvent(new CustomEvent(HOMEWORK_NAVIGATION_READY_EVENT, {
-                detail: { requestId },
+                detail: { requestId, error: error?.message || '' },
             }));
         }
         pendingHomeworkNavigationRequests.clear();
@@ -127,12 +130,15 @@
         if (courseNavigationInProgress) return;
 
         courseNavigationInProgress = true;
+        const revision = ++courseNavigationRevision;
         hasUserInteracted = true;
 
         try {
             await waitForActiveProbeToSettle();
+            if (revision !== courseNavigationRevision) return;
             submitCourseNavigation(courseId);
         } catch (error) {
+            if (revision !== courseNavigationRevision) return;
             courseNavigationInProgress = false;
             console.error(`[${FEATURE_NAME}] 講義ページへの遷移準備に失敗しました。`, error);
         }
@@ -174,6 +180,15 @@
 
     document.addEventListener('pointerdown', handleCourseNavigationPointerDown, true);
     document.addEventListener('click', handleCourseNavigationClick, true);
+    // 履歴復帰で遷移状態を戻し、離脱前の遅い応答による意図しない遷移を防ぐ。
+    const resetCourseNavigation = () => {
+        courseNavigationRevision += 1;
+        courseNavigationInProgress = false;
+    };
+    window.addEventListener('pagehide', resetCourseNavigation);
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) resetCourseNavigation();
+    });
 
     /**
      * 現在のURLが対象のKU-LMSホームか判定する。
@@ -627,26 +642,41 @@
      * @returns {Promise<boolean>} 対象科目に出席ボタンがある場合はtrue。
      */
     async function probeCourseAttendance(linkKougiUrl, formFields, courseId, signal) {
-        const response = await fetch(linkKougiUrl, {
-            method: 'POST',
-            credentials: 'include',
-            cache: 'no-store',
-            redirect: 'follow',
-            signal,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            },
-            body: buildRequestBody(formFields, courseId),
-        });
+        const controller = new AbortController();
+        const abort = () => controller.abort(signal.reason);
+        if (signal.aborted) abort();
+        else signal.addEventListener('abort', abort, { once: true });
+        const timeoutId = setTimeout(() => {
+            controller.abort(new DOMException('ホーム出席確認の通信がタイムアウトしました。', 'TimeoutError'));
+        }, PROBE_TIMEOUT_MS);
+        try {
+            const response = await fetch(linkKougiUrl, {
+                method: 'POST',
+                credentials: 'include',
+                cache: 'no-store',
+                redirect: 'follow',
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                },
+                body: buildRequestBody(formFields, courseId),
+            });
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const htmlText = await response.text();
+            const hasAttendance = hasAttendanceButton(htmlText);
+            // console.log(`[${FEATURE_NAME}] 科目 ${courseId}: ${hasAttendance ? '出席あり' : '出席なし'}`);
+            return hasAttendance;
+        } catch (error) {
+            if (controller.signal.reason?.name === 'TimeoutError') throw controller.signal.reason;
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
+            signal.removeEventListener('abort', abort);
         }
-
-        const htmlText = await response.text();
-        const hasAttendance = hasAttendanceButton(htmlText);
-        // console.log(`[${FEATURE_NAME}] 科目 ${courseId}: ${hasAttendance ? '出席あり' : '出席なし'}`);
-        return hasAttendance;
     }
 
     /**
@@ -686,6 +716,7 @@
                         detectedCourseIds.push(courseId);
                     }
                 } catch (error) {
+                    if (error?.name === 'TimeoutError') throw error;
                     if (error?.name === 'AbortError') {
                         return;
                     }
@@ -802,6 +833,7 @@
         const courseEntryMap = new Map(courseEntries.map(entry => [entry.courseId, entry]));
         // console.log(`[${FEATURE_NAME}] ホーム出席表示を開始します。対象科目数: ${courseEntries.length}, 並列数: ${Math.min(PROBE_CONCURRENCY, courseEntries.length)}`);
 
+        let probeError = null;
         try {
             const cachedDetectedCourseIds = getCachedDetectedCourseIds(linkKougiUrl, courseIds);
 
@@ -839,6 +871,7 @@
                 applyAttendanceState(entry, detectedCourseIds.has(entry.courseId));
             }
         } catch (error) {
+            probeError = error?.name === 'TimeoutError' ? error : null;
             if (error?.name === 'AbortError') {
                 return;
             }
@@ -846,7 +879,7 @@
         } finally {
             activeProbePromise = null;
             activeProbeController = null;
-            notifyHomeworkNavigationReady();
+            notifyHomeworkNavigationReady(probeError);
         }
     }
 
