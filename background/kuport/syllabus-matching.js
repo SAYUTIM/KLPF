@@ -106,13 +106,10 @@ export function findSyllabusCourseButton(course, buttons) {
     // 一致する枠だけを候補に残す。時間割側の値を取得できなかった候補は、
     // 誤ったシラバスを開く可能性があるため一致扱いにしない。
     const targetDay = normalizeSyllabusDay(course?.dayText);
-    if (targetDay) {
-        matches = matches.filter(button => normalizeSyllabusDay(button.dayText) === targetDay);
-    }
     const targetPeriod = normalizeSyllabusPeriod(course?.period);
-    if (targetPeriod) {
-        matches = matches.filter(button => normalizeSyllabusPeriod(button.period) === targetPeriod);
-    }
+    if (!targetDay || !targetPeriod) return { error: '授業カードの曜日・時限を確認できませんでした。' };
+    matches = matches.filter(button => normalizeSyllabusDay(button.dayText) === targetDay
+        && normalizeSyllabusPeriod(button.period) === targetPeriod);
 
     // 曜日・時限で候補を絞った後、最後に教員名を照合する。
     // 教員名が一致しない候補へはフォールバックしない。

@@ -480,6 +480,7 @@
 
         request.progress = showSyllabusProgress(course, requestId, () => {
             request.cancelled = true;
+            activeRequests.delete(requestId);
             setButtonLoading(button, false);
             void chrome.runtime.sendMessage({
                 type: 'cancel-syllabus-lookup',
@@ -494,14 +495,15 @@
                 requestId,
                 course,
             });
+            // 取消済み、または結果通知で終了済みの要求から新しい画面を変更しない。
+            if (request.cancelled || activeRequests.get(requestId) !== request) {
+                if (request.cancelled && response?.status === 'started') {
+                    void chrome.runtime.sendMessage({ type: 'cancel-syllabus-lookup', requestId }).catch(() => {});
+                }
+                return;
+            }
             if (response?.status === 'started') {
                 request.progress?.update(response);
-                if (request.cancelled) {
-                    void chrome.runtime.sendMessage({
-                        type: 'cancel-syllabus-lookup',
-                        requestId,
-                    }).catch(() => {});
-                }
                 return;
             }
             request.progress?.close();
@@ -510,6 +512,7 @@
             if (request.cancelled || !globalThis.KLPFKuportAccess.ready || !featureEnabled || allFeaturesDisabled) return;
             showNotice(getStartErrorMessage(response));
         } catch (error) {
+            if (request.cancelled || activeRequests.get(requestId) !== request) return;
             request.progress?.close();
             activeRequests.delete(requestId);
             setButtonLoading(button, false);
@@ -994,7 +997,10 @@
         const onKeyDown = (event) => {
             if (event.key === 'Escape') close();
         };
+        let closed = false;
         const close = () => {
+            if (closed) return;
+            closed = true;
             root?.remove();
             document.removeEventListener('keydown', onKeyDown, true);
             unlockPageScroll();
@@ -1062,6 +1068,7 @@
             renderCourseButtons();
         });
         window.addEventListener('click', handleSyllabusButtonClick, true);
+        window.addEventListener('pagehide', stopSyllabusUi);
         void readFeatureState().catch((error) => {
             console.warn('[KLPF] シラバス表示の設定を読み込めませんでした。', error);
         });
