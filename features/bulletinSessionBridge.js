@@ -36,19 +36,18 @@
     }
 
     /**
-     * 掲示板ページのフォームとリンクから直接通信に必要な情報を取り出す。
+     * ホーム内の掲示リンク、または認証後のメニューから直接通信に必要な情報を取り出す。
      * @returns {object|null} 掲示板の送信フォーム情報。読み取れなければnull。
      */
     function readKuportBulletinBootstrap() {
         const form = document.getElementById('funcForm');
-        if (!(form instanceof HTMLFormElement)) return null;
-        const links = Array.from(form.querySelectorAll('a, button, [role="button"]'));
+        const links = Array.from(form?.querySelectorAll('a, button, [role="button"]') || []);
         const link = links.find(element => /掲示情報を表示/.test(normalizeText([
             element.getAttribute('aria-label'),
             element.getAttribute('title'),
         ].filter(Boolean).join(' '))))
             || links.find(element => /掲示情報/.test(normalizeText(element.textContent)));
-        if (!link) return null;
+        if (!link || !(form instanceof HTMLFormElement)) return readBulletinMenuBootstrap();
         const command = readKuportAjaxCommand(link);
         if (!command.source) return null;
         return {
@@ -58,6 +57,29 @@
             bulletinSource: command.source,
             bulletinExecute: command.execute || command.source,
             bulletinRender: command.render || '@(.dispTab_1)',
+        };
+    }
+
+    /**
+     * アンケートなどホーム以外の画面でも、掲示板メニューの送信フォームを読み取る。
+     * メニューIDは現在の画面から取得し、固定値や他のメニューを代用しない。
+     * @returns {object|null} メニューPOST用のフォーム情報。特定できなければnull。
+     */
+    function readBulletinMenuBootstrap() {
+        const form = document.getElementById('menuForm');
+        if (!(form instanceof HTMLFormElement)) return null;
+        const link = Array.from(form.querySelectorAll('a, button'))
+            .find(element => normalizeText(element.textContent) === '掲示板');
+        if (!link) return null;
+        const command = ['onclick', 'data-pfcommand', 'data-pfconfirmcommand']
+            .map(name => link.getAttribute(name) || '').join('\n');
+        const bulletinMenuId = command.match(/menuForm:mainMenu_menuid[^0-9A-Za-z]+([0-9]+(?:_[0-9]+)+)/)?.[1];
+        if (!bulletinMenuId) return null;
+        return {
+            action: form.action,
+            fields: Array.from(new FormData(form).entries()).filter(([, value]) => typeof value === 'string'),
+            menuPage: true,
+            bulletinMenuId,
         };
     }
 

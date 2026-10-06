@@ -164,16 +164,24 @@ export function createBulletinTransport({ reportPhase, ensureActive, throwIfAbor
         let homeBoard = bootstrap.boardPage ? bootstrap : null;
         let boardBaseUrl = bootstrap.action;
         if (!homeBoard) {
-            const homeBody = createPartialFormBody(
+            const fromMenu = bootstrap.menuPage === true;
+            if (fromMenu && !bootstrap.bulletinMenuId) {
+                throw new Error('Ku-portの掲示板メニューを特定できませんでした。');
+            }
+            const homeBody = fromMenu ? createFormBody(bootstrap.fields) : createPartialFormBody(
                 bootstrap.fields,
                 bootstrap.bulletinSource,
                 bootstrap.bulletinExecute,
                 bootstrap.bulletinRender,
             );
+            if (fromMenu) {
+                homeBody.set('menuForm:mainMenu', 'menuForm:mainMenu');
+                homeBody.set('menuForm:mainMenu_menuid', bootstrap.bulletinMenuId);
+            }
             const homeResponse = await fetch(assertKuportUrl(bootstrap.action), {
                 method: 'POST',
                 credentials: 'include',
-                headers: createKuportHeaders(true),
+                headers: createKuportHeaders(!fromMenu),
                 body: homeBody,
                 redirect: 'follow',
                 signal,
