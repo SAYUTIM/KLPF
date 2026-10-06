@@ -819,9 +819,9 @@
         observer = null;
         yearFilterObserver?.disconnect();
         yearFilterObserver = null;
-        if (storageChangeListener) chrome.storage.onChanged.removeListener(storageChangeListener);
+        if (storageChangeListener && chrome.runtime?.id) chrome.storage.onChanged.removeListener(storageChangeListener);
         storageChangeListener = null;
-        if (runtimeMessageListener) chrome.runtime.onMessage.removeListener(runtimeMessageListener);
+        if (runtimeMessageListener && chrome.runtime?.id) chrome.runtime.onMessage.removeListener(runtimeMessageListener);
         runtimeMessageListener = null;
         if (scheduledRender !== null) cancelAnimationFrame(scheduledRender);
         scheduledRender = null;
@@ -834,6 +834,8 @@
      * @returns {void} 戻り値はない。
      */
     function main() {
+        // 拡張機能の更新後、古いタブではChrome APIが無効になるため再開しない。
+        if (!chrome.runtime?.id || !chrome.storage?.onChanged) return;
         if (location.hostname === KUPORT_HOST) {
             void startKuportBridge().catch(error => console.debug('[KLPF] 出席率の認証タブを確認できませんでした。', error));
         } else if (location.hostname === LMS_HOST) startLmsDisplay();
