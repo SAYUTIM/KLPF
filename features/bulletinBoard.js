@@ -43,6 +43,7 @@
     let fetchStarted = false;
     let activeRequestId = '';
     let latestItems = [];
+    let cacheReadRevision = 0;
 
     /**
      * 現在のURLが機能の対象となるKU-LMSホームか判定する。
@@ -453,8 +454,10 @@
      * @returns {Promise<void>} 処理の完了を待つPromise。
      */
     async function loadCache() {
+        const revision = cacheReadRevision;
         try {
             const stored = await chrome.storage.local.get(CACHE_KEY);
+            if (revision !== cacheReadRevision) return;
             const cache = stored[CACHE_KEY];
             if (cache?.version === CACHE_VERSION && Array.isArray(cache.items)) {
                 renderItems(cache.items);
@@ -471,7 +474,9 @@
     async function requestBulletins() {
         if (!isEnabled() || fetchStarted) return;
         fetchStarted = true;
+        const revision = cacheReadRevision;
         await loadCache();
+        if (revision !== cacheReadRevision) return;
         if (!isEnabled()) { fetchStarted = false; return; }
         setUpdating(true);
         const requestId = getRequestId();
@@ -501,6 +506,7 @@
             showFetchMessage(response?.message || messages[response?.status] || '掲示板を取得できませんでした。', true);
             activeRequestId = '';
         } catch (error) {
+            if (activeRequestId !== requestId || !isEnabled()) return;
             activeRequestId = '';
             showFetchMessage('掲示板の通信を開始できませんでした。', true);
             console.debug('[KLPF] 掲示板取得の開始に失敗しました。', error);
@@ -567,8 +573,10 @@
     function initializeLms() {
         globalThis.KLPFKuportAccess.subscribe(access => {
             if (!access.ready) {
+                cacheReadRevision += 1;
                 fetchStarted = false;
                 activeRequestId = '';
+                latestItems = [];
                 document.getElementById(DIALOG_ID)?.querySelector('.klpf-bulletin-close')?.click();
             }
             scheduleRender();

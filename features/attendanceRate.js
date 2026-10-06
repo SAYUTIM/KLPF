@@ -37,6 +37,7 @@
     let displayEnabled = false;
     let unsubscribeAccess = null;
     let accessRevision = 0;
+    let renderRevision = 0;
     const LMS_YEAR_FILTER_SELECTOR = '.lms-search-condition-detail';
     const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -715,7 +716,6 @@
      * @returns {void} 戻り値はない。
      */
     function renderAttendanceRates(cache) {
-        scheduledRender = null;
         observer?.disconnect();
         try {
             const selectedYearCache = getAttendanceCacheForYear(
@@ -751,7 +751,10 @@
      * @returns {Promise<void>} 処理の完了を待つPromise。
      */
     async function loadAndRenderAttendanceRates() {
+        const revision = ++renderRevision;
+        const access = accessRevision;
         const stored = await chrome.storage.local.get(CACHE_KEY);
+        if (revision !== renderRevision || access !== accessRevision) return;
         const cache = stored[CACHE_KEY];
         renderAttendanceRates(cache);
     }
@@ -763,8 +766,8 @@
     function scheduleRender() {
         if (scheduledRender !== null) return;
         scheduledRender = requestAnimationFrame(() => {
+            scheduledRender = null;
             void loadAndRenderAttendanceRates().catch(error => {
-                scheduledRender = null;
                 console.error(`[${FEATURE_NAME}] 出席率表示の更新に失敗しました。`, error);
             });
         });
@@ -781,7 +784,15 @@
             || deferredAcademicYear === academicYear
             || requestedAcademicYears.has(academicYear)) return;
 
-        const stored = await chrome.storage.local.get(CACHE_KEY);
+        const revision = accessRevision;
+        let stored;
+        try {
+            stored = await chrome.storage.local.get(CACHE_KEY);
+        } catch (error) {
+            console.debug(`[${FEATURE_NAME}] 更新前のキャッシュを確認できませんでした。`, error);
+            return;
+        }
+        if (revision !== accessRevision || requestedAcademicYears.has(academicYear)) return;
         if (!displayEnabled || !globalThis.KLPFKuportAccess.ready) return;
         const yearCache = getAttendanceCacheForYear(stored[CACHE_KEY], academicYear);
         if (Number.isFinite(yearCache.completedAt)
@@ -799,6 +810,7 @@
                 academicYear,
             });
         } catch (error) {
+            if (revision !== accessRevision) return;
             requestedAcademicYears.delete(academicYear);
             console.debug(`[${FEATURE_NAME}] ${academicYear}年度の更新を開始できませんでした。`, error);
             if (getSelectedAcademicYear() === academicYear) {
@@ -806,6 +818,8 @@
             }
             return;
         }
+
+        if (revision !== accessRevision || !displayEnabled || !globalThis.KLPFKuportAccess.ready) return;
 
         if (response?.status === 'already-running'
             && response.academicYear
@@ -887,6 +901,12 @@
      */
     async function reloadAccessState() {
         const revision = ++accessRevision;
+        if (!globalThis.KLPFKuportAccess.ready) {
+            displayEnabled = false;
+            requestedAcademicYears.clear();
+            deferredAcademicYear = '';
+            renderAttendanceRates(null);
+        }
         const settings = await chrome.storage.sync.get('attendanceRateDisplay');
         if (revision !== accessRevision) return;
         displayEnabled = settings.attendanceRateDisplay === true && globalThis.KLPFKuportAccess.ready;
@@ -969,6 +989,8 @@
      * @returns {void} 戻り値はない。
      */
     function cleanup() {
+        accessRevision += 1;
+        renderRevision += 1;
         unsubscribeAccess?.();
         unsubscribeAccess = null;
         observer?.disconnect();

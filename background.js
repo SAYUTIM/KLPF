@@ -11,6 +11,7 @@ import { createSyllabusTransport } from './background/kuport/syllabus.js';
 import { createBulletinTransport, BULLETIN_MAX_ITEMS } from './background/kuport/bulletin.js';
 import { createPriorityQueue } from './background/modules/priority-queue.js';
 import { createKuportJobStore } from './background/modules/kuport-job-state.js';
+import { createKuportAccountManager, KUPORT_CACHE_OWNER_KEY, KUPORT_ACCOUNT_TRANSITION_KEY } from './background/modules/kuport-account.js';
 import './features/modules/syllabus-cache.js';
 import { registerKuportJobTimeouts } from './background/modules/kuport-job-timeouts.js';
 
@@ -46,6 +47,7 @@ import {
     getAttendanceFetchJob,
     getManualRefreshCooldownRemaining,
     recordAttendanceRefreshCooldown,
+    resetAttendanceRefreshCooldown,
     throwIfAttendanceFetchAborted,
 } from './background/modules/attendance-state.js';
 
@@ -93,6 +95,7 @@ let bulletinFetchAbortController = null;
 let bulletinFetchStartPromise = null;
 const startingBulletinFetchRequests = new Set();
 const pendingBulletinBootstraps = new Map();
+let kuportAccountRevision = 0;
 
 const { fetchSyllabus: fetchKuportSyllabusInBackground } = createSyllabusTransport({
     reportPhase: reportSyllabusLookupPhase,
@@ -512,11 +515,14 @@ async function waitForKuportIdle() {
  * @returns {Promise<object>} キュー内で取得開始処理を実行した結果。
  */
 function enqueueKuportRequest(options, start, priority) {
+    const accountRevision = kuportAccountRevision;
     const requestId = options?.requestId;
     if (typeof requestId === 'string') waitingKuportRequests.set(requestId, options.sourceTabId);
     return queueKuportOperation(priority, async () => {
         waitingKuportRequests.delete(requestId);
-        if (cancelledQueuedKuportRequests.delete(requestId)) return { status: 'cancelled' };
+        if (cancelledQueuedKuportRequests.delete(requestId) || accountRevision !== kuportAccountRevision) {
+            return { status: 'cancelled' };
+        }
         if (Number.isInteger(options?.sourceTabId)) {
             try { await chrome.tabs.get(options.sourceTabId); }
             catch { return { status: 'cancelled' }; }
@@ -2085,6 +2091,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
         || (area === 'local' && ['username', 'password', 'totpSecret'].some(key => changes[key]));
     if (authChanged) {
         void (async () => {
+            if (area === 'local' && changes.username) await kuportAccount.sync();
             await resetAutoLoginAttempts();
             const settings = await chrome.storage.sync.get('autoLogin');
             if (settings.autoLogin === false) {
@@ -2093,7 +2100,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
             await updateKuportAccess();
         })().catch(error => console.debug('[KLPF] 自動ログイン設定の反映に失敗しました。', error));
     } else if ((area === 'sync' && KUPORT_DEPENDENT_KEYS.some(key => changes[key]))
-        || (area === 'local' && changes[INLINE_ALL_FEATURES_DISABLED_KEY])
+        || (area === 'local' && (changes[INLINE_ALL_FEATURES_DISABLED_KEY] || changes[KUPORT_CACHE_OWNER_KEY]))
+        || (area === 'session' && changes[KUPORT_ACCOUNT_TRANSITION_KEY])
         || (area === 'session' && changes[AUTH_ATTEMPTS_KEY]
             && changes[AUTH_ATTEMPTS_KEY].oldValue?.blocked !== changes[AUTH_ATTEMPTS_KEY].newValue?.blocked)) {
         void (async () => {
@@ -2112,7 +2120,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || typeof message !== 'object') return false;
     if (message.type === 'get-kuport-access-state') {
-        getAuthAccessState().then(sendResponse).catch(() => sendResponse({ ready: false, reason: '設定を確認できませんでした。' }));
+        // 未完了の切り替えは再試行するが、利用可否は完了を待たずに停止状態を返す。
+        void kuportAccount.sync().catch(error => console.debug('[KLPF] キャッシュ所有IDの反映を再試行できませんでした。', error));
+        getAuthAccessState().then(sendResponse)
+            .catch(() => sendResponse({ ready: false, reason: '設定を確認できませんでした。' }));
         return true;
     }
     if (message.type === 'claim-auto-login-attempt') {
@@ -2460,6 +2471,21 @@ registerKuportJobTimeouts([
         finish: job => finishBulletinFetch(job.requestId, { message: '掲示板取得が時間切れになりました。' }),
     },
 ]);
+
+// 起動時にもキャッシュ所有IDを確認し、旧データの混在を防ぐ。
+const kuportAccount = createKuportAccountManager(async () => {
+    kuportAccountRevision += 1;
+    const [syllabus, bulletin, attendance] = await Promise.all([
+        getSyllabusLookupJob(), getBulletinFetchJob(), getAttendanceFetchJob(),
+    ]);
+    if (syllabus) await finishSyllabusLookup(syllabus.requestId, { message: 'ログインIDが変更されたため取得を中止しました。' });
+    if (bulletin) await finishBulletinFetch(bulletin.requestId, { message: 'ログインIDが変更されたため取得を中止しました。' });
+    if (attendance) await finishAttendanceFetch(attendance.tabId, 'account-changed');
+    await resetAttendanceRefreshCooldown();
+});
+void kuportAccount.sync().then(updateKuportAccess).catch(error => {
+    console.error('[KLPF] ログインIDの変更を反映できませんでした。', error);
+});
 // 拡張機能の更新・再読み込みなどで動的登録が失われても、保存設定から復旧する。
 void initializeScripts().catch(error => {
     console.error('[KLPF] 起動時にコンテンツスクリプトを初期化できませんでした。', error);

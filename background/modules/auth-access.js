@@ -8,6 +8,8 @@
  * 認証情報は履歴や応答に含めない。
  */
 
+import { KUPORT_CACHE_OWNER_KEY, KUPORT_ACCOUNT_TRANSITION_KEY } from './kuport-account.js';
+
 export const AUTH_ATTEMPTS_KEY = 'klpfAutoLoginAttempts';
 export const KUPORT_DEPENDENT_KEYS = ['attendanceRateDisplay', 'syllabusLookupEnabled', 'bulletinBoardEnabled'];
 let attemptQueue = Promise.resolve();
@@ -19,8 +21,8 @@ let attemptQueue = Promise.resolve();
 export async function getAuthAccessState() {
     const [sync, local, session] = await Promise.all([
         chrome.storage.sync.get('autoLogin'),
-        chrome.storage.local.get(['username', 'password', 'klpfInlineAllFeaturesDisabled']),
-        chrome.storage.session.get(AUTH_ATTEMPTS_KEY),
+        chrome.storage.local.get(['username', 'password', 'klpfInlineAllFeaturesDisabled', KUPORT_CACHE_OWNER_KEY]),
+        chrome.storage.session.get([AUTH_ATTEMPTS_KEY, KUPORT_ACCOUNT_TRANSITION_KEY]),
     ]);
     let reason = '';
     if (local.klpfInlineAllFeaturesDisabled === true) reason = 'すべての機能がOFFです。';
@@ -28,6 +30,9 @@ export async function getAuthAccessState() {
     else if (typeof local.username !== 'string' || !local.username.trim()
         || typeof local.password !== 'string' || !local.password) reason = '自動ログインのユーザー名とパスワードを設定してください。';
     else if (session[AUTH_ATTEMPTS_KEY]?.blocked === true) reason = 'ログインの繰り返しを検出して停止しました。認証情報を確認し、自動ログインをOFF→ONにしてください。';
+    else if (session[KUPORT_ACCOUNT_TRANSITION_KEY] || local[KUPORT_CACHE_OWNER_KEY] !== local.username.trim()) {
+        reason = 'ログイン設定の変更を反映しています。';
+    }
     return { ready: !reason, reason };
 }
 

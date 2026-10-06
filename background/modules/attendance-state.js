@@ -15,6 +15,15 @@ const ATTENDANCE_MANUAL_REFRESH_COOLDOWN_MS = 30 * 1000;
 let lastAttendanceRefreshAt = 0;
 
 /**
+ * ログインID変更時に手動更新の待機時刻をメモリとsessionの両方から解除する。
+ * @returns {Promise<void>} 保存状態の削除完了。
+ */
+export async function resetAttendanceRefreshCooldown() {
+    lastAttendanceRefreshAt = 0;
+    await chrome.storage.session.remove(ATTENDANCE_MANUAL_REFRESH_KEY);
+}
+
+/**
  * セッションストレージから進行中の出席率取得ジョブを読み出す。
  * @returns {Promise<object|null>} 進行中のジョブ。保存されていなければnull。
  */
