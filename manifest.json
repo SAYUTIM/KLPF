@@ -30,6 +30,16 @@
   "content_scripts": [
     {
       "matches": [
+        "https://study.ns.kogakuin.ac.jp/*",
+        "https://meet.google.com/*"
+      ],
+      "js": [
+        "features/modules/feature-state.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
         "https://study.ns.kogakuin.ac.jp/lms/*"
       ],
       "js": [

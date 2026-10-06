@@ -4,6 +4,7 @@
 /**
  * @file ヘッダーに現在時刻と次の授業までの残り時間を表示する機能。
  * ブラウザの現在日時とタイマーを使い、ページ上の時刻表示を定期更新する。
+ * 共通設定監視でOFF時の表示・タイマーを止め、履歴からの復帰時に再開する。
  */
 
 (async function() {
@@ -98,16 +99,32 @@
         console.log("[KLPF] 授業スケジュールを切り替えました。");
     });
 
-    // --- 初期化と定期実行 ---
-    ulList.insertBefore(timeLi, logoutListItem.nextSibling);
-    ulList.insertBefore(remainingTimeLi, timeLi.nextSibling);
+    let intervalId = null;
+    let reloadTimeoutId = null;
 
-    setInterval(updateTime, 1000);
-    updateTime(); // 初回実行
+    /**
+     * 時計の更新と30分後の再読み込み予約を取り消す。
+     * @returns {void} 戻り値はない。
+     */
+    function stopTimers() {
+        clearInterval(intervalId);
+        clearTimeout(reloadTimeoutId);
+        intervalId = null;
+        reloadTimeoutId = null;
+    }
 
-    setTimeout(() => {
-        location.reload();
-    }, PAGE_RELOAD_INTERVAL_MS);
-
-    console.log("[KLPF] 時刻表示機能を初期化しました。");
+    globalThis.KLPFFeatureState.watch(['showTime'], settings => settings.showTime === true, enabled => {
+        stopTimers();
+        if (!enabled) {
+            timeLi.remove();
+            remainingTimeLi.remove();
+            return;
+        }
+        ulList.insertBefore(timeLi, logoutListItem.nextSibling);
+        ulList.insertBefore(remainingTimeLi, timeLi.nextSibling);
+        updateTime();
+        intervalId = setInterval(updateTime, 1000);
+        reloadTimeoutId = setTimeout(() => location.reload(), PAGE_RELOAD_INTERVAL_MS);
+    });
+    window.addEventListener('pagehide', stopTimers);
 })();

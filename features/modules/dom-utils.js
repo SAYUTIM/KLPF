@@ -10,14 +10,26 @@
 /**
  * 指定されたセレクタに一致する要素がDOMに追加されるまで待機する。
  * @param {string} selector - 待機する要素のCSSセレクタ。
- * @param {Document|Element} [root=document] - 検索の起点となる要素。
+ * @param {Document|Element|DocumentFragment|null} [root=document] - 検索の起点。nullなら待機しない。
  * @param {number} [timeout=5000] - タイムアウトまでの時間 (ミリ秒)。
- * @returns {Promise<Element|null>} 発見した要素。タイムアウトした場合はnullを返す。
+ * @returns {Promise<Element|null>} 発見した要素。起点がない場合や検索・待機できない場合はnull。
  */
 function waitForElement(selector, root = document, timeout = 5000) {
     return new Promise(resolve => {
+        if (typeof root?.querySelector !== 'function') {
+            resolve(null);
+            return;
+        }
+
         // すでに要素が存在すれば即座に解決
-        const element = root.querySelector(selector);
+        let element;
+        try {
+            element = root.querySelector(selector);
+        } catch (error) {
+            console.error(`[KLPF] 要素の待機を開始できませんでした: ${selector}`, error);
+            resolve(null);
+            return;
+        }
         if (element) {
             resolve(element);
             return;
@@ -42,20 +54,28 @@ function waitForElement(selector, root = document, timeout = 5000) {
         }, timeout);
 
         // 監視を開始
-        observer.observe(root, {
-            childList: true,
-            subtree: true
-        });
+        try {
+            observer.observe(root, {
+                childList: true,
+                subtree: true
+            });
+        } catch (error) {
+            clearTimeout(timeoutId);
+            observer.disconnect();
+            console.error(`[KLPF] 要素の監視を開始できませんでした: ${selector}`, error);
+            resolve(null);
+        }
     });
 }
 
 /**
  * querySelectorの安全なラッパー。要素が見つからない場合でもエラーを発生させない。
  * @param {string} selector - 検索する要素のCSSセレクタ。
- * @param {Document|Element} [root=document] - 検索の起点となる要素。
+ * @param {Document|Element|DocumentFragment|null} [root=document] - 検索の起点。nullなら検索しない。
  * @returns {HTMLElement|null} 発見した要素。見つからない場合はnull。
  */
 function safeQuerySelector(selector, root = document) {
+    if (typeof root?.querySelector !== 'function') return null;
     try {
         return root.querySelector(selector);
     } catch (error) {
@@ -67,10 +87,11 @@ function safeQuerySelector(selector, root = document) {
 /**
  * querySelectorAllの安全なラッパー。常に配列を返す。
  * @param {string} selector - 検索する要素のCSSセレクタ。
- * @param {Document|Element} [root=document] - 検索の起点となる要素。
+ * @param {Document|Element|DocumentFragment|null} [root=document] - 検索の起点。nullなら検索しない。
  * @returns {HTMLElement[]} 発見した要素の配列。
  */
 function safeQuerySelectorAll(selector, root = document) {
+    if (typeof root?.querySelectorAll !== 'function') return [];
     try {
         return Array.from(root.querySelectorAll(selector));
     } catch (error) {

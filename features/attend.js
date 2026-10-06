@@ -7,14 +7,16 @@
  */
 
 let autoAttendIntervalId = null;
+let autoAttendRunning = false;
+let autoAttendRevision = 0;
 
 /**
  * 自動出席の定期確認を停止する。
  * @returns {void} 戻り値はない。
  */
 function stopAutoAttendPolling() {
-    if (!autoAttendIntervalId) return;
-    clearInterval(autoAttendIntervalId);
+    autoAttendRevision += 1;
+    if (autoAttendIntervalId !== null) clearInterval(autoAttendIntervalId);
     autoAttendIntervalId = null;
 }
 
@@ -27,17 +29,36 @@ function stopAutoAttendPolling() {
 function startAutoAttendPolling(settings, state) {
     stopAutoAttendPolling();
     autoAttendIntervalId = setInterval(() => {
+        if (autoAttendRunning) return;
+        state.ensureContext(settings);
+        if (!shouldRun(settings) && !state.isReloaded()) return;
         void runAutoAttendSequence(settings, state);
     }, ATTEND_CHECK_INTERVAL_MS);
-    window.addEventListener('pagehide', stopAutoAttendPolling, { once: true });
 }
+window.addEventListener('pagehide', stopAutoAttendPolling);
 
 /**
  * 機能の状態をlocalStorageで管理するクラス
  */
 class AttendState {
     constructor() {
-        this.RETRY_LIMIT = 4; // 4回 (約12秒) リトライ
+        this.RETRY_LIMIT = 4; // 最初の失敗後、4回まで再試行する。
+    }
+
+    /**
+     * 日付や授業設定が変わった場合に、前の授業の操作済み状態を解除する。
+     * 同じ授業でのページ遷移・再読み込みでは状態を引き継ぐ。
+     * @param {AttendSettings} settings - 現在の授業設定。
+     * @returns {void} 状態の切り替え。
+     */
+    ensureContext(settings) {
+        const now = new Date();
+        const date = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+        const context = JSON.stringify([date, settings.term, settings.day, settings.time,
+            settings.meetID, settings.shouldClickAttendButton]);
+        if (localStorage.getItem('klpf-attend-context') === context) return;
+        this.resetAll();
+        localStorage.setItem('klpf-attend-context', context);
     }
 
     /**
@@ -171,14 +192,16 @@ class AttendSettings {
 
     /**
      * 設定を非同期に読み込む
+     * @param {object|null} [savedSettings=null] - 監視側が読み取った最新設定。省略時はsyncから取得する。
      * @returns {Promise<void>}
      */
-    async load() {
+    async load(savedSettings = null) {
         try {
-            const result = await chrome.storage.sync.get(["attendC", "attendM", "attendD", "attendT", "attendA"]);
+            const result = savedSettings || await chrome.storage.sync.get(["attendC", "attendM", "attendD", "attendT", "attendA"]);
             this.term = result.attendC || "";
             this.meetID = result.attendM || "";
-            this.day = parseInt(result.attendD, 10) || -1;
+            const day = Number.parseInt(result.attendD, 10);
+            this.day = Number.isInteger(day) && day >= 0 && day <= 6 ? day : -1;
             this.time = result.attendT || "";
             this.shouldClickAttendButton = result.attendA || false;
 
@@ -254,12 +277,13 @@ async function step2_clickLessonCard(settings) {
 
 /**
  * [ステップ3] 出席ボタンをクリックする
+ * @param {Function} isActive - 設定変更・停止で古い処理になっていないかを判定する関数。
  * @returns {Promise<boolean>} 成功した場合はtrue
  */
-async function step3_clickAttendButton() {
+async function step3_clickAttendButton(isActive) {
     console.log("[KLPF] ステップ3: 出席ボタンの検索とクリック");
     const attendButton = await waitForElement("input[onclick^=\"syussekiSentakuAdd();\"]");
-    if (attendButton) {
+    if (attendButton && isActive()) {
         console.log("[KLPF] 出席ボタンを発見。クリックします。");
         attendButton.click();
         return true;
@@ -270,17 +294,18 @@ async function step3_clickAttendButton() {
 
 /**
  * [ステップ4] OKボタンをクリックする
+ * @param {Function} isActive - 設定変更・停止で古い処理になっていないかを判定する関数。
  * @returns {Promise<boolean>} 成功した場合はtrue
  */
-async function step4_clickOKButton() {
+async function step4_clickOKButton(isActive) {
     console.log("[KLPF] ステップ4: OKボタンの検索とクリック");
     const iframe = await waitForElement('iframe[name="dispCosa"]');
-    if (!iframe || !iframe.contentWindow) {
+    if (!isActive() || !iframe || !iframe.contentWindow) {
         console.debug("[KLPF] 確認ダイアログのiframeが見つかりませんでした。");
         return false;
     }
     const okButton = await waitForElement('input[type="button"][value="OK"]', iframe.contentWindow.document);
-    if (okButton) {
+    if (okButton && isActive()) {
         console.log("[KLPF] OKボタンを発見。クリックします。");
         okButton.click();
         return true;
@@ -308,6 +333,10 @@ function joinMeet(meetID) {
  * @param {AttendState} state
  */
 async function runAutoAttendSequence(settings, state) {
+    if (autoAttendRunning || autoAttendIntervalId === null) return;
+    autoAttendRunning = true;
+    const revision = autoAttendRevision;
+    const isActive = () => revision === autoAttendRevision && autoAttendIntervalId !== null;
     try {
         if (settings.shouldClickAttendButton) {
             // --- 出席ボタンを押すフロー ---
@@ -318,12 +347,14 @@ async function runAutoAttendSequence(settings, state) {
             }
             if (!state.isLessonClicked()) {
                 const success = await step2_clickLessonCard(settings);
+                if (!isActive()) return;
                 if (success) state.setLessonClicked(true);
                 else if (state.isRetryLimitExceeded('lesson')) state.setLessonClicked(true); // リトライ上限で見つからなければスキップ
                 return;
             }
             if (!state.isAttendSubmitted()) {
-                const success = await step3_clickAttendButton();
+                const success = await step3_clickAttendButton(isActive);
+                if (!isActive()) return;
                 if (success) state.setAttendSubmitted(true);
                 else if (state.isRetryLimitExceeded('attend')) {
                     console.debug("[KLPF] 出席ボタンの検索を諦め、Meetへの参加を試みます。");
@@ -334,7 +365,8 @@ async function runAutoAttendSequence(settings, state) {
                 return;
             }
             if (!state.isOKClicked()) {
-                const success = await step4_clickOKButton();
+                const success = await step4_clickOKButton(isActive);
+                if (!isActive()) return;
                 if (success) {
                     state.setOKClicked(true);
                     joinMeet(settings.meetID);
@@ -352,8 +384,12 @@ async function runAutoAttendSequence(settings, state) {
             }
         }
     } catch (error) {
+        if (!isActive()) return;
         console.error("[KLPF] 自動出席シーケンスで予期せぬエラーが発生しました。", error);
-        state.resetAll(); // エラー発生時は状態をリセット
+        // 例外後に再読み込みから無限にやり直さず、次の設定変更まで停止する。
+        stopAutoAttendPolling();
+    } finally {
+        autoAttendRunning = false;
     }
 }
 
@@ -361,18 +397,26 @@ async function runAutoAttendSequence(settings, state) {
  * メイン処理
  */
 async function main() {
-    const settings = new AttendSettings();
-    await settings.load();
     const state = new AttendState();
-
-    // 実行条件を満たしている場合、または既にシーケンスが進行中の場合
-    if (shouldRun(settings) || state.isReloaded()) {
-        console.log("[KLPF] 自動出席処理を開始します。");
-        startAutoAttendPolling(settings, state);
-    } else {
-        stopAutoAttendPolling();
-        state.resetAll();
-    }
+    globalThis.KLPFFeatureState.watch(
+        ['autoAttend', 'attendC', 'attendM', 'attendD', 'attendT', 'attendA'],
+        settings => settings.autoAttend === true,
+        (enabled, savedSettings) => {
+            stopAutoAttendPolling();
+            if (!enabled) {
+                state.resetAll();
+                return;
+            }
+            const revision = autoAttendRevision;
+            const settings = new AttendSettings();
+            void settings.load(savedSettings).then(() => {
+                if (revision !== autoAttendRevision) return;
+                state.ensureContext(settings);
+                if (!shouldRun(settings) && !state.isReloaded()) state.resetAll();
+                startAutoAttendPolling(settings, state);
+            });
+        },
+    );
 }
 
 // トップレベルawaitを避けるため、非同期の即時実行関数でラップする

@@ -14,6 +14,8 @@
 
     let keepAliveIntervalId = null;
     let dialogIntervalId = null;
+    let firstKeepAliveTimeoutId = null;
+    let enabled = false;
 
     /**
      * ページのセッション監視機能が利用可能か判定する。
@@ -47,7 +49,9 @@
      */
     function clickContinueButtonIfVisible() {
         const continueButton = document.querySelector('#sessionExpirationAlertDialog .continueButton');
-        if (continueButton instanceof HTMLElement) {
+        if (continueButton instanceof HTMLElement && !continueButton.disabled
+            && continueButton.getClientRects().length > 0
+            && getComputedStyle(continueButton).visibility !== 'hidden') {
             continueButton.click();
             return true;
         }
@@ -64,7 +68,7 @@
             return;
         }
 
-        window.setTimeout(() => {
+        firstKeepAliveTimeoutId = window.setTimeout(() => {
             keepSession();
         }, FIRST_KEEP_ALIVE_DELAY_MS);
 
@@ -92,9 +96,31 @@
      * @returns {void} 戻り値はない。
      */
     function initialize() {
+        if (!enabled) return;
         startKeepAlive();
         startDialogWatcher();
     }
 
-    initialize();
+    /**
+     * OFFまたはページ離脱時に、ページ側へ予約した操作をすべて取り消す。
+     * @returns {void} タイマーの停止。
+     */
+    function stop() {
+        clearInterval(keepAliveIntervalId);
+        clearInterval(dialogIntervalId);
+        clearTimeout(firstKeepAliveTimeoutId);
+        keepAliveIntervalId = null;
+        dialogIntervalId = null;
+        firstKeepAliveTimeoutId = null;
+    }
+
+    document.addEventListener('klpf-logout-block-state', event => {
+        enabled = event.detail?.enabled === true;
+        if (enabled) initialize();
+        else stop();
+    });
+    window.addEventListener('pagehide', stop);
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) initialize();
+    });
 })();

@@ -243,8 +243,6 @@
         }
     }
 
-    console.log('[KLPF] Google Meet 自動参加機能の監視を開始します。');
-
     const processMeetPage = () => {
         disableCameraAndMic();
         clickJoinButton();
@@ -255,10 +253,19 @@
         }
     };
 
-    processMeetPage();
-    if (!allTasksCompleted()) {
-        intervalId = window.setInterval(processMeetPage, CHECK_INTERVAL_MS);
-        timeoutId = window.setTimeout(stopProcessing, MAX_RUNTIME_MS);
-    }
+    globalThis.KLPFFeatureState.watch(
+        ['autoMeet', 'autoAttend'],
+        settings => (settings.autoMeet ?? true) || settings.autoAttend === true,
+        enabled => {
+            stopProcessing();
+            if (!enabled || allTasksCompleted()) return;
+            processMeetPage();
+            if (!allTasksCompleted()) {
+                intervalId = window.setInterval(processMeetPage, CHECK_INTERVAL_MS);
+                timeoutId = window.setTimeout(stopProcessing, MAX_RUNTIME_MS);
+            }
+        },
+    );
+    window.addEventListener('pagehide', stopProcessing);
 
 })();
