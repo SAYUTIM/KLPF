@@ -32,6 +32,7 @@ import {
     enableAutomaticSubjectFilter,
     initializeScripts,
     registerContentScript,
+    syncContentScriptWithSettings,
     unregisterContentScript,
 } from './background/modules/content-scripts.js';
 import { queueHomeUpdateNoticeClaim } from './background/modules/update-notice.js';
@@ -1882,6 +1883,26 @@ async function continueAttendanceFetch(tabId, changeInfo, tab) {
 // --- イベントリスナーの登録 ---
 
 /**
+ * 設定ページを開くコンテキストメニューを作り直す。
+ * 更新前のメニューが残っている場合も、Chromeへ重複IDのエラーを記録させない。
+ * @returns {void} 戻り値はない。
+ */
+function replaceOptionsContextMenu() {
+    chrome.contextMenus.remove(CONTEXT_MENU_ID, () => {
+        // 未作成の場合のlastErrorは想定内。コールバック内で参照して処理済みにする。
+        void chrome.runtime.lastError;
+        chrome.contextMenus.create({
+            id: CONTEXT_MENU_ID,
+            title: '[KLPF] 設定を開く',
+            contexts: ['page'],
+        }, () => {
+            const error = chrome.runtime.lastError;
+            if (error) console.error('[KLPF] コンテキストメニューを作成できませんでした。', error);
+        });
+    });
+}
+
+/**
  * 拡張機能のインストールまたは更新時に実行される。
  */
 chrome.runtime.onInstalled.addListener((details) => {
@@ -1902,16 +1923,9 @@ chrome.runtime.onInstalled.addListener((details) => {
             console.log('[KLPF] デフォルト設定を保存しました。');
             // initializeScripts(); // onChangedが処理するため、インストール時は不要
         });
-    } else {
-        initializeScripts();
     }
 
-    // コンテキストメニューを作成
-    chrome.contextMenus.create({
-        id: CONTEXT_MENU_ID,
-        title: "[KLPF] 設定を開く",
-        contexts: ["page"],
-    });
+    replaceOptionsContextMenu();
 });
 
 /**
@@ -1926,7 +1940,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
         if (attendanceSetting[ATTENDANCE_RATE_FEATURE_KEY] === true) {
             await chrome.storage.sync.set({ [ATTENDANCE_RATE_FEATURE_KEY]: false });
         }
-        await unregisterContentScript('AttendanceRateDisplay');
+        await syncContentScriptWithSettings(CONTENT_SCRIPT_BY_STORAGE_KEY.get(ATTENDANCE_RATE_FEATURE_KEY));
     }
 
     for (const [key, { newValue }] of Object.entries(changes)) {
@@ -1938,7 +1952,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
                 const consent = await chrome.storage.sync.get(ATTENDANCE_RATE_CONSENT_KEY);
                 if (consent[ATTENDANCE_RATE_CONSENT_KEY] !== true) {
                     await chrome.storage.sync.set({ [ATTENDANCE_RATE_FEATURE_KEY]: false });
-                    await unregisterContentScript(config.id);
+                    await syncContentScriptWithSettings(config);
                     continue;
                 }
             }
@@ -1947,19 +1961,19 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
             }
 
             // 登録内容が同一ならモジュール側でChrome API呼び出しを省略する。
-            await registerContentScript(config);
+            await syncContentScriptWithSettings(config);
 
             // 「自動出席」が有効な場合、「Meet自動参加」も有効にする依存関係を処理
             if (key === 'autoAttend') {
-                await applyAutoAttendDependency(true);
+                await applyAutoAttendDependency();
             }
         } else {
             // 機能が無効になった場合、スクリプトを解除する
-            await unregisterContentScript(config.id);
+            await syncContentScriptWithSettings(config);
 
-            // 「自動出席」が無効な場合、「Meetミュート参加」も解除する
+            // 自動出席をOFFにしても、Meetミュート参加の設定がONなら登録を維持する。
             if (key === 'autoAttend') {
-                await applyAutoAttendDependency(false);
+                await applyAutoAttendDependency();
             }
         }
     }
@@ -2454,3 +2468,7 @@ registerKuportJobTimeouts([
         finish: job => finishBulletinFetch(job.requestId, { message: '掲示板取得が時間切れになりました。' }),
     },
 ]);
+// 拡張機能の更新・再読み込みなどで動的登録が失われても、保存設定から復旧する。
+void initializeScripts().catch(error => {
+    console.error('[KLPF] 起動時にコンテンツスクリプトを初期化できませんでした。', error);
+});

@@ -45,17 +45,16 @@ async function claimHomeUpdateNotice() {
         if (!response.ok) throw new Error(`GitHub Release API: ${response.status}`);
         const latestRelease = await response.json();
         const latestVersion = String(latestRelease.tag_name || '').trim();
-        const currentVersion = chrome.runtime.getManifest().version;
         updateState = {
             checkedDate: today,
             latestVersion,
-            updateAvailable: isVersionNewer(latestVersion, currentVersion),
             notifiedDate: updateState.notifiedDate || '',
         };
         await chrome.storage.local.set({ [HOME_UPDATE_CHECK_KEY]: updateState });
     }
 
-    if (!updateState.updateAvailable || !updateState.latestVersion) {
+    // 同じ日のキャッシュでも、拡張機能を更新した後は現在の版と比較し直す。
+    if (!updateState.latestVersion || !isVersionNewer(updateState.latestVersion, chrome.runtime.getManifest().version)) {
         return { status: 'up-to-date' };
     }
     if (updateState.notifiedDate === today) {
