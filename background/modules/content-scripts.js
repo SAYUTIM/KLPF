@@ -173,6 +173,8 @@ export async function applyAutoAttendDependency() {
  */
 export async function initializeScripts() {
     console.debug('[KLPF] 拡張機能の初期化...');
+    // 旧版の空のテーマスクリプトを参照する登録が残っていれば解除する。
+    await unregisterContentScript('customtheme');
     const storageKeys = [
         ATTENDANCE_RATE_FEATURE_KEY,
         ATTENDANCE_RATE_CONSENT_KEY,

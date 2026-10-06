@@ -2,10 +2,9 @@
 // This software is released under the MIT License, see LICENSE.
 
 /**
- * @file KU-PORTの出席情報を保存し、KU-LMSホームの授業カードへ表示する。
- *
- * KU-PORTでは出席表の監視とキャッシュ保存、KU-LMSでは授業カードとの照合と
- * 表示状態（キャッシュ・更新中・最新）の管理を担当する。
+ * @file 出席率の認証フォームをWorkerへ渡し、取得結果をKU-LMSホームへ表示する。
+ * Ku-Portの所有タブではフォームの準備を監視し、通信・解析・保存はWorkerへ委譲する。
+ * KU-LMSでは授業カードとの照合と表示状態（キャッシュ・更新中・最新）を管理する。
  */
 
 (function() {
@@ -20,7 +19,6 @@
     const {
         normalizeText,
         normalizeCourseName,
-        parseAttendanceRecords,
     } = attendanceUtils;
 
     const FEATURE_NAME = 'KLPF 出席率表示';
@@ -28,10 +26,7 @@
     const ATTENDANCE_REFRESH_TOAST_ID = 'klpf-attendance-refresh-toast';
     const KUPORT_HOST = 'ku-port.sc.kogakuin.ac.jp';
     const LMS_HOST = 'study.ns.kogakuin.ac.jp';
-    const ATTENDANCE_TABLE_ID = 'funcForm:jugyoKaisuInfo';
-    const TERM_SELECT_ID = 'funcForm:kaikoNendoGakki_input';
     const CACHE_KEY = 'klpf-attendance-rate-cache';
-    const CACHE_VERSION = 6;
     const STYLE_ID = 'klpf-attendance-rate-style';
     const RATE_CLASS = 'klpf-attendance-rate';
     let displayEnabled = false;
@@ -80,12 +75,6 @@
             toast.style.transform = 'translateY(6px)';
         }, 5000);
     }
-    const CAPTURE_DEBOUNCE_MS = 250;
-    const KUPORT_MESSAGE_TYPES = new Set([
-        'klpf-attendance-auto-fetch',
-        'klpf-attendance-capture-now',
-        'klpf-attendance-session-bootstrap',
-    ]);
     const DAY_ABBREVIATIONS = {
         月曜日: '月',
         火曜日: '火',
@@ -98,97 +87,14 @@
 
     let observer = null;
     let yearFilterObserver = null;
-    let scheduledCapture = null;
     let scheduledRender = null;
     let storageChangeListener = null;
     let runtimeMessageListener = null;
     let lastObservedAcademicYear = '';
     let deferredAcademicYear = '';
     const requestedAcademicYears = new Set();
-    let autoFetchRequested = false;
     let sessionBootstrapReported = false;
     let refreshDisplayState = 'cache';
-
-    /**
-     * 表示中の出席表を解析し、学期情報とともに保存する。
-     * @returns {Promise<boolean>} 出席表を取得・保存できた場合はtrue。
-     */
-    async function captureKuportAttendance() {
-        scheduledCapture = null;
-        const container = document.getElementById(ATTENDANCE_TABLE_ID);
-        if (!container) return false;
-
-        const termSelect = document.getElementById(TERM_SELECT_ID);
-        const academicTerm = termSelect instanceof HTMLSelectElement
-            ? normalizeText(termSelect.selectedOptions[0]?.textContent)
-            : '';
-        const termInfo = attendanceUtils.parseAcademicTerm(
-            termSelect instanceof HTMLSelectElement ? termSelect.value : '',
-            academicTerm,
-        );
-        if (termInfo.academicYear !== getCurrentAcademicYear()
-            || !Number.isInteger(termInfo.quarter)) return false;
-        const records = parseAttendanceRecords(container, { includeSessionCount: true });
-        if (records.length === 0) return false;
-        await saveAttendanceRecords(termInfo, academicTerm, records);
-        if (autoFetchRequested) {
-            void chrome.runtime.sendMessage({ type: 'attendance-rate-fetch-complete' }).catch(() => {});
-        }
-        return true;
-    }
-
-    /**
-     * 取得した出席記録を年度・学期別のキャッシュへ統合する。
-     * @param {object} termInfo - 解析済みの年度・学期情報。
-     * @param {string} academicTerm - 出席表で選択されている年度学期の表示名。
-     * @param {object[]} records - 照合または保存の対象となる出席記録。
-     * @returns {Promise<void>} 処理の完了を待つPromise。
-     */
-    async function saveAttendanceRecords(termInfo, academicTerm, records) {
-        const stored = await chrome.storage.local.get(CACHE_KEY);
-        const existingCache = stored[CACHE_KEY];
-        const mergedRecords = new Map();
-        for (const record of Array.isArray(existingCache?.records) ? existingCache.records : []) {
-            mergedRecords.set(
-                `${record.academicYear}|${record.quarter}|${record.schedule}|${record.normalizedName}`,
-                record,
-            );
-        }
-        for (const record of records) {
-            const termRecord = {
-                ...record,
-                academicYear: termInfo.academicYear,
-                quarter: termInfo.quarter,
-                termValue: termInfo.termValue,
-                academicTerm,
-            };
-            mergedRecords.set(
-                `${termRecord.academicYear}|${termRecord.quarter}|${termRecord.schedule}|${termRecord.normalizedName}`,
-                termRecord,
-            );
-        }
-        const updatedAt = Date.now();
-        const updatedAtByYear = { ...(existingCache?.updatedAtByYear || {}) };
-        const completedAtByYear = { ...(existingCache?.completedAtByYear || {}) };
-        if (existingCache?.academicYear && Number.isFinite(existingCache.updatedAt)
-            && !Number.isFinite(updatedAtByYear[existingCache.academicYear])) {
-            updatedAtByYear[existingCache.academicYear] = existingCache.updatedAt;
-        }
-        updatedAtByYear[termInfo.academicYear] = updatedAt;
-        await chrome.storage.local.set({
-            [CACHE_KEY]: {
-                version: CACHE_VERSION,
-                updatedAt,
-                updatedAtByYear,
-                completedAtByYear,
-                academicYear: termInfo.academicYear,
-                academicTerm: existingCache?.academicYear === termInfo.academicYear
-                    ? existingCache.academicTerm || `${termInfo.academicYear}年度`
-                    : `${termInfo.academicYear}年度`,
-                records: Array.from(mergedRecords.values()),
-            },
-        });
-    }
 
     /**
      * 出席状況へ遷移するKu-Portのメニューリンクを探す。
@@ -236,29 +142,6 @@
     }
 
     /**
-     * 出席率取得ジョブを確認し、出席表の取得または画面への遷移を処理する。
-     * @param {boolean} shouldNavigate - 出席表がない場合に取得用の画面へ進むかどうか。
-     * @returns {Promise<object>} 出席表読み取りまたは画面遷移の状態を示す応答。
-     */
-    async function handleKuportFetchRequest(shouldNavigate) {
-        const pageText = normalizeText(document.body?.textContent);
-        if (/ログインに失敗しました|不正なアクセスがありました/.test(pageText)) {
-            return { status: 'kuport-error' };
-        }
-        if (document.getElementById(ATTENDANCE_TABLE_ID)) {
-            const captured = await captureKuportAttendance();
-            return { status: captured ? 'captured' : 'waiting-for-table' };
-        }
-        if (!shouldNavigate) return { status: 'not-attendance-page' };
-
-        const menuLink = findAttendanceMenuLink();
-        if (!menuLink) return { status: 'menu-not-ready' };
-        autoFetchRequested = true;
-        menuLink.click();
-        return { status: 'navigating' };
-    }
-
-    /**
      * 出席率取得用の認証フォームをバックグラウンドへ引き渡す。
      * @returns {Promise<object>} 認証フォームの引き渡し状態を示す応答。
      */
@@ -267,52 +150,21 @@
         if (/ログインに失敗しました|不正なアクセスがありました/.test(pageText)) {
             return { status: 'kuport-error' };
         }
-        if (document.getElementById(ATTENDANCE_TABLE_ID)) {
-            const captured = await captureKuportAttendance();
-            return { status: captured ? 'captured' : 'waiting-for-table' };
-        }
         return createSessionBootstrap() || { status: 'menu-not-ready' };
     }
 
     /**
-     * 出席表の連続したDOM変更をまとめ、読み取りを予約する。
-     * @returns {void} 戻り値はない。
-     */
-    function scheduleCapture() {
-        if (scheduledCapture !== null) clearTimeout(scheduledCapture);
-        scheduledCapture = setTimeout(() => {
-            void captureKuportAttendanceSafely();
-        }, CAPTURE_DEBOUNCE_MS);
-    }
-
-    /**
-     * 出席表を読み取り、失敗を診断状態として通知する。
-     * @returns {Promise<boolean>} 読み取り処理が成功した場合はtrue。
-     */
-    async function captureKuportAttendanceSafely() {
-        try {
-            return await captureKuportAttendance();
-        } catch (error) {
-            console.error(`[${FEATURE_NAME}] Ku-portの出席率保存に失敗しました。`, error);
-            return false;
-        }
-    }
-
-    /**
      * バックグラウンドから届く出席率取得要求を受け付ける。
+     * @param {Promise<object>} ownership - 認証タブの所有確認結果。
      * @returns {void} 戻り値はない。
      */
-    function registerKuportMessageListener() {
+    function registerKuportMessageListener(ownership) {
         if (runtimeMessageListener) return;
 
         runtimeMessageListener = (message, _sender, sendResponse) => {
-            if (!KUPORT_MESSAGE_TYPES.has(message.type)) return false;
-
-            const isAutoFetch = message.type === 'klpf-attendance-auto-fetch';
-            if (isAutoFetch) autoFetchRequested = true;
-            const request = message.type === 'klpf-attendance-session-bootstrap'
-                ? handleKuportSessionBootstrap()
-                : handleKuportFetchRequest(isAutoFetch);
+            if (message.type !== 'klpf-attendance-session-bootstrap') return false;
+            const request = ownership.then(response => response?.owned
+                ? handleKuportSessionBootstrap() : { status: 'not-owned' });
             request
                 .then(sendResponse)
                 .catch(error => sendResponse({ status: 'error', error: error.message }));
@@ -322,50 +174,20 @@
     }
 
     /**
-     * 出席表が現れるまでKu-PortのDOM変更を監視する。
-     * @returns {void} 戻り値はない。
+     * 所有する認証タブだけで、メニューフォームの準備を監視する。
+     * @returns {Promise<void>} 所有確認と監視開始の完了。
      */
-    function observeKuportPageUntilAttendanceTable() {
-        observer?.disconnect();
-        observer = new MutationObserver(() => {
-            reportSessionBootstrapIfReady();
-            if (!document.getElementById(ATTENDANCE_TABLE_ID)) return;
-
-            observer?.disconnect();
-            observer = null;
-            startKuportCapture();
-        });
-        observer.observe(document.documentElement, { childList: true, subtree: true });
-    }
-
-    /**
-     * 出席表の内容変更を監視してキャッシュの読み取りを予約する。
-     * @param {Element} container - 対象の表や一覧を含む要素。
-     * @returns {void} 戻り値はない。
-     */
-    function observeAttendanceTable(container) {
-        observer?.disconnect();
-        observer = new MutationObserver(scheduleCapture);
-        observer.observe(container, { childList: true, subtree: true, characterData: true });
-    }
-
-    /**
-     * 所有ジョブを確認し、Ku-Port側の出席表読み取りを開始する。
-     * @returns {void} 戻り値はない。
-     */
-    function startKuportCapture() {
-        registerKuportMessageListener();
-
+    async function startKuportBridge() {
+        const ownership = chrome.runtime.sendMessage({ type: 'is-attendance-fetch-tab' });
+        // タブの読み込み完了通知が先に届いても、引き渡し要求を取りこぼさない。
+        // フォームの読み取り自体は所有確認の完了を待ってから行う。
+        registerKuportMessageListener(ownership);
+        const response = await ownership;
+        if (!response?.owned) return;
         reportSessionBootstrapIfReady();
-
-        const container = document.getElementById(ATTENDANCE_TABLE_ID);
-        if (!container) {
-            observeKuportPageUntilAttendanceTable();
-            return;
-        }
-
-        void captureKuportAttendanceSafely();
-        observeAttendanceTable(container);
+        observer?.disconnect();
+        observer = new MutationObserver(reportSessionBootstrapIfReady);
+        observer.observe(document.documentElement, { childList: true, subtree: true });
     }
 
     /**
@@ -1001,8 +823,6 @@
         storageChangeListener = null;
         if (runtimeMessageListener) chrome.runtime.onMessage.removeListener(runtimeMessageListener);
         runtimeMessageListener = null;
-        if (scheduledCapture !== null) clearTimeout(scheduledCapture);
-        scheduledCapture = null;
         if (scheduledRender !== null) cancelAnimationFrame(scheduledRender);
         scheduledRender = null;
         requestedAcademicYears.clear();
@@ -1014,9 +834,9 @@
      * @returns {void} 戻り値はない。
      */
     function main() {
-        if (location.hostname === KUPORT_HOST) startKuportCapture();
-        else if (location.hostname === LMS_HOST) startLmsDisplay();
-        window.addEventListener('pagehide', cleanup, { once: true });
+        if (location.hostname === KUPORT_HOST) {
+            void startKuportBridge().catch(error => console.debug('[KLPF] 出席率の認証タブを確認できませんでした。', error));
+        } else if (location.hostname === LMS_HOST) startLmsDisplay();
     }
 
     window.addEventListener('pagehide', cleanup);

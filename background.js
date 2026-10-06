@@ -1284,20 +1284,13 @@ function getAttendanceRecordKey(record) {
 }
 
 /**
- * 所有するKu-Portタブへ出席表の読み取りまたは認証フォームの引き渡しを依頼する。
- * @param {number} tabId - 処理対象のChromeタブID。
- * @param {string} [mode="capture"] - 読み取りまたは表示の処理モード。
- * @returns {Promise<object|null>} タブ側の処理状態を示す応答。送信できなければnull。
+ * 所有するKu-Port認証タブへメニューフォームの引き渡しを依頼する。
+ * @param {number} tabId - 認証用タブID。
+ * @returns {Promise<object|null>} フォームの準備状態。送信できなければnull。
  */
-async function askKuportTabToCapture(tabId, mode = 'capture') {
+async function askKuportTabForBootstrap(tabId) {
     try {
-        return await chrome.tabs.sendMessage(tabId, {
-            type: mode === 'bootstrap'
-                ? 'klpf-attendance-session-bootstrap'
-                : mode === 'navigate'
-                    ? 'klpf-attendance-auto-fetch'
-                    : 'klpf-attendance-capture-now',
-        });
+        return await chrome.tabs.sendMessage(tabId, { type: 'klpf-attendance-session-bootstrap' });
     } catch {
         return null;
     }
@@ -1858,21 +1851,16 @@ async function continueAttendanceFetch(tabId, changeInfo, tab) {
         return;
     }
 
-    const response = await askKuportTabToCapture(
-        tabId,
-        job.createdByExtension ? 'bootstrap' : 'navigate'
-    );
+    const response = await askKuportTabForBootstrap(tabId);
     if (response?.status === 'session-ready' && job.createdByExtension) {
         await reportAttendanceDebug('Ku-portホームからJSFセッション情報を取得');
         void startBackgroundAttendanceFetch(tabId, response);
         return;
     }
-    if (response?.status === 'captured') {
-        await finishAttendanceFetch(tabId, 'completed');
-    } else if (response?.status === 'menu-not-ready' && job.createdByExtension) {
+    if (response?.status === 'menu-not-ready' && job.createdByExtension) {
         // 自動ログインの次の画面へ遷移するまで待つ。
         return;
-    } else if (!['navigating', 'waiting-for-table'].includes(response?.status)) {
+    } else {
         if (startingBackgroundAttendanceTabs.has(tabId)) return;
         const latestJob = await getAttendanceFetchJob();
         if (latestJob?.tabId === tabId && latestJob.phase === 'background-fetch') return;
@@ -2253,7 +2241,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         requestBulletinFetch({
             sourceTabId: sender.tab?.id,
             requestId: message.requestId,
-            forceRefresh: message.forceRefresh === true,
         })
             .then(sendResponse)
             .catch((error) => {
@@ -2403,6 +2390,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.type === 'is-attendance-fetch-tab' && sender.tab?.id) {
+        getAttendanceFetchJob().then(job => sendResponse({
+            owned: job?.tabId === sender.tab.id && job.createdByExtension === true && job.phase === 'login-tab',
+        })).catch(() => sendResponse({ owned: false }));
+        return true;
+    }
+
     if (message.type === 'kuport-attendance-session-ready' && sender.tab?.id) {
         void startBackgroundAttendanceFetch(sender.tab.id, {
             status: 'session-ready',
@@ -2411,12 +2405,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         sendResponse({ status: 'accepted' });
         return false;
-    }
-
-    if (message.type === 'attendance-rate-fetch-complete' && sender.tab?.id) {
-        void finishAttendanceFetch(sender.tab.id, 'completed');
-        sendResponse({ status: 'accepted' });
-        return;
     }
 
     if (message.type === 'kuport-auto-login-unavailable' && sender.tab?.id) {

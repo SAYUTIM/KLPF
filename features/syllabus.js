@@ -455,7 +455,7 @@
         }
 
         const requestId = getRequestId();
-        const request = { button, card, course, progress: null, cancelled: false, forceRefresh };
+        const request = { button, card, course, progress: null, cancelled: false };
         activeRequests.set(requestId, request);
         setButtonLoading(button, true);
 

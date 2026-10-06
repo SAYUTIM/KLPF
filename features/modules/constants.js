@@ -55,9 +55,6 @@ if (typeof LMS_URL === 'undefined') {
     // 自動出席の実行タイミング（授業開始の何分前か）
     var ATTEND_EXECUTION_MARGIN_MIN = 3;
 
-    // セッション送信間隔
-    var SESSION_KEEP_ALIVE_INTERVAL_MS = 90 * 60 * 1000; // 90分
-
     // time.jsで使う定数
     var TIME_SCHEDULE_NORMAL = [
         { start: "08:30", end: "10:00", label: "1限" },

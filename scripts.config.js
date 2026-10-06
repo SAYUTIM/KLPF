@@ -189,13 +189,6 @@ export const CONTENT_SCRIPTS_CONFIG = [
         runAt: 'document_end',
         enabledByDefault: true,
     },
-    /*{
-        id: 'customtheme',
-        storageKey: 'customtheme',
-        js: [`${PATHS.FEATURES}customtheme.js`],
-        matches: [URLS.KOGAKUIN_LMS_GENERAL],
-        runAt: 'document_end',
-    },*/
     {
         id: 'kyozaiopen',
         storageKey: 'kyozaiopen',
